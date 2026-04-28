@@ -6,7 +6,6 @@ const path = require('path');
 
 const cwd = path.resolve(__dirname, '..');
 const env = { ...process.env };
-
 let bash = 'bash';
 
 if (process.platform === 'win32') {
@@ -15,9 +14,9 @@ if (process.platform === 'win32') {
     .replace(/^([A-Za-z]):\//, (_, d) => `/${d.toLowerCase()}/`)
     .replace(/\/$/, '');
 
-  // Find Git for Windows bash.
-  // C:\Windows\System32\bash.exe is the WSL launcher — it boots a Linux environment
-  // where node/git/npm/gh are invisible, so we must skip it.
+  // ── Find Git for Windows bash ──────────────────────────────────────────────
+  // C:\Windows\System32\bash.exe is the WSL launcher — it boots a Linux
+  // environment where Windows tools (node, git, npm, gh) are invisible.
   const gitRoots = [
     process.env.PROGRAMFILES         && path.join(process.env.PROGRAMFILES,         'Git'),
     process.env['PROGRAMFILES(X86)'] && path.join(process.env['PROGRAMFILES(X86)'], 'Git'),
@@ -30,32 +29,60 @@ if (process.platform === 'win32') {
     if (existsSync(candidate)) { bashPath = candidate; break; }
   }
 
-  if (bashPath) {
-    bash = bashPath;
-  } else {
-    // Fall back to PATH, but never pick the WSL shim in System32.
+  if (!bashPath) {
     const where = spawnSync('where', ['bash'], { encoding: 'utf8' });
     const found = (where.stdout || '').trim().split('\n')
       .map(s => s.trim())
       .filter(s => s && !s.toLowerCase().includes('system32'));
     if (found.length > 0) {
-      bash = found[0];
+      bashPath = found[0];
     } else {
       process.stderr.write(
         'vault-init: Git for Windows bash not found.\n' +
-        'Install Git for Windows from https://git-scm.com and re-run.\n' +
+        'Install Git for Windows: https://git-scm.com\n' +
         '(C:\\Windows\\System32\\bash.exe is WSL — it cannot see Windows tools.)\n'
       );
       process.exit(1);
     }
   }
+  bash = bashPath;
 
-  // Build a POSIX PATH that Git Bash can use.
-  // Prepend bash's own bin dir and node's dir so all tools are guaranteed findable.
-  const entries = (env.PATH || '').split(';').filter(Boolean).map(toUnix);
-  entries.unshift(toUnix(path.dirname(process.execPath)));
-  entries.unshift(toUnix(path.dirname(bash)));
-  env.PATH = [...new Set(entries)].join(':');
+  // ── Find each required tool via where.exe ─────────────────────────────────
+  // where.exe is Windows-native: it handles all PATH edge cases correctly
+  // and finds .exe/.cmd/.bat regardless of extension. Far more reliable than
+  // trying to convert the Windows PATH string ourselves.
+  const REQUIRED = [
+    { name: 'git', url: 'https://git-scm.com' },
+    { name: 'node', url: 'https://nodejs.org' },
+    { name: 'npm',  url: 'https://nodejs.org' },
+    { name: 'gh',   url: 'https://cli.github.com' },
+  ];
+
+  const toolDirs = new Set([
+    path.dirname(bash),
+    path.dirname(process.execPath), // node is always findable
+  ]);
+  const missing = [];
+
+  for (const { name, url } of REQUIRED) {
+    const r = spawnSync('where', [name], { encoding: 'utf8' });
+    if (r.status === 0 && r.stdout.trim()) {
+      toolDirs.add(path.dirname(r.stdout.trim().split('\n')[0].trim()));
+    } else {
+      missing.push(`  ${name.padEnd(6)} → ${url}`);
+    }
+  }
+
+  if (missing.length > 0) {
+    process.stderr.write('vault-init: missing required tools:\n' + missing.join('\n') + '\n');
+    process.exit(1);
+  }
+
+  // Tool dirs go first so they shadow anything broken in the existing PATH.
+  // We still append the full converted PATH so bash built-ins and Git's own
+  // bundled utilities (ssh, curl, etc.) remain reachable.
+  const existing = (env.PATH || '').split(';').filter(Boolean).map(toUnix);
+  env.PATH = [...new Set([...[...toolDirs].map(toUnix), ...existing])].join(':');
 }
 
 const result = spawnSync(bash, ['vault-init.sh', ...process.argv.slice(2)], {

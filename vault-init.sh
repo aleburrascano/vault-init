@@ -28,10 +28,16 @@ for cmd in git node npm gh; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "Error: '$cmd' not found. Make sure it is installed and on your PATH."; exit 1; }
 done
 gh auth status >/dev/null 2>&1 || { echo "Error: not logged in to GitHub. Run: gh auth login"; exit 1; }
+git config user.name  >/dev/null 2>&1 || { echo "Error: git user.name not set. Run: git config --global user.name \"Your Name\""; exit 1; }
+git config user.email >/dev/null 2>&1 || { echo "Error: git user.email not set. Run: git config --global user.email \"you@example.com\""; exit 1; }
 [ -d "$VAULT_DIR" ] && { echo "Error: $VAULT_DIR already exists"; exit 1; }
 
 GITHUB_USER=$(gh api user --jq '.login')
 BASE_URL="$GITHUB_USER.github.io/$VAULT_NAME"
+
+# Clean up the local directory if anything fails after this point.
+# (GitHub repo, if already created, must be deleted manually.)
+trap '[[ $? -ne 0 ]] && [[ -d "${VAULT_DIR}" ]] && { echo ""; echo "Setup failed — removing partial vault at ${VAULT_DIR}"; rm -rf "${VAULT_DIR}"; }' EXIT
 
 echo "[2/8] Creating vault: $VAULT_NAME"
 mkdir -p "$VAULT_DIR"
