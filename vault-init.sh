@@ -16,6 +16,11 @@ VAULT_NAME="$1"
 REPO_VISIBILITY="public"
 [ "${2:-}" = "--private" ] && REPO_VISIBILITY="private"
 
+if ! [[ "$VAULT_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  echo "Error: vault name must contain only letters, numbers, hyphens, and underscores."
+  exit 1
+fi
+
 VAULT_DIR="$(pwd)/$VAULT_NAME"
 
 echo "[1/8] Checking prerequisites..."
