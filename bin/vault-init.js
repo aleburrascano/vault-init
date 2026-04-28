@@ -25,4 +25,12 @@ const result = spawnSync('bash', ['vault-init.sh', ...process.argv.slice(2)], {
   stdio: 'inherit',
   env,
 });
-process.exit(result.status || 0);
+
+if (result.error) {
+  process.stderr.write(
+    `vault-init: failed to launch bash — ${result.error.message}\n` +
+    `Make sure Git for Windows is installed and 'bash' is on your PATH.\n`
+  );
+  process.exit(1);
+}
+process.exit(result.status ?? 1);

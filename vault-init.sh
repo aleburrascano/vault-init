@@ -18,16 +18,17 @@ REPO_VISIBILITY="public"
 
 VAULT_DIR="$(pwd)/$VAULT_NAME"
 
+echo "[1/8] Checking prerequisites..."
 for cmd in git node npm gh; do
-  command -v "$cmd" >/dev/null 2>&1 || { echo "Error: '$cmd' not found"; exit 1; }
+  command -v "$cmd" >/dev/null 2>&1 || { echo "Error: '$cmd' not found. Make sure it is installed and on your PATH."; exit 1; }
 done
-gh auth status >/dev/null 2>&1 || { echo "Not logged in. Run: gh auth login"; exit 1; }
+gh auth status >/dev/null 2>&1 || { echo "Error: not logged in to GitHub. Run: gh auth login"; exit 1; }
 [ -d "$VAULT_DIR" ] && { echo "Error: $VAULT_DIR already exists"; exit 1; }
 
 GITHUB_USER=$(gh api user --jq '.login')
 BASE_URL="$GITHUB_USER.github.io/$VAULT_NAME"
 
-echo "Creating vault: $VAULT_NAME"
+echo "[2/8] Creating vault: $VAULT_NAME"
 mkdir -p "$VAULT_DIR"
 cd "$VAULT_DIR"
 
@@ -173,11 +174,11 @@ site/.quartz-cache/
 EOF
 
 # Clone and configure Quartz
-echo "Cloning Quartz..."
+echo "[3/8] Cloning Quartz (may take ~30s)..."
 git clone --depth 1 https://github.com/jackyzha0/quartz site
 rm -rf site/.git
 
-echo "Installing Quartz dependencies..."
+echo "[4/8] Installing Quartz dependencies (may take ~60s)..."
 (cd site && npm install --silent)
 
 node -e "
@@ -194,18 +195,19 @@ fs.writeFileSync(p, t);
 "
 
 # Git init + commit
+echo "[5/8] Committing initial files..."
 git init
 git branch -M main
 git add .
 git commit -m "chore: initialize ${VAULT_NAME}"
 
 # Create GitHub repo (no push yet — Pages must be enabled first)
-echo "Creating GitHub repo: $VAULT_NAME"
+echo "[6/8] Creating GitHub repo: $VAULT_NAME ($REPO_VISIBILITY)..."
 gh repo create "$VAULT_NAME" --"$REPO_VISIBILITY"
 git remote add origin "https://github.com/$GITHUB_USER/$VAULT_NAME.git"
 
 # Enable GitHub Pages before the push triggers the deploy workflow
-echo "Enabling GitHub Pages..."
+echo "[7/8] Enabling Pages and pushing..."
 gh api "repos/$GITHUB_USER/$VAULT_NAME/pages" \
   --method POST -f build_type=workflow \
   2>/dev/null || true
@@ -214,7 +216,7 @@ gh api "repos/$GITHUB_USER/$VAULT_NAME/pages" \
 git push -u origin main
 
 # Protect main branch — force contributions through PRs
-echo "Protecting main branch..."
+echo "[8/8] Protecting main branch..."
 gh api "repos/$GITHUB_USER/$VAULT_NAME/branches/main/protection" \
   --method PUT \
   --input - << 'JSON'
@@ -244,6 +246,7 @@ else
 fi
 
 echo ""
-echo "Repository: https://github.com/$GITHUB_USER/$VAULT_NAME"
-echo "Site (live in ~1 min): https://$BASE_URL"
-echo "Vault created at: $VAULT_DIR"
+echo "Done."
+echo "  Repo:  https://github.com/$GITHUB_USER/$VAULT_NAME"
+echo "  Site:  https://$BASE_URL  (live after CI finishes, ~1 min)"
+echo "  Vault: $VAULT_DIR"
