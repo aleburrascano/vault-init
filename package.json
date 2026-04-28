@@ -1,6 +1,6 @@
 {
   "name": "@aleburrascano/vaultkit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "Obsidian wiki management — create, connect, and destroy vaults with GitHub Pages and Claude Code MCP.",
   "bin": {
@@ -8,8 +8,13 @@
   },
   "files": [
     "vault-init.sh",
-    "vault-destroy.sh",
     "vault-connect.sh",
+    "vault-disconnect.sh",
+    "vault-destroy.sh",
+    "vault-list.sh",
+    "vault-pull.sh",
+    "vault-update.sh",
+    "vault-doctor.sh",
     "install.sh",
     "bin/vaultkit.js"
   ],

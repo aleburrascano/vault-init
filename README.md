@@ -1,6 +1,6 @@
 # vaultkit
 
-Obsidian wiki management — one package, three commands.
+Obsidian wiki management — one package, eight commands.
 
 ```bash
 npm install -g @aleburrascano/vaultkit
@@ -12,7 +12,12 @@ vaultkit help
 ```
 vaultkit init <name> [--private]   Create a new vault with GitHub Pages + MCP
 vaultkit connect <owner/repo>      Clone a vault and register it as an MCP server
+vaultkit disconnect <name>         Remove a vault locally and from MCP (keeps GitHub repo)
 vaultkit destroy <name>            Delete a vault locally, on GitHub, and from MCP
+vaultkit list                      Show all registered vaults
+vaultkit pull                      Pull latest changes in all registered vaults
+vaultkit update <name>             Update system files in a vault to the latest version
+vaultkit doctor                    Check environment and vault health
 vaultkit help                      Show this reference
 ```
 
