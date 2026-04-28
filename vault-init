@@ -147,7 +147,7 @@ jobs:
           cache: npm
           cache-dependency-path: site/package-lock.json
       - name: Build Quartz
-        run: cd site && npm ci && chmod +x node_modules/.bin/quartz && npx quartz build --directory ../
+        run: cd site && npm ci && chmod +x quartz/cli/main.js && npx quartz build --directory ../
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site/public
