@@ -26,40 +26,70 @@ VAULT_DIR="${VAULT_INIT_CWD:-$(pwd)}/$VAULT_NAME"
 IS_WINDOWS=false
 [ -n "${WINDIR:-}" ] && IS_WINDOWS=true
 
+# On Windows, bash's PATH doesn't pick up system PATH changes made by installers.
+# Ask cmd.exe — which sees the live system PATH — to locate any pre-existing gh.
+_win_find_gh() {
+  command -v cygpath >/dev/null 2>&1 || return 1
+  local GH_WIN GH_DIR
+  GH_WIN=$(cmd //c "where gh 2>nul" 2>/dev/null | tr -d '\r' | head -1) || return 1
+  [ -z "$GH_WIN" ] && return 1
+  GH_DIR=$(cygpath -u "$(dirname "$GH_WIN")" 2>/dev/null) || return 1
+  export PATH="$GH_DIR:$PATH"
+  command -v gh >/dev/null 2>&1
+}
+
 echo "[1/8] Checking prerequisites..."
+
+# Node.js version (vaultkit requires 22+)
+NODE_MAJOR=$(node -e 'process.stdout.write(String(process.versions.node.split(".")[0]))')
+if [ "$NODE_MAJOR" -lt 22 ]; then
+  echo "Error: Node.js 22+ required (found v$(node --version | tr -d v))."
+  echo "  Update at: https://nodejs.org"
+  exit 1
+fi
 
 # Auto-install gh if missing
 if ! command -v gh >/dev/null 2>&1; then
-  echo "  GitHub CLI not found — installing..."
-  if $IS_WINDOWS && command -v winget >/dev/null 2>&1; then
-    winget install --id GitHub.cli -e --accept-package-agreements --accept-source-agreements
-    # Refresh PATH — gh MSI lands in Program Files; WinGet may also create a shim link
-    if command -v cygpath >/dev/null 2>&1; then
-      for WIN_DIR in \
-        "${PROGRAMFILES:-C:/Program Files}/GitHub CLI" \
-        "C:/Program Files/GitHub CLI" \
-        "${LOCALAPPDATA:-}/Microsoft/WinGet/Links"; do
-        POSIX_DIR=$(cygpath -u "$WIN_DIR" 2>/dev/null || true)
-        [ -n "$POSIX_DIR" ] && [ -d "$POSIX_DIR" ] && export PATH="$POSIX_DIR:$PATH"
-      done
-    fi
-  elif command -v brew >/dev/null 2>&1; then
-    brew install gh
-  elif command -v apt-get >/dev/null 2>&1; then
-    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-      | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-      | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-    sudo apt-get update -qq && sudo apt-get install gh -y
-  elif command -v dnf >/dev/null 2>&1; then
-    sudo dnf install 'dnf-command(config-manager)' -y
-    sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
-    sudo dnf install gh --repo gh-cli -y
+  # On Windows, first try to locate an existing install that bash can't yet see
+  if $IS_WINDOWS && _win_find_gh; then
+    : # found via cmd.exe PATH lookup — no install needed
   else
-    echo "  Error: cannot auto-install gh. Install from https://cli.github.com and re-run."
-    exit 1
+    echo "  GitHub CLI not found — installing..."
+    if $IS_WINDOWS && command -v winget >/dev/null 2>&1; then
+      winget install --id GitHub.cli -e --accept-package-agreements --accept-source-agreements
+      # Refresh PATH — gh MSI lands in Program Files; WinGet may also create a shim
+      if command -v cygpath >/dev/null 2>&1; then
+        for WIN_DIR in \
+          "${PROGRAMFILES:-C:/Program Files}/GitHub CLI" \
+          "C:/Program Files/GitHub CLI" \
+          "${LOCALAPPDATA:-}/Microsoft/WinGet/Links"; do
+          POSIX_DIR=$(cygpath -u "$WIN_DIR" 2>/dev/null || true)
+          [ -n "$POSIX_DIR" ] && [ -d "$POSIX_DIR" ] && export PATH="$POSIX_DIR:$PATH"
+        done
+        _win_find_gh || true  # final fallback via cmd.exe
+      fi
+    elif command -v brew >/dev/null 2>&1; then
+      brew install gh
+    elif command -v apt-get >/dev/null 2>&1; then
+      curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+      sudo apt-get update -qq && sudo apt-get install gh -y
+    elif command -v dnf >/dev/null 2>&1; then
+      sudo dnf install 'dnf-command(config-manager)' -y
+      sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+      sudo dnf install gh --repo gh-cli -y
+    else
+      echo "  Error: cannot auto-install gh. Install from https://cli.github.com and re-run."
+      exit 1
+    fi
+    command -v gh >/dev/null 2>&1 || {
+      echo "  Error: gh not found after install."
+      echo "  Install manually: https://cli.github.com — then re-run vaultkit init."
+      exit 1
+    }
   fi
-  command -v gh >/dev/null 2>&1 || { echo "  Error: gh install failed. Visit https://cli.github.com"; exit 1; }
 fi
 
 # Authenticate with GitHub if needed
@@ -368,7 +398,9 @@ if ! command -v claude >/dev/null 2>&1; then
   read -r -p "Claude Code CLI not found. Install it now? [y/N] " INSTALL_CLAUDE
   if [[ "${INSTALL_CLAUDE:-}" =~ ^[Yy]$ ]]; then
     echo "Installing Claude Code CLI..."
-    npm install -g @anthropic-ai/claude-code
+    if ! npm install -g @anthropic-ai/claude-code; then
+      echo "  Install failed — run manually: npm install -g @anthropic-ai/claude-code"
+    fi
   fi
 fi
 
@@ -386,4 +418,4 @@ echo ""
 echo "Done."
 echo "  Repo:  https://github.com/$GITHUB_USER/$VAULT_NAME"
 echo "  Site:  https://$BASE_URL  (live after CI finishes, ~1 min)"
-echo "  Vault: $VAULT_DIR"
+echo "  Vault: $MCP_VAULT_PATH"
