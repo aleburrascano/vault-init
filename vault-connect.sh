@@ -72,6 +72,28 @@ if ! [ -f "$VAULT_DIR/.mcp-start.js" ]; then
   exit 0
 fi
 
+# Show hash so the user can verify the script before trusting it
+MCP_HASH=$(node -e "
+const crypto = require('crypto');
+const fs = require('fs');
+console.log(crypto.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex'));
+" "$VAULT_DIR/.mcp-start.js")
+
+echo ""
+echo "This vault's .mcp-start.js will run with your full user permissions on every"
+echo "Claude Code session start. Only connect vaults from authors you trust."
+echo ""
+echo "  File:    $VAULT_DIR/.mcp-start.js"
+echo "  SHA-256: $MCP_HASH"
+echo ""
+read -r -p "Register as MCP server? [y/N] " _CONFIRM
+if ! [[ "${_CONFIRM:-}" =~ ^[Yy]$ ]]; then
+  echo ""
+  echo "MCP registration skipped. Vault cloned to: $VAULT_DIR"
+  echo "To register later, re-run: vaultkit connect $REPO"
+  exit 0
+fi
+
 if command -v cygpath >/dev/null 2>&1; then
   MCP_VAULT_PATH=$(cygpath -m "$VAULT_DIR")
 else

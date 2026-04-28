@@ -127,6 +127,20 @@ Multiple wikis are available simultaneously under their own MCP namespaces:
 3. Open a pull request — CI automatically checks for duplicate source filenames
 4. The maintainer reviews and merges
 
+## Security & Trust
+
+`vaultkit connect` clones a vault and registers its `.mcp-start.js` as a Claude Code MCP server. That script runs automatically with your **full user permissions** on every Claude Code session start — equivalent to adding the vault author to your system PATH.
+
+Before registering, vaultkit shows you the SHA-256 of `.mcp-start.js` and asks for confirmation:
+
+```
+  File:    /home/you/vaults/my-vault/.mcp-start.js
+  SHA-256: a3f2c1...
+Register as MCP server? [y/N]
+```
+
+**Trust rule:** only connect vaults from authors you trust, the same way you'd only `npm install -g` packages from trusted publishers. You can inspect `.mcp-start.js` before confirming, and `vaultkit doctor` shows the current SHA-256 of every registered vault's entry point so you can detect changes over time.
+
 ## Configuration
 
 | Variable | Default | Description |

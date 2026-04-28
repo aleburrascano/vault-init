@@ -75,6 +75,7 @@ VAULT_ISSUES=0
 node -e "
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const file = process.argv[1];
 if (!fs.existsSync(file)) { console.log('  No vaults registered.'); process.exit(0); }
@@ -113,7 +114,10 @@ for (const [name, s] of vaults) {
     console.log('      Fix: vaultkit update ' + name);
     issues++;
   } else {
+    const mcp = path.join(vaultDir, '.mcp-start.js');
+    const hash = crypto.createHash('sha256').update(fs.readFileSync(mcp)).digest('hex');
     console.log('  + ' + name + '  (' + vaultDir + ')');
+    console.log('    .mcp-start.js  SHA-256: ' + hash);
   }
 }
 
