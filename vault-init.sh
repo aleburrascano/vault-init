@@ -23,9 +23,8 @@ if [ ${#VAULT_NAME} -gt 64 ]; then
   exit 1
 fi
 
-# VAULT_INIT_CWD is injected by the Node.js wrapper as the user's real working
-# directory (bash's own pwd returns the npm package dir, not where the user ran the command).
-VAULT_DIR="${VAULT_INIT_CWD:-$(pwd)}/$VAULT_NAME"
+VAULTS_ROOT="${VAULTKIT_HOME:-$HOME/vaults}"
+VAULT_DIR="$VAULTS_ROOT/$VAULT_NAME"
 
 IS_WINDOWS=false
 [ -n "${WINDIR:-}" ] && IS_WINDOWS=true
@@ -112,6 +111,7 @@ if ! git config user.email >/dev/null 2>&1; then
   git config --global user.email "$GIT_EMAIL"
 fi
 
+mkdir -p "$VAULTS_ROOT"
 [ -d "$VAULT_DIR" ] && { echo "Error: $VAULT_DIR already exists"; exit 1; }
 
 GITHUB_USER=$(gh api user --jq '.login' 2>/dev/null) || {

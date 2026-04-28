@@ -44,7 +44,6 @@ if (!script) {
 
 const cwd = resolve(import.meta.dirname, '..');
 const env = { ...process.env };
-env.VAULT_INIT_CWD = process.cwd();
 
 let bash = 'bash';
 
@@ -53,8 +52,6 @@ if (process.platform === 'win32') {
     .replace(/\\/g, '/')
     .replace(/^([A-Za-z]):\//, (_, d) => `/${d.toLowerCase()}/`)
     .replace(/\/$/, '');
-
-  env.VAULT_INIT_CWD = toUnix(process.cwd());
 
   const gitRoots = [
     process.env.PROGRAMFILES         && join(process.env.PROGRAMFILES,         'Git'),
