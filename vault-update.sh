@@ -76,6 +76,7 @@ echo ""
 cat > "$VAULT_DIR_POSIX/.mcp-start.js" << 'JS'
 #!/usr/bin/env node
 const { spawnSync } = require('child_process');
+const path = require('path');
 
 // Pull latest changes silently — don't fail if offline or no remote.
 spawnSync('git', ['pull', '--ff-only', '--quiet'], {
@@ -83,7 +84,11 @@ spawnSync('git', ['pull', '--ff-only', '--quiet'], {
   stdio: 'ignore',
 });
 
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+// Derive npx from the node binary that launched this script — avoids PATH
+// issues when Claude Code starts as a desktop app and npm isn't in system PATH.
+const npx = process.platform === 'win32'
+  ? path.join(path.dirname(process.execPath), 'npx.cmd')
+  : 'npx';
 const r = spawnSync(npx, ['-y', 'obsidian-mcp-pro', '--vault', __dirname], {
   stdio: 'inherit',
 });

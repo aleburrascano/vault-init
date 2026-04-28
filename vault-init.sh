@@ -29,19 +29,29 @@ VAULT_DIR="$VAULTS_ROOT/$VAULT_NAME"
 IS_WINDOWS=false
 [ -n "${WINDIR:-}" ] && IS_WINDOWS=true
 
-# On Windows, bash's PATH doesn't pick up system PATH changes made by installers.
-# Ask cmd.exe — which sees the live system PATH — to locate any pre-existing gh.
+# On Windows, PATH changes written to the registry by installers are never visible to
+# processes already running — cmd //c inherits the same stale env as bash.
+# Probe known MSI / WinGet install locations directly instead.
 _win_find_gh() {
   command -v cygpath >/dev/null 2>&1 || return 1
-  local GH_WIN GH_DIR
-  GH_WIN=$(cmd //c "where gh 2>nul" 2>/dev/null | tr -d '\r' | head -1) || return 1
-  [ -z "$GH_WIN" ] && return 1
+  local GH_WIN GH_DIR CHECK_WIN CHECK_POSIX
+  for CHECK_WIN in \
+    "${PROGRAMFILES:-C:/Program Files}/GitHub CLI/gh.exe" \
+    "C:/Program Files/GitHub CLI/gh.exe" \
+    "${LOCALAPPDATA:-}/Microsoft/WinGet/Links/gh.exe" \
+    "${LOCALAPPDATA:-}/Microsoft/WinGet/Packages/GitHub.cli_Microsoft.Winget.Source_8wekyb3d8bbwe/tools/gh.exe"; do
+    CHECK_POSIX=$(cygpath -u "$CHECK_WIN" 2>/dev/null || true)
+    [ -n "$CHECK_POSIX" ] && [ -f "$CHECK_POSIX" ] && { GH_WIN="$CHECK_WIN"; break; }
+  done
+  # Fall back to cmd.exe (works when PATH was inherited from a post-install shell)
+  [ -z "${GH_WIN:-}" ] && GH_WIN=$(cmd //c "where gh 2>nul" 2>/dev/null | tr -d '\r' | head -1) || true
+  [ -z "${GH_WIN:-}" ] && return 1
   GH_DIR=$(cygpath -u "$(dirname "$GH_WIN")" 2>/dev/null) || return 1
   export PATH="$GH_DIR:$PATH"
   command -v gh >/dev/null 2>&1
 }
 
-echo "[1/8] Checking prerequisites..."
+echo "[1/6] Checking prerequisites..."
 
 # Node.js version (vaultkit requires 22+)
 NODE_MAJOR=$(node -e 'process.stdout.write(String(process.versions.node.split(".")[0]))')
@@ -65,11 +75,12 @@ if ! command -v gh >/dev/null 2>&1; then
         for WIN_DIR in \
           "${PROGRAMFILES:-C:/Program Files}/GitHub CLI" \
           "C:/Program Files/GitHub CLI" \
-          "${LOCALAPPDATA:-}/Microsoft/WinGet/Links"; do
+          "${LOCALAPPDATA:-}/Microsoft/WinGet/Links" \
+          "${LOCALAPPDATA:-}/Microsoft/WinGet/Packages/GitHub.cli_Microsoft.Winget.Source_8wekyb3d8bbwe/tools"; do
           POSIX_DIR=$(cygpath -u "$WIN_DIR" 2>/dev/null || true)
           [ -n "$POSIX_DIR" ] && [ -d "$POSIX_DIR" ] && export PATH="$POSIX_DIR:$PATH"
         done
-        _win_find_gh || true  # final fallback via cmd.exe
+        _win_find_gh || true
       fi
     elif command -v brew >/dev/null 2>&1; then
       brew install gh
@@ -88,8 +99,8 @@ if ! command -v gh >/dev/null 2>&1; then
       exit 1
     fi
     command -v gh >/dev/null 2>&1 || {
-      echo "  Error: gh not found after install."
-      echo "  Install manually: https://cli.github.com — then re-run vaultkit init."
+      echo "  Error: gh was installed but could not be found in PATH."
+      echo "  Open a new terminal window, then re-run vaultkit init."
       exit 1
     }
   fi
@@ -154,7 +165,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[2/8] Creating vault: $VAULT_NAME"
+echo "[2/6] Creating vault: $VAULT_NAME"
 mkdir -p "$VAULT_DIR"
 CREATED_DIR=true
 cd "$VAULT_DIR"
@@ -250,6 +261,7 @@ printf '# Log\n' > log.md
 cat > .mcp-start.js << 'JS'
 #!/usr/bin/env node
 const { spawnSync } = require('child_process');
+const path = require('path');
 
 // Pull latest changes silently — don't fail if offline or no remote.
 spawnSync('git', ['pull', '--ff-only', '--quiet'], {
@@ -257,7 +269,11 @@ spawnSync('git', ['pull', '--ff-only', '--quiet'], {
   stdio: 'ignore',
 });
 
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+// Derive npx from the node binary that launched this script — avoids PATH
+// issues when Claude Code starts as a desktop app and npm isn't in system PATH.
+const npx = process.platform === 'win32'
+  ? path.join(path.dirname(process.execPath), 'npx.cmd')
+  : 'npx';
 const r = spawnSync(npx, ['-y', 'obsidian-mcp-pro', '--vault', __dirname], {
   stdio: 'inherit',
 });
@@ -293,7 +309,7 @@ jobs:
           echo "No duplicate source filenames found."
 YAML
 
-# Deploy workflow
+# Deploy workflow — Quartz is cloned and configured in CI, never locally
 cat > .github/workflows/deploy.yml << 'YAML'
 name: Deploy Wiki
 
@@ -318,9 +334,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: .quartz/package-lock.json
-      - name: Build Quartz
+      - name: Clone and configure Quartz
+        run: |
+          git clone --depth 1 https://github.com/jackyzha0/quartz .quartz
+          node - <<'PATCH'
+          const fs = require('fs');
+          const cfg = JSON.parse(fs.readFileSync('_vault.json', 'utf8'));
+          const p = '.quartz/quartz.config.ts';
+          let t = fs.readFileSync(p, 'utf8');
+          t = t.replace(/pageTitle: "[^"]+"/, `pageTitle: "${cfg.pageTitle}"`);
+          t = t.replace(/baseUrl: "[^"]+"/, `baseUrl: "${cfg.baseUrl}"`);
+          t = t.replace(/ignorePatterns: \[[^\]]+\]/, 'ignorePatterns: ["raw", ".quartz", ".github", "CLAUDE.md", "*.sh"]');
+          fs.writeFileSync(p, t);
+          PATCH
+      - name: Build
         run: cd .quartz && npm ci && chmod +x quartz/bootstrap-cli.mjs && npx quartz build --directory ../
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -339,62 +366,44 @@ YAML
 
 # .gitignore
 cat > .gitignore << 'EOF'
-.quartz/node_modules/
-.quartz/public/
-.quartz/.quartz-cache/
+.quartz/
 .obsidian/
 .DS_Store
 EOF
 
-# Clone and configure Quartz
-echo "[3/8] Cloning Quartz (may take ~30s)..."
-if ! git clone --depth 1 https://github.com/jackyzha0/quartz .quartz 2>&1; then
-  echo ""
-  echo "Error: Could not clone Quartz. Check your internet connection and try again."
-  exit 1
-fi
-rm -rf .quartz/.git
+# .gitattributes — normalise line endings; suppresses CRLF warnings on Windows
+cat > .gitattributes << 'EOF'
+* text=auto
+*.js text eol=lf
+*.ts text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+EOF
 
-echo "[4/8] Installing Quartz dependencies (may take ~60s)..."
-if ! (cd .quartz && npm install --silent); then
-  echo "  First attempt failed — retrying with full output..."
-  (cd .quartz && npm install) || {
-    echo ""
-    echo "Error: Could not install Quartz dependencies."
-    echo "  - Check your internet connection and try again"
-    echo "  - Update npm: npm install -g npm@latest"
-    exit 1
-  }
-fi
-
-node -e "
-const fs = require('fs');
-const p = '.quartz/quartz.config.ts';
-let t = fs.readFileSync(p, 'utf8');
-t = t.replace(/pageTitle: \"[^\"]+\"/, 'pageTitle: \"${VAULT_NAME}\"');
-t = t.replace(/baseUrl: \"[^\"]+\"/, 'baseUrl: \"${BASE_URL}\"');
-t = t.replace(
-  /ignorePatterns: \[[^\]]+\]/,
-  'ignorePatterns: [\"raw\", \".quartz\", \".github\", \"CLAUDE.md\", \"*.sh\"]'
-);
-fs.writeFileSync(p, t);
-"
+# Vault config — read by the deploy workflow to configure Quartz
+cat > _vault.json << EOF
+{
+  "pageTitle": "${VAULT_NAME}",
+  "baseUrl": "${BASE_URL}"
+}
+EOF
 
 # Git init + commit
-echo "[5/8] Committing initial files..."
+echo "[3/6] Committing initial files..."
 git init
 git branch -M main
 git add .
 git commit -m "chore: initialize ${VAULT_NAME}"
 
 # Create GitHub repo (no push yet — Pages must be enabled first)
-echo "[6/8] Creating GitHub repo: $VAULT_NAME ($REPO_VISIBILITY)..."
+echo "[4/6] Creating GitHub repo: $VAULT_NAME ($REPO_VISIBILITY)..."
 gh repo create "$VAULT_NAME" --"$REPO_VISIBILITY"
 CREATED_REPO=true
 git remote add origin "https://github.com/$GITHUB_USER/$VAULT_NAME.git"
 
 # Enable GitHub Pages before the push triggers the deploy workflow
-echo "[7/8] Enabling Pages and pushing..."
+echo "[5/6] Enabling Pages and pushing..."
 if ! gh api "repos/$GITHUB_USER/$VAULT_NAME/pages" \
   --method POST -f build_type=workflow \
   >/dev/null 2>&1; then
@@ -407,7 +416,7 @@ fi
 git push -u origin main
 
 # Protect main branch — force contributions through PRs
-echo "[8/8] Protecting main branch..."
+echo "[6/6] Protecting main branch..."
 if ! gh api "repos/$GITHUB_USER/$VAULT_NAME/branches/main/protection" \
   --method PUT \
   --input - >/dev/null 2>&1 << 'JSON'

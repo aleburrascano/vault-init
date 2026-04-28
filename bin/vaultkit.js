@@ -90,6 +90,19 @@ if (process.platform === 'win32') {
     }
   }
 
+  // Probe known gh install locations directly — `where` misses installs made in the
+  // current session because the registry PATH change never reaches running processes.
+  const ghCandidates = [
+    process.env.PROGRAMFILES && join(process.env.PROGRAMFILES, 'GitHub CLI'),
+    'C:\\Program Files\\GitHub CLI',
+    process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links'),
+    process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Packages',
+      'GitHub.cli_Microsoft.Winget.Source_8wekyb3d8bbwe', 'tools'),
+  ].filter(Boolean);
+  for (const p of ghCandidates) {
+    if (existsSync(join(p, 'gh.exe'))) { toolDirs.add(p); break; }
+  }
+
   const existing = (env.PATH || '').split(';').filter(Boolean).map(toUnix);
   env.PATH = [...new Set([...[...toolDirs].map(toUnix), ...existing])].join(':');
 }
