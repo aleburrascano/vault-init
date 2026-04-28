@@ -55,40 +55,20 @@ if (process.platform === 'win32') {
   }
   bash = bashPath;
 
-  // ── Discover required tools via where.exe ─────────────────────────────────
-  // where.exe is Windows-native: handles all PATH edge cases and extensions
-  // (.exe/.cmd/.bat). Far more reliable than converting the PATH string ourselves.
-  const REQUIRED = [
-    { name: 'git',  url: 'https://git-scm.com' },
-    { name: 'node', url: 'https://nodejs.org' },
-    { name: 'npm',  url: 'https://nodejs.org' },
-    { name: 'gh',   url: 'https://cli.github.com' },
-  ];
-
+  // ── Build PATH from known tool locations ──────────────────────────────────
+  // git is bundled with Git for Windows — dirname(bash) is Git\bin which also
+  // has git.exe, ssh, curl, etc. node's dir covers npm (same directory).
+  // gh and claude may be absent; the bash script handles installation/auth.
   const toolDirs = new Set([
-    dirname(bash),
-    dirname(process.execPath), // node is always findable
+    dirname(bash),                // git, ssh, curl, etc.
+    dirname(process.execPath),    // node, npm
   ]);
-  const missing = [];
 
-  for (const { name, url } of REQUIRED) {
-    const r = spawnSync('where', [name], { encoding: 'utf8' });
+  for (const tool of ['gh', 'claude']) {
+    const r = spawnSync('where', [tool], { encoding: 'utf8' });
     if (r.status === 0 && r.stdout.trim()) {
       toolDirs.add(dirname(r.stdout.trim().split('\n')[0].trim()));
-    } else {
-      missing.push(`  ${name.padEnd(6)} → ${url}`);
     }
-  }
-
-  if (missing.length > 0) {
-    process.stderr.write('vault-init: missing required tools:\n' + missing.join('\n') + '\n');
-    process.exit(1);
-  }
-
-  // ── Optional: find claude so the MCP step works ────────────────────────────
-  const claudeWhere = spawnSync('where', ['claude'], { encoding: 'utf8' });
-  if (claudeWhere.status === 0 && claudeWhere.stdout.trim()) {
-    toolDirs.add(dirname(claudeWhere.stdout.trim().split('\n')[0].trim()));
   }
 
   // Tool dirs go first so they shadow anything broken in the existing PATH.

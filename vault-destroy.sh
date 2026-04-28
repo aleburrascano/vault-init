@@ -19,6 +19,13 @@ fi
 VAULT_DIR="${VAULT_INIT_CWD:-$(pwd)}/$VAULT_NAME"
 GITHUB_USER=$(gh api user --jq '.login' 2>/dev/null || true)
 
+if [ -n "$GITHUB_USER" ]; then
+  if ! gh auth status 2>&1 | grep -q 'delete_repo'; then
+    echo "Requesting delete_repo permission from GitHub..."
+    gh auth refresh -h github.com -s delete_repo
+  fi
+fi
+
 echo ""
 echo "This will permanently delete:"
 [ -d "$VAULT_DIR" ]  && echo "  Local:  $VAULT_DIR" \

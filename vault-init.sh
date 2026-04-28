@@ -25,13 +25,56 @@ fi
 # directory (bash's own pwd returns the npm package dir, not where the user ran the command).
 VAULT_DIR="${VAULT_INIT_CWD:-$(pwd)}/$VAULT_NAME"
 
+IS_WINDOWS=false
+[ -n "${WINDIR:-}" ] && IS_WINDOWS=true
+
 echo "[1/8] Checking prerequisites..."
-for cmd in git node npm gh; do
-  command -v "$cmd" >/dev/null 2>&1 || { echo "Error: '$cmd' not found. Make sure it is installed and on your PATH."; exit 1; }
-done
-gh auth status >/dev/null 2>&1 || { echo "Error: not logged in to GitHub. Run: gh auth login"; exit 1; }
-git config user.name  >/dev/null 2>&1 || { echo "Error: git user.name not set. Run: git config --global user.name \"Your Name\""; exit 1; }
-git config user.email >/dev/null 2>&1 || { echo "Error: git user.email not set. Run: git config --global user.email \"you@example.com\""; exit 1; }
+
+# Auto-install gh if missing
+if ! command -v gh >/dev/null 2>&1; then
+  echo "  GitHub CLI not found — installing..."
+  if $IS_WINDOWS && command -v winget >/dev/null 2>&1; then
+    winget install --id GitHub.cli -e --accept-package-agreements --accept-source-agreements
+    # Refresh PATH with the WinGet links dir where gh lands
+    if [ -n "${LOCALAPPDATA:-}" ] && command -v cygpath >/dev/null 2>&1; then
+      WL=$(cygpath -u "${LOCALAPPDATA}/Microsoft/WinGet/Links")
+      [ -d "$WL" ] && export PATH="$WL:$PATH"
+    fi
+  elif command -v brew >/dev/null 2>&1; then
+    brew install gh
+  elif command -v apt-get >/dev/null 2>&1; then
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+    sudo apt-get update -qq && sudo apt-get install gh -y
+  elif command -v dnf >/dev/null 2>&1; then
+    sudo dnf install 'dnf-command(config-manager)' -y
+    sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+    sudo dnf install gh --repo gh-cli -y
+  else
+    echo "  Error: cannot auto-install gh. Install from https://cli.github.com and re-run."
+    exit 1
+  fi
+  command -v gh >/dev/null 2>&1 || { echo "  Error: gh install failed. Visit https://cli.github.com"; exit 1; }
+fi
+
+# Authenticate with GitHub if needed
+if ! gh auth status >/dev/null 2>&1; then
+  echo "  GitHub authentication required — a browser window will open..."
+  gh auth login
+fi
+
+# Prompt for git user config if not set (needed for git commit)
+if ! git config user.name >/dev/null 2>&1; then
+  read -r -p "  Enter your name for git commits: " GIT_NAME
+  git config --global user.name "$GIT_NAME"
+fi
+if ! git config user.email >/dev/null 2>&1; then
+  read -r -p "  Enter your email for git commits: " GIT_EMAIL
+  git config --global user.email "$GIT_EMAIL"
+fi
+
 [ -d "$VAULT_DIR" ] && { echo "Error: $VAULT_DIR already exists"; exit 1; }
 
 GITHUB_USER=$(gh api user --jq '.login')
@@ -241,21 +284,29 @@ gh api "repos/$GITHUB_USER/$VAULT_NAME/branches/main/protection" \
 }
 JSON
 
-# Register as a user-level MCP server (Claude Code users only)
+# Compute MCP vault path once (Windows needs a Windows-format path for Claude)
+if command -v cygpath >/dev/null 2>&1; then
+  MCP_VAULT_PATH=$(cygpath -m "$VAULT_DIR")
+else
+  MCP_VAULT_PATH="$VAULT_DIR"
+fi
+
+# Offer to install Claude Code CLI if missing, then register MCP server
+if ! command -v claude >/dev/null 2>&1; then
+  read -r -p "Claude Code CLI not found. Install it now? [y/N] " INSTALL_CLAUDE
+  if [[ "${INSTALL_CLAUDE:-}" =~ ^[Yy]$ ]]; then
+    echo "Installing Claude Code CLI..."
+    npm install -g @anthropic-ai/claude-code
+  fi
+fi
+
 if command -v claude >/dev/null 2>&1; then
   echo "Registering MCP server: $VAULT_NAME"
-  # On Windows, Git Bash paths (/c/Users/...) aren't understood by Windows processes.
-  # cygpath ships with Git for Windows; fall back to the raw path on non-Windows.
-  if command -v cygpath >/dev/null 2>&1; then
-    MCP_VAULT_PATH=$(cygpath -m "$VAULT_DIR")
-  else
-    MCP_VAULT_PATH="$VAULT_DIR"
-  fi
   claude mcp add "$VAULT_NAME" npx -y obsidian-mcp-pro --vault "$MCP_VAULT_PATH" -s user
 else
-  echo "Note: Claude Code not found — skipping MCP registration."
+  echo "Note: Claude Code CLI not installed — skipping MCP registration."
   echo "      Once installed, run:"
-  echo "      claude mcp add $VAULT_NAME npx -y obsidian-mcp-pro --vault $VAULT_DIR -s user"
+  echo "      claude mcp add $VAULT_NAME npx -y obsidian-mcp-pro --vault $MCP_VAULT_PATH -s user"
 fi
 
 echo ""
