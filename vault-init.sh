@@ -154,7 +154,7 @@ Find: orphans, contradictions, missing cross-refs, index drift. Discuss before b
 ## Session start
 - **Queries**: read this → \`search_notes\` directly → respond.
 - **Ingest / lint**: read this → read \`index.md\` → skim tail of \`log.md\` → proceed.
-- **Always** scope \`search_notes\` to \`folder: "wiki"\` or \`folder: "raw"\` — unscoped searches hit \`site/node_modules\` noise.
+- **Always** scope \`search_notes\` to \`folder: "wiki"\` or \`folder: "raw"\` — unscoped searches can hit \`.quartz\` noise.
 
 ## You do NOT
 - Modify \`raw/\` (immutable).
@@ -228,12 +228,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: site/package-lock.json
+          cache-dependency-path: .quartz/package-lock.json
       - name: Build Quartz
-        run: cd site && npm ci && chmod +x quartz/bootstrap-cli.mjs && npx quartz build --directory ../
+        run: cd .quartz && npm ci && chmod +x quartz/bootstrap-cli.mjs && npx quartz build --directory ../
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site/public
+          path: .quartz/public
 
   deploy:
     needs: build
@@ -248,30 +248,30 @@ YAML
 
 # .gitignore
 cat > .gitignore << 'EOF'
-site/node_modules/
-site/public/
-site/.quartz-cache/
+.quartz/node_modules/
+.quartz/public/
+.quartz/.quartz-cache/
 .obsidian/
 .DS_Store
 EOF
 
 # Clone and configure Quartz
 echo "[3/8] Cloning Quartz (may take ~30s)..."
-git clone --depth 1 https://github.com/jackyzha0/quartz site
-rm -rf site/.git
+git clone --depth 1 https://github.com/jackyzha0/quartz .quartz
+rm -rf .quartz/.git
 
 echo "[4/8] Installing Quartz dependencies (may take ~60s)..."
-(cd site && npm install --silent)
+(cd .quartz && npm install --silent)
 
 node -e "
 const fs = require('fs');
-const p = 'site/quartz.config.ts';
+const p = '.quartz/quartz.config.ts';
 let t = fs.readFileSync(p, 'utf8');
 t = t.replace(/pageTitle: \"[^\"]+\"/, 'pageTitle: \"${VAULT_NAME}\"');
 t = t.replace(/baseUrl: \"[^\"]+\"/, 'baseUrl: \"${BASE_URL}\"');
 t = t.replace(
   /ignorePatterns: \[[^\]]+\]/,
-  'ignorePatterns: [\"raw\", \"site\", \".github\", \"CLAUDE.md\", \"*.sh\"]'
+  'ignorePatterns: [\"raw\", \".quartz\", \".github\", \"CLAUDE.md\", \"*.sh\"]'
 );
 fs.writeFileSync(p, t);
 "

@@ -59,7 +59,7 @@ my-wiki/
 ├── index.md          ← one-line entry per page
 ├── log.md            ← append-only operation log
 ├── CLAUDE.md         ← instructions for your AI assistant
-└── site/             ← Quartz static site generator (don't edit)
+└── .quartz/          ← Quartz static site generator (hidden from Obsidian)
 ```
 
 ## Removing a vault
