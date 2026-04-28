@@ -62,6 +62,15 @@ my-wiki/
 └── .quartz/          ← Quartz static site generator (hidden from Obsidian)
 ```
 
+## Connecting to someone else's vault
+
+```bash
+vault-connect owner/repo
+vault-connect https://github.com/owner/repo
+```
+
+Clones the vault locally and registers it as an MCP server in one command. The MCP server auto-pulls on every session start, so you always query the latest merged content without any manual `git pull`.
+
 ## Removing a vault
 
 ```bash
@@ -72,7 +81,7 @@ Deletes the local directory, GitHub repository, and MCP registration. Prompts fo
 
 ## Using with Claude Code
 
-After `vault-init` runs, open any project in Claude Code — your wiki is immediately available:
+After `vault-init` (or `vault-connect`) runs, open any project in Claude Code — your wiki is immediately available:
 
 ```
 search_notes    full-text search across all wiki pages

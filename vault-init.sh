@@ -177,6 +177,25 @@ EOF
 # log.md
 printf '# Log\n' > log.md
 
+# MCP server launcher — pulled into the vault so collaborators get it via git clone.
+# Uses __dirname so it works regardless of where the vault was cloned.
+cat > .mcp-start.js << 'JS'
+#!/usr/bin/env node
+const { spawnSync } = require('child_process');
+
+// Pull latest changes silently — don't fail if offline or no remote.
+spawnSync('git', ['pull', '--ff-only', '--quiet'], {
+  cwd: __dirname,
+  stdio: 'ignore',
+});
+
+const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const r = spawnSync(npx, ['-y', 'obsidian-mcp-pro', '--vault', __dirname], {
+  stdio: 'inherit',
+});
+process.exit(r.status ?? 0);
+JS
+
 # Duplicate source check workflow
 cat > .github/workflows/duplicate-check.yml << 'YAML'
 name: Duplicate Source Check
@@ -329,12 +348,12 @@ fi
 
 if command -v claude >/dev/null 2>&1; then
   echo "Registering MCP server: $VAULT_NAME"
-  claude mcp add --scope user "$VAULT_NAME" -- npx -y obsidian-mcp-pro --vault "$MCP_VAULT_PATH"
+  claude mcp add --scope user "$VAULT_NAME" -- node "$MCP_VAULT_PATH/.mcp-start.js"
   REGISTERED_MCP=true
 else
   echo "Note: Claude Code CLI not installed — skipping MCP registration."
   echo "      Once installed, run:"
-  echo "      claude mcp add --scope user $VAULT_NAME -- npx -y obsidian-mcp-pro --vault $MCP_VAULT_PATH"
+  echo "      claude mcp add --scope user $VAULT_NAME -- node $MCP_VAULT_PATH/.mcp-start.js"
 fi
 
 echo ""
