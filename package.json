@@ -1,12 +1,12 @@
 {
   "name": "@aleburrascano/vault-init",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Initialize Obsidian wikis with GitHub Pages, Quartz, and Claude Code MCP — fully automated.",
   "bin": {
-    "vault-init": "./vault-init.sh"
+    "vault-init": "./vault-init"
   },
   "files": [
-    "vault-init.sh",
+    "vault-init",
     "install.sh"
   ],
   "keywords": ["obsidian", "vault", "wiki", "claude-code", "mcp", "github-pages", "quartz"],

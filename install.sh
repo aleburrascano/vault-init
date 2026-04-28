@@ -8,7 +8,7 @@ DEST="$HOME/bin/vault-init"
 
 echo "Installing vault-init..."
 mkdir -p "$HOME/bin"
-curl -fsSL "https://raw.githubusercontent.com/$REPO/main/vault-init.sh" -o "$DEST"
+curl -fsSL "https://raw.githubusercontent.com/$REPO/main/vault-init" -o "$DEST"
 chmod +x "$DEST"
 
 # Add ~/bin to PATH in shell rc files if missing
