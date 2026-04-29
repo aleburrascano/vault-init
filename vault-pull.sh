@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # Pull latest changes in all registered vaults.
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/lib/_helpers.sh"
 
-if command -v cygpath >/dev/null 2>&1; then
-  CLAUDE_JSON=$(cygpath -m "$HOME/.claude.json")
-else
-  CLAUDE_JSON="$HOME/.claude.json"
-fi
+CLAUDE_JSON=$(vk_claude_json)
 
 node -e "
 const fs = require('fs');
@@ -30,6 +28,8 @@ const vaults = Object.entries(servers).filter(([, s]) =>
 );
 
 if (vaults.length === 0) { console.log('No vaults registered.'); process.exit(0); }
+
+vaults.sort(([a], [b]) => a.localeCompare(b));
 
 let synced = 0;
 let skipped = 0;

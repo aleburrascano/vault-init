@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Check environment and vault health.
-set -uo pipefail
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/lib/_helpers.sh"
 
 ISSUES=0
 ok()   { echo "  + $1"; }
@@ -65,11 +67,7 @@ echo ""
 echo "Registered Vaults"
 echo "-----------------"
 
-if command -v cygpath >/dev/null 2>&1; then
-  CLAUDE_JSON=$(cygpath -m "$HOME/.claude.json")
-else
-  CLAUDE_JSON="$HOME/.claude.json"
-fi
+CLAUDE_JSON=$(vk_claude_json)
 
 VAULT_ISSUES=0
 node -e "
@@ -101,23 +99,44 @@ if (vaults.length === 0 && others.length === 0) {
   process.exit(0);
 }
 
+vaults.sort(([a], [b]) => a.localeCompare(b));
+
 let issues = 0;
 for (const [name, s] of vaults) {
   const scriptArg = s.args.find(a => String(a).endsWith('.mcp-start.js'));
   const vaultDir = path.dirname(scriptArg);
+  const pinnedArg = s.args.find(a => typeof a === 'string' && a.startsWith('--expected-sha256='));
+  const pinned = pinnedArg ? pinnedArg.slice('--expected-sha256='.length) : null;
+
   if (!fs.existsSync(vaultDir)) {
     console.log('  x ' + name + ' — local directory missing');
     console.log('      Fix: vaultkit connect <owner/' + name + '>');
     issues++;
-  } else if (!fs.existsSync(path.join(vaultDir, '.mcp-start.js'))) {
+    continue;
+  }
+  const mcp = path.join(vaultDir, '.mcp-start.js');
+  if (!fs.existsSync(mcp)) {
     console.log('  ! ' + name + ' — missing .mcp-start.js (old vault-init vault)');
     console.log('      Fix: vaultkit update ' + name);
     issues++;
+    continue;
+  }
+
+  const hash = crypto.createHash('sha256').update(fs.readFileSync(mcp)).digest('hex');
+  if (!pinned) {
+    console.log('  ! ' + name + ' — registered without pinned SHA-256 (legacy)');
+    console.log('      .mcp-start.js  SHA-256: ' + hash);
+    console.log('      Fix: vaultkit update ' + name + ' (enables launcher verification)');
+    issues++;
+  } else if (pinned !== hash) {
+    console.log('  x ' + name + ' — pinned SHA-256 does not match .mcp-start.js on disk');
+    console.log('      Pinned: ' + pinned);
+    console.log('      Actual: ' + hash);
+    console.log('      Fix: inspect, then run vaultkit update ' + name);
+    issues++;
   } else {
-    const mcp = path.join(vaultDir, '.mcp-start.js');
-    const hash = crypto.createHash('sha256').update(fs.readFileSync(mcp)).digest('hex');
     console.log('  + ' + name + '  (' + vaultDir + ')');
-    console.log('    .mcp-start.js  SHA-256: ' + hash);
+    console.log('    pinned SHA-256: ' + hash);
   }
 }
 

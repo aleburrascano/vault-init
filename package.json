@@ -1,10 +1,15 @@
 {
   "name": "@aleburrascano/vaultkit",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "type": "module",
   "description": "Obsidian wiki management — create, connect, and destroy vaults with GitHub Pages and Claude Code MCP.",
+  "author": "Alessandro Burrascano <aleburrascano123@gmail.com>",
+  "homepage": "https://github.com/aleburrascano/vaultkit#readme",
+  "bugs": {
+    "url": "https://github.com/aleburrascano/vaultkit/issues"
+  },
   "bin": {
-    "vaultkit": "./bin/vaultkit.js"
+    "vaultkit": "bin/vaultkit.js"
   },
   "files": [
     "vault-init.sh",
@@ -16,13 +21,28 @@
     "vault-update.sh",
     "vault-doctor.sh",
     "install.sh",
-    "bin/vaultkit.js"
+    "bin/vaultkit.js",
+    "lib/_helpers.sh",
+    "lib/mcp-start.js.tmpl"
   ],
-  "keywords": ["obsidian", "vault", "wiki", "claude-code", "mcp", "github-pages", "quartz"],
+  "scripts": {
+    "lint": "shellcheck -x vault-*.sh install.sh lib/_helpers.sh",
+    "check": "node --check bin/vaultkit.js && node -e \"new (require('vm').Script)(require('fs').readFileSync('lib/mcp-start.js.tmpl', 'utf8'), {filename: 'mcp-start.js.tmpl'})\"",
+    "test": "npm run check && npm run lint"
+  },
+  "keywords": [
+    "obsidian",
+    "vault",
+    "wiki",
+    "claude-code",
+    "mcp",
+    "github-pages",
+    "quartz"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/aleburrascano/vaultkit"
+    "url": "git+https://github.com/aleburrascano/vaultkit.git"
   },
   "engines": {
     "node": ">=22"

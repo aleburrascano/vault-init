@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Permanently delete a vault: local directory, GitHub repo, and MCP registration.
 #
-# Usage: vault-destroy <vault-name>
+# Usage: vaultkit destroy <vault-name>
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/lib/_helpers.sh"
 
 if [ $# -eq 0 ]; then
   echo "Usage: vaultkit destroy <vault-name>"
@@ -10,57 +12,60 @@ if [ $# -eq 0 ]; then
 fi
 
 VAULT_NAME="$1"
+vk_validate_vault_name "$VAULT_NAME" || exit 1
 
-if ! [[ "$VAULT_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-  echo "Error: vault name must contain only letters, numbers, hyphens, and underscores."
+# Require the vault to be in the MCP registry — never fall back to a filesystem
+# guess for destructive operations. If the user has an orphaned directory at
+# the default location, they must `vaultkit connect` it first or `rm` manually.
+VAULT_DIR=$(vk_resolve_vault_dir "$VAULT_NAME") || {
+  vk_error "'$VAULT_NAME' is not a registered vaultkit vault."
+  echo "Run 'vaultkit list' to see what's registered." >&2
+  echo "If you have an orphaned directory, remove it manually." >&2
+  exit 1
+}
+
+VAULT_DIR_POSIX=$(vk_to_posix "$VAULT_DIR")
+
+# Refuse to destroy anything that doesn't look like an Obsidian vault.
+if [ -d "$VAULT_DIR_POSIX" ] && ! vk_is_vault_like "$VAULT_DIR_POSIX"; then
+  vk_error "$VAULT_DIR does not look like an Obsidian vault — aborting."
   exit 1
 fi
 
-if command -v cygpath >/dev/null 2>&1; then
-  CLAUDE_JSON=$(cygpath -m "$HOME/.claude.json")
-else
-  CLAUDE_JSON="$HOME/.claude.json"
+# Resolve the GitHub repo from the vault's git remote (most reliable).
+# Falls back to "$GITHUB_USER/$VAULT_NAME" only if remote can't be parsed.
+GITHUB_USER=$(gh api user --jq '.login' 2>/dev/null || true)
+REMOTE_URL=""
+if [ -d "$VAULT_DIR_POSIX/.git" ]; then
+  REMOTE_URL=$(git -C "$VAULT_DIR_POSIX" remote get-url origin 2>/dev/null || true)
+fi
+REPO_SLUG=""
+if [ -n "$REMOTE_URL" ]; then
+  REPO_SLUG=$(echo "$REMOTE_URL" | sed -E 's|.*github\.com[:/]([^/]+/[^/.]+)(\.git)?/?$|\1|')
+fi
+if [ -z "$REPO_SLUG" ] && [ -n "$GITHUB_USER" ]; then
+  REPO_SLUG="$GITHUB_USER/$VAULT_NAME"
 fi
 
-# Look up vault path from MCP registry first
-VAULT_DIR=$(node -e "
-const fs = require('fs');
-const path = require('path');
-const file = process.argv[1];
-const name = process.argv[2];
-if (!fs.existsSync(file)) process.exit(1);
-let config;
-try { config = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { process.exit(1); }
-const s = (config.mcpServers || {})[name];
-if (!s || !s.args) process.exit(1);
-const scriptArg = s.args.find(a => String(a).endsWith('.mcp-start.js'));
-if (!scriptArg) process.exit(1);
-console.log(path.dirname(scriptArg));
-" "$CLAUDE_JSON" "$VAULT_NAME" 2>/dev/null) || VAULT_DIR=""
-
-if [ -z "$VAULT_DIR" ]; then
-  VAULT_DIR="${VAULTKIT_HOME:-$HOME/vaults}/$VAULT_NAME"
-fi
-
-# Convert Windows path to POSIX for bash file operations
-if command -v cygpath >/dev/null 2>&1 && [[ "$VAULT_DIR" =~ ^[A-Za-z]: ]]; then
-  VAULT_DIR_POSIX=$(cygpath -u "$VAULT_DIR")
-else
-  VAULT_DIR_POSIX="$VAULT_DIR"
-fi
-
-# Refuse to destroy anything that doesn't look like an Obsidian vault.
-if [ -d "$VAULT_DIR_POSIX" ]; then
-  if ! [ -d "$VAULT_DIR_POSIX/.obsidian" ] && \
-     ! { [ -f "$VAULT_DIR_POSIX/CLAUDE.md" ] && [ -d "$VAULT_DIR_POSIX/raw" ] && [ -d "$VAULT_DIR_POSIX/wiki" ]; }; then
-    echo "Error: $VAULT_DIR does not look like an Obsidian vault — aborting."
-    exit 1
+# Verify ownership before promising deletion. A collaborator running destroy
+# on someone else's vault would silently fail at the GitHub step otherwise.
+REPO_DELETABLE=false
+REPO_OWNER_NOTE=""
+if [ -n "$REPO_SLUG" ]; then
+  if gh repo view "$REPO_SLUG" >/dev/null 2>&1; then
+    IS_ADMIN=$(gh api "repos/$REPO_SLUG" --jq '.permissions.admin' 2>/dev/null || echo "false")
+    if [ "$IS_ADMIN" = "true" ]; then
+      REPO_DELETABLE=true
+    else
+      REPO_OWNER_NOTE="(you don't own this repo — only local + MCP will be removed; this is effectively 'disconnect')"
+    fi
+  else
+    REPO_OWNER_NOTE="(repo not found or not accessible — skipping GitHub step)"
   fi
 fi
 
-GITHUB_USER=$(gh api user --jq '.login' 2>/dev/null || true)
-
-if [ -n "$GITHUB_USER" ]; then
+# Request delete_repo scope only if we actually intend to delete a repo.
+if $REPO_DELETABLE; then
   if ! gh auth status 2>&1 | grep -q 'delete_repo'; then
     echo "Requesting delete_repo permission from GitHub..."
     gh auth refresh -h github.com -s delete_repo
@@ -70,9 +75,14 @@ fi
 echo ""
 echo "This will permanently delete:"
 [ -d "$VAULT_DIR_POSIX" ] && echo "  Local:  $VAULT_DIR" \
-                           || echo "  Local:  $VAULT_DIR (not found — will skip)"
-[ -n "$GITHUB_USER" ] && echo "  GitHub: https://github.com/$GITHUB_USER/$VAULT_NAME" \
-                      || echo "  GitHub: (not authenticated — will skip)"
+                          || echo "  Local:  $VAULT_DIR (not found — will skip)"
+if $REPO_DELETABLE; then
+  echo "  GitHub: https://github.com/$REPO_SLUG"
+elif [ -n "$REPO_OWNER_NOTE" ]; then
+  echo "  GitHub: $REPO_SLUG  $REPO_OWNER_NOTE"
+else
+  echo "  GitHub: (not authenticated — will skip)"
+fi
 echo "  MCP:    $VAULT_NAME server registration"
 echo ""
 read -r -p "Type the vault name to confirm deletion: " CONFIRM
@@ -82,33 +92,44 @@ if [ "$CONFIRM" != "$VAULT_NAME" ]; then
 fi
 echo ""
 
-# Delete GitHub repo
-if [ -n "$GITHUB_USER" ]; then
-  if gh repo view "$GITHUB_USER/$VAULT_NAME" >/dev/null 2>&1; then
-    echo "Deleting GitHub repo..."
-    gh repo delete "$GITHUB_USER/$VAULT_NAME" --yes
+# Track step outcomes so the final summary reflects reality.
+GH_STATUS="skipped"
+MCP_STATUS="skipped"
+LOCAL_STATUS="skipped"
+
+if $REPO_DELETABLE; then
+  echo "Deleting GitHub repo..."
+  if gh repo delete "$REPO_SLUG" --yes; then
+    GH_STATUS="deleted"
   else
-    echo "GitHub repo not found — skipping."
+    GH_STATUS="failed"
+    vk_warning "GitHub repo deletion failed — continuing with local + MCP cleanup."
   fi
 fi
 
-# Remove MCP registration
 if command -v claude >/dev/null 2>&1; then
   echo "Removing MCP server..."
-  claude mcp remove "$VAULT_NAME" --scope user 2>/dev/null \
-    && true || echo "  (not registered — skipping)"
+  if claude mcp remove "$VAULT_NAME" --scope user 2>/dev/null; then
+    MCP_STATUS="removed"
+  else
+    MCP_STATUS="not-registered"
+    echo "  (not registered — skipping)"
+  fi
 else
-  echo "Claude Code not found — MCP cleanup skipped."
-  echo "  If registered, run: claude mcp remove $VAULT_NAME --scope user"
+  vk_warning "Claude Code not found — MCP cleanup skipped."
+  echo "  If registered, run: claude mcp remove $VAULT_NAME --scope user" >&2
 fi
 
-# Delete local directory last (safest order: remote first, local last)
 if [ -d "$VAULT_DIR_POSIX" ]; then
   echo "Deleting local vault..."
   rm -rf "$VAULT_DIR_POSIX"
+  LOCAL_STATUS="deleted"
 else
   echo "Local directory not found — skipping."
 fi
 
 echo ""
-echo "Done. $VAULT_NAME has been fully removed."
+echo "Summary:"
+echo "  GitHub: $GH_STATUS"
+echo "  MCP:    $MCP_STATUS"
+echo "  Local:  $LOCAL_STATUS"

@@ -4,6 +4,8 @@
 # Usage: vaultkit connect <owner/repo>
 #        vaultkit connect https://github.com/owner/repo
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/lib/_helpers.sh"
 
 if [ $# -eq 0 ]; then
   echo "Usage: vaultkit connect <owner/repo>"
@@ -21,76 +23,80 @@ elif [[ "$INPUT" =~ ^git@github\.com:([^/]+/[^/.]+)(\.git)?$ ]]; then
 elif [[ "$INPUT" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
   REPO="$INPUT"
 else
-  echo "Error: unrecognized format. Use owner/repo or a GitHub URL."
+  vk_error "unrecognized format. Use owner/repo or a GitHub URL."
   exit 1
 fi
 
 VAULT_NAME=$(basename "$REPO")
+vk_validate_vault_name "$VAULT_NAME" || exit 1
+
 VAULTS_ROOT="${VAULTKIT_HOME:-$HOME/vaults}"
 VAULT_DIR="$VAULTS_ROOT/$VAULT_NAME"
 mkdir -p "$VAULTS_ROOT"
 
-[ -d "$VAULT_DIR" ] && { echo "Error: $VAULT_DIR already exists."; exit 1; }
+[ -d "$VAULT_DIR" ] && { vk_error "$VAULT_DIR already exists."; exit 1; }
 
-# Check if MCP name already registered
-if command -v cygpath >/dev/null 2>&1; then
-  CLAUDE_JSON=$(cygpath -m "$HOME/.claude.json")
-else
-  CLAUDE_JSON="$HOME/.claude.json"
-fi
-
-ALREADY_REGISTERED=$(node -e "
-const fs = require('fs');
-const file = process.argv[1];
-const name = process.argv[2];
-if (!fs.existsSync(file)) { console.log('no'); process.exit(0); }
-let config;
-try { config = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { console.log('no'); process.exit(0); }
-console.log((config.mcpServers || {})[name] ? 'yes' : 'no');
-" "$CLAUDE_JSON" "$VAULT_NAME" 2>/dev/null) || ALREADY_REGISTERED="no"
-
-if [ "$ALREADY_REGISTERED" = "yes" ]; then
-  echo "Error: an MCP server named '$VAULT_NAME' is already registered."
-  echo "Run 'vaultkit list' to see what's registered, or 'vaultkit disconnect $VAULT_NAME' first."
+# Reject if MCP name already registered
+if vk_resolve_vault_dir "$VAULT_NAME" >/dev/null; then
+  vk_error "an MCP server named '$VAULT_NAME' is already registered."
+  echo "Run 'vaultkit list' to see what's registered, or 'vaultkit disconnect $VAULT_NAME' first." >&2
   exit 1
 fi
+
+# Transactional rollback — if anything below fails, undo the clone.
+CLONED=false
+cleanup() {
+  local code=$?
+  [ $code -eq 0 ] && return
+  if $CLONED && [ -d "$VAULT_DIR" ]; then
+    echo "" >&2
+    echo "Connect failed — removing partial clone at $VAULT_DIR" >&2
+    rm -rf "$VAULT_DIR"
+  fi
+}
+trap cleanup EXIT
 
 # gh handles auth for private repos; fall back to plain git for public
 if command -v gh >/dev/null 2>&1; then
   echo "Cloning $REPO into $VAULT_DIR..."
   if ! gh repo clone "$REPO" "$VAULT_DIR" 2>&1; then
     echo ""
-    echo "Error: Could not clone '$REPO'."
-    echo "  If the repo is private, check access: gh auth status"
+    vk_error "Could not clone '$REPO'."
+    echo "  If the repo is private, check access: gh auth status" >&2
     exit 1
   fi
 else
-  echo "Note: GitHub CLI (gh) not installed — private repos will not be accessible."
-  echo "  Install gh for full functionality: https://cli.github.com"
+  vk_warning "GitHub CLI (gh) not installed — private repos will not be accessible."
+  echo "  Install gh for full functionality: https://cli.github.com" >&2
   echo ""
   echo "Cloning $REPO into $VAULT_DIR..."
   if ! git clone "https://github.com/$REPO.git" "$VAULT_DIR" 2>&1; then
     echo ""
-    echo "Error: Could not clone '$REPO'."
-    echo "  If it's a private repo, install gh and authenticate: gh auth login"
+    vk_error "Could not clone '$REPO'."
+    echo "  If it's a private repo, install gh and authenticate: gh auth login" >&2
     exit 1
   fi
 fi
+CLONED=true
 
+# Validate this is actually a vaultkit vault — not just any repo with .mcp-start.js
 if ! [ -f "$VAULT_DIR/.mcp-start.js" ]; then
   echo ""
-  echo "Warning: $VAULT_NAME is missing .mcp-start.js — it may have been created"
-  echo "  with an older version. MCP registration skipped."
-  echo "  Ask the owner to run 'vaultkit update $VAULT_NAME' and push, then reconnect."
+  vk_warning "$VAULT_NAME is missing .mcp-start.js — it may have been created"
+  echo "  with an older version. MCP registration skipped." >&2
+  echo "  Ask the owner to run 'vaultkit update $VAULT_NAME' and push, then reconnect." >&2
+  CLONED=false  # don't roll back; vault is cloned, just not registered
   exit 0
+fi
+if ! vk_is_vault_like "$VAULT_DIR"; then
+  echo ""
+  vk_error "$VAULT_DIR is missing the standard vault layout (.obsidian/ or CLAUDE.md+raw/+wiki/)."
+  echo "  This does not appear to be a vaultkit vault." >&2
+  exit 1
 fi
 
 # Show hash so the user can verify the script before trusting it
-MCP_HASH=$(node -e "
-const crypto = require('crypto');
-const fs = require('fs');
-console.log(crypto.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex'));
-" "$VAULT_DIR/.mcp-start.js")
+MCP_HASH=$(vk_sha256 "$VAULT_DIR/.mcp-start.js")
 
 echo ""
 echo "This vault's .mcp-start.js will run with your full user permissions on every"
@@ -104,24 +110,23 @@ if ! [[ "${_CONFIRM:-}" =~ ^[Yy]$ ]]; then
   echo ""
   echo "MCP registration skipped. Vault cloned to: $VAULT_DIR"
   echo "To register later, re-run: vaultkit connect $REPO"
+  CLONED=false  # don't roll back; user opted out
   exit 0
 fi
 
-if command -v cygpath >/dev/null 2>&1; then
-  MCP_VAULT_PATH=$(cygpath -m "$VAULT_DIR")
-else
-  MCP_VAULT_PATH="$VAULT_DIR"
-fi
+MCP_VAULT_PATH=$(vk_to_windows "$VAULT_DIR")
 
 if ! command -v claude >/dev/null 2>&1; then
   echo ""
   echo "Claude Code not found. Once installed, run:"
-  echo "  claude mcp add --scope user $VAULT_NAME -- node $MCP_VAULT_PATH/.mcp-start.js"
+  echo "  claude mcp add --scope user $VAULT_NAME -- node $MCP_VAULT_PATH/.mcp-start.js --expected-sha256=$MCP_HASH"
+  CLONED=false  # cloned successfully; user does manual MCP add
   exit 0
 fi
 
 echo "Registering MCP server: $VAULT_NAME"
-claude mcp add --scope user "$VAULT_NAME" -- node "$MCP_VAULT_PATH/.mcp-start.js"
+claude mcp add --scope user "$VAULT_NAME" -- node "$MCP_VAULT_PATH/.mcp-start.js" "--expected-sha256=$MCP_HASH"
+CLONED=false  # success — disable rollback
 
 echo ""
 echo "Done. $VAULT_NAME is now available in Claude Code."

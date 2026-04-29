@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # List all vaultkit-managed MCP servers.
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/lib/_helpers.sh"
 
-if command -v cygpath >/dev/null 2>&1; then
-  CLAUDE_JSON=$(cygpath -m "$HOME/.claude.json")
-else
-  CLAUDE_JSON="$HOME/.claude.json"
-fi
+CLAUDE_JSON=$(vk_claude_json)
 
 node -e "
 const fs = require('fs');
@@ -31,11 +29,15 @@ const vaults = Object.entries(servers).filter(([, s]) =>
 
 if (vaults.length === 0) { console.log('No vaults registered.'); process.exit(0); }
 
+vaults.sort(([a], [b]) => a.localeCompare(b));
+
 console.log('');
 for (const [name, s] of vaults) {
   const scriptArg = s.args.find(a => String(a).endsWith('.mcp-start.js'));
   const vaultDir = path.dirname(scriptArg);
   const exists = fs.existsSync(vaultDir);
+  const pinnedArg = s.args.find(a => typeof a === 'string' && a.startsWith('--expected-sha256='));
+  const pinned = pinnedArg ? pinnedArg.slice('--expected-sha256='.length) : null;
   let remote = '';
   if (exists) {
     try {
@@ -47,6 +49,11 @@ for (const [name, s] of vaults) {
   console.log(name + (exists ? '' : '  [DIR MISSING]'));
   console.log('  ' + vaultDir);
   if (remote) console.log('  ' + remote);
+  if (pinned) {
+    console.log('  pinned SHA-256: ' + pinned);
+  } else if (exists) {
+    console.log('  pinned SHA-256: (none — run \`vaultkit update ' + name + '\` to enable verification)');
+  }
   console.log('');
 }
 " "$CLAUDE_JSON"

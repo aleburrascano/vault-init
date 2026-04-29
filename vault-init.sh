@@ -1,27 +1,19 @@
 #!/usr/bin/env bash
-# Create a new Obsidian wiki vault with Quartz + GitHub Pages, fully automated.
+# Create a new Obsidian wiki vault with optional Quartz + GitHub Pages.
 #
-# Usage:   vaultkit init <vault-name> [--private]
+# Usage:   vaultkit init <vault-name>
 # Example: vaultkit init my-cooking-wiki
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/lib/_helpers.sh"
 
 if [ $# -eq 0 ]; then
-  echo "Usage: vaultkit init <vault-name> [--private]"
+  echo "Usage: vaultkit init <vault-name>"
   exit 1
 fi
 
 VAULT_NAME="$1"
-REPO_VISIBILITY="public"
-[ "${2:-}" = "--private" ] && REPO_VISIBILITY="private"
-
-if ! [[ "$VAULT_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-  echo "Error: vault name must contain only letters, numbers, hyphens, and underscores."
-  exit 1
-fi
-if [ ${#VAULT_NAME} -gt 64 ]; then
-  echo "Error: vault name must be 64 characters or less."
-  exit 1
-fi
+vk_validate_vault_name "$VAULT_NAME" || exit 1
 
 VAULTS_ROOT="${VAULTKIT_HOME:-$HOME/vaults}"
 VAULT_DIR="$VAULTS_ROOT/$VAULT_NAME"
@@ -56,8 +48,8 @@ echo "[1/6] Checking prerequisites..."
 # Node.js version (vaultkit requires 22+)
 NODE_MAJOR=$(node -e 'process.stdout.write(String(process.versions.node.split(".")[0]))')
 if [ "$NODE_MAJOR" -lt 22 ]; then
-  echo "Error: Node.js 22+ required (found v$(node --version | tr -d v))."
-  echo "  Update at: https://nodejs.org"
+  vk_error "Node.js 22+ required (found v$(node --version | tr -d v))."
+  echo "  Update at: https://nodejs.org" >&2
   exit 1
 fi
 
@@ -95,12 +87,12 @@ if ! command -v gh >/dev/null 2>&1; then
       sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
       sudo dnf install gh --repo gh-cli -y
     else
-      echo "  Error: cannot auto-install gh. Install from https://cli.github.com and re-run."
+      vk_error "cannot auto-install gh. Install from https://cli.github.com and re-run."
       exit 1
     fi
     command -v gh >/dev/null 2>&1 || {
-      echo "  Error: gh was installed but could not be found in PATH."
-      echo "  Open a new terminal window, then re-run vaultkit init."
+      vk_error "gh was installed but could not be found in PATH."
+      echo "  Open a new terminal window, then re-run vaultkit init." >&2
       exit 1
     }
   fi
@@ -122,16 +114,48 @@ if ! git config user.email >/dev/null 2>&1; then
   git config --global user.email "$GIT_EMAIL"
 fi
 
+# Publishing prompt — drives repo visibility, deploy workflow, and Pages settings.
+# Public is opt-in. (n) is foolproof: no Pages, no deploy workflow, no public URL.
+echo ""
+echo "Publish this vault as a public knowledge site?"
+echo "  (y) Public repo + public Quartz site at https://<user>.github.io/$VAULT_NAME"
+echo "  (n) Private repo, notes-only — no Pages, no deploy workflow, no public URL  [default]"
+echo "  (a) Private repo + auth-gated Pages site (requires GitHub Pro+)"
+read -r -p "Choice [y/n/a]: " PUBLISH_CHOICE
+PUBLISH_CHOICE="${PUBLISH_CHOICE:-n}"
+
+case "$PUBLISH_CHOICE" in
+  y|Y) PUBLISH_MODE="public" ;;
+  a|A) PUBLISH_MODE="auth-gated" ;;
+  n|N|"") PUBLISH_MODE="private" ;;
+  *) vk_error "invalid choice: $PUBLISH_CHOICE"; exit 1 ;;
+esac
+
+if [ "$PUBLISH_MODE" = "auth-gated" ]; then
+  PLAN_NAME=$(gh api user --jq '.plan.name' 2>/dev/null || echo "free")
+  if [ "$PLAN_NAME" = "free" ]; then
+    vk_error "auth-gated Pages requires GitHub Pro or higher (you're on Free)."
+    echo "  Choose (y) for a public site or (n) for a notes-only private vault." >&2
+    exit 1
+  fi
+fi
+
+case "$PUBLISH_MODE" in
+  public)     REPO_VISIBILITY="public";  WRITE_DEPLOY=true;  ENABLE_PAGES=true;  PAGES_PRIVATE=false ;;
+  auth-gated) REPO_VISIBILITY="private"; WRITE_DEPLOY=true;  ENABLE_PAGES=true;  PAGES_PRIVATE=true  ;;
+  private)    REPO_VISIBILITY="private"; WRITE_DEPLOY=false; ENABLE_PAGES=false; PAGES_PRIVATE=false ;;
+esac
+
 mkdir -p "$VAULTS_ROOT"
-[ -d "$VAULT_DIR" ] && { echo "Error: $VAULT_DIR already exists"; exit 1; }
+[ -d "$VAULT_DIR" ] && { vk_error "$VAULT_DIR already exists"; exit 1; }
 
 GITHUB_USER=$(gh api user --jq '.login' 2>/dev/null) || {
-  echo "Error: Could not fetch your GitHub username."
-  echo "  Run: gh auth status   — then re-run vaultkit init."
+  vk_error "Could not fetch your GitHub username."
+  echo "  Run: gh auth status   — then re-run vaultkit init." >&2
   exit 1
 }
 [ -z "$GITHUB_USER" ] && {
-  echo "Error: GitHub returned an empty username. Try: gh auth refresh"
+  vk_error "GitHub returned an empty username. Try: gh auth refresh"
   exit 1
 }
 BASE_URL="$GITHUB_USER.github.io/$VAULT_NAME"
@@ -154,8 +178,8 @@ cleanup() {
     if gh repo delete "$GITHUB_USER/$VAULT_NAME" --yes 2>/dev/null; then
       echo "  GitHub repo deleted."
     else
-      echo "  Warning: could not delete GitHub repo — run manually:"
-      echo "    gh repo delete $GITHUB_USER/$VAULT_NAME --yes"
+      vk_warning "could not delete GitHub repo — run manually:"
+      echo "    gh repo delete $GITHUB_USER/$VAULT_NAME --yes" >&2
     fi
   fi
   if $CREATED_DIR && [ -d "${VAULT_DIR}" ]; then
@@ -165,7 +189,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[2/6] Creating vault: $VAULT_NAME"
+echo ""
+echo "[2/6] Creating vault: $VAULT_NAME ($PUBLISH_MODE)"
 mkdir -p "$VAULT_DIR"
 CREATED_DIR=true
 cd "$VAULT_DIR"
@@ -219,13 +244,18 @@ Find: orphans, contradictions, missing cross-refs, index drift. Discuss before b
 - Skip the log.
 EOF
 
-# README.md
+# README.md — site URL only when Pages is enabled
+if $ENABLE_PAGES; then
+  SITE_LINE="**Site**: https://${BASE_URL} *(live after first deploy)*"
+else
+  SITE_LINE="*(Notes-only vault — no public site.)*"
+fi
 cat > README.md << EOF
 # ${VAULT_NAME}
 
 A personal knowledge wiki powered by [vaultkit](https://github.com/aleburrascano/vaultkit).
 
-**Site**: https://${BASE_URL} *(live after first deploy)*
+${SITE_LINE}
 
 ## Structure
 
@@ -256,43 +286,10 @@ EOF
 # log.md
 printf '# Log\n' > log.md
 
-# MCP server launcher — pulled into the vault so collaborators get it via git clone.
-# Uses __dirname so it works regardless of where the vault was cloned.
-cat > .mcp-start.js << 'JS'
-#!/usr/bin/env node
-const { spawnSync } = require('child_process');
-const path = require('path');
+# MCP server launcher — single source of truth lives in lib/mcp-start.js.tmpl.
+cp "$SCRIPT_DIR/lib/mcp-start.js.tmpl" "$VAULT_DIR/.mcp-start.js"
 
-// Pull latest changes silently — don't fail if offline or no remote.
-// 5-second timeout prevents hanging on slow networks at startup.
-spawnSync('git', ['pull', '--ff-only', '--quiet'], {
-  cwd: __dirname,
-  stdio: 'ignore',
-  timeout: 5000,
-});
-
-// On Windows, npx ships as npx.cmd — a batch file that requires cmd.exe to
-// run. spawnSync without shell:true passes the path directly to CreateProcess,
-// which rejects .cmd files with EINVAL. Fix: prepend node's own directory to
-// PATH (so cmd.exe can find npx) then spawn with shell:true.
-if (process.platform === 'win32') {
-  const nodeDir = path.dirname(process.execPath);
-  process.env.PATH = nodeDir + ';' + (process.env.PATH || '');
-}
-
-const r = spawnSync('npx', ['-y', 'obsidian-mcp-pro', '--vault', __dirname], {
-  stdio: 'inherit',
-  shell: process.platform === 'win32',
-});
-if (r.error) {
-  process.stderr.write('[vaultkit] Failed to start MCP server: ' + r.error.message + '\n');
-  process.stderr.write('[vaultkit] Check your Node.js installation and restart Claude Code.\n');
-  process.exit(1);
-}
-process.exit(r.status ?? 1);
-JS
-
-# Duplicate source check workflow
+# Duplicate source check workflow — useful for any vault with collaborators
 cat > .github/workflows/duplicate-check.yml << 'YAML'
 name: Duplicate Source Check
 
@@ -317,8 +314,9 @@ jobs:
           echo "No duplicate source filenames found."
 YAML
 
-# Deploy workflow — Quartz is cloned and configured in CI, never locally
-cat > .github/workflows/deploy.yml << 'YAML'
+# Deploy workflow — only generated when the vault publishes a site.
+if $WRITE_DEPLOY; then
+  cat > .github/workflows/deploy.yml << 'YAML'
 name: Deploy Wiki
 
 on:
@@ -372,6 +370,15 @@ jobs:
         uses: actions/deploy-pages@v4
 YAML
 
+  # _vault.json is read by the deploy workflow to configure Quartz
+  cat > _vault.json << EOF
+{
+  "pageTitle": "${VAULT_NAME}",
+  "baseUrl": "${BASE_URL}"
+}
+EOF
+fi
+
 # .gitignore
 cat > .gitignore << 'EOF'
 .quartz/
@@ -389,14 +396,6 @@ cat > .gitattributes << 'EOF'
 *.md text eol=lf
 EOF
 
-# Vault config — read by the deploy workflow to configure Quartz
-cat > _vault.json << EOF
-{
-  "pageTitle": "${VAULT_NAME}",
-  "baseUrl": "${BASE_URL}"
-}
-EOF
-
 # Git init + commit
 echo "[3/6] Committing initial files..."
 git init
@@ -404,23 +403,37 @@ git branch -M main
 git add .
 git commit -m "chore: initialize ${VAULT_NAME}"
 
-# Create GitHub repo (no push yet — Pages must be enabled first)
+# Create GitHub repo
 echo "[4/6] Creating GitHub repo: $VAULT_NAME ($REPO_VISIBILITY)..."
 gh repo create "$VAULT_NAME" --"$REPO_VISIBILITY"
-CREATED_REPO=true
 git remote add origin "https://github.com/$GITHUB_USER/$VAULT_NAME.git"
+# Mark CREATED_REPO only after both creation and remote-add succeed; if remote-add
+# failed, we'd want cleanup to delete the repo, so set this here (after the wire-up).
+CREATED_REPO=true
 
-# Enable GitHub Pages before the push triggers the deploy workflow
-echo "[5/6] Enabling Pages and pushing..."
-if ! gh api "repos/$GITHUB_USER/$VAULT_NAME/pages" \
-  --method POST -f build_type=workflow \
-  >/dev/null 2>&1; then
-  echo "  Note: Could not auto-enable GitHub Pages."
-  echo "  Enable manually: https://github.com/$GITHUB_USER/$VAULT_NAME/settings/pages"
-  echo "    -> Under 'Build and deployment', set Source to 'GitHub Actions'"
+# Enable + configure GitHub Pages (only when publishing).
+if $ENABLE_PAGES; then
+  echo "[5/6] Enabling Pages and pushing..."
+  if ! gh api "repos/$GITHUB_USER/$VAULT_NAME/pages" \
+    --method POST -f build_type=workflow \
+    >/dev/null 2>&1; then
+    vk_warning "Could not auto-enable GitHub Pages."
+    echo "  Enable manually: https://github.com/$GITHUB_USER/$VAULT_NAME/settings/pages" >&2
+    echo "    -> Under 'Build and deployment', set Source to 'GitHub Actions'" >&2
+  elif $PAGES_PRIVATE; then
+    # Lock site visibility to authenticated users — independent of repo visibility.
+    if ! gh api "repos/$GITHUB_USER/$VAULT_NAME/pages" \
+      --method PUT -f visibility=private \
+      >/dev/null 2>&1; then
+      vk_warning "Could not set Pages visibility to private — site may be publicly accessible."
+      echo "  Set manually: https://github.com/$GITHUB_USER/$VAULT_NAME/settings/pages" >&2
+    fi
+  fi
+else
+  echo "[5/6] Pushing (no Pages — notes-only vault)..."
 fi
 
-# Push — triggers deploy
+# Push — triggers deploy if the workflow exists
 git push -u origin main
 
 # Protect main branch — force contributions through PRs
@@ -436,16 +449,13 @@ if ! gh api "repos/$GITHUB_USER/$VAULT_NAME/branches/main/protection" \
 }
 JSON
 then
-  echo "  Note: Branch protection not applied (may require a paid plan for private repos)."
+  vk_note "Branch protection not applied (may require a paid plan for private repos)."
   echo "  Set up manually: https://github.com/$GITHUB_USER/$VAULT_NAME/settings/branches"
 fi
 
 # Compute MCP vault path once (Windows needs a Windows-format path for Claude)
-if command -v cygpath >/dev/null 2>&1; then
-  MCP_VAULT_PATH=$(cygpath -m "$VAULT_DIR")
-else
-  MCP_VAULT_PATH="$VAULT_DIR"
-fi
+MCP_VAULT_PATH=$(vk_to_windows "$VAULT_DIR")
+MCP_HASH=$(vk_sha256 "$VAULT_DIR/.mcp-start.js")
 
 # Offer to install Claude Code CLI if missing, then register MCP server
 if ! command -v claude >/dev/null 2>&1; then
@@ -453,23 +463,27 @@ if ! command -v claude >/dev/null 2>&1; then
   if [[ "${INSTALL_CLAUDE:-}" =~ ^[Yy]$ ]]; then
     echo "Installing Claude Code CLI..."
     if ! npm install -g @anthropic-ai/claude-code; then
-      echo "  Install failed — run manually: npm install -g @anthropic-ai/claude-code"
+      vk_warning "Install failed — run manually: npm install -g @anthropic-ai/claude-code"
     fi
   fi
 fi
 
 if command -v claude >/dev/null 2>&1; then
   echo "Registering MCP server: $VAULT_NAME"
-  claude mcp add --scope user "$VAULT_NAME" -- node "$MCP_VAULT_PATH/.mcp-start.js"
+  claude mcp add --scope user "$VAULT_NAME" -- node "$MCP_VAULT_PATH/.mcp-start.js" "--expected-sha256=$MCP_HASH"
   REGISTERED_MCP=true
 else
-  echo "Note: Claude Code CLI not installed — skipping MCP registration."
+  vk_note "Claude Code CLI not installed — skipping MCP registration."
   echo "      Once installed, run:"
-  echo "      claude mcp add --scope user $VAULT_NAME -- node $MCP_VAULT_PATH/.mcp-start.js"
+  echo "      claude mcp add --scope user $VAULT_NAME -- node $MCP_VAULT_PATH/.mcp-start.js --expected-sha256=$MCP_HASH"
 fi
 
 echo ""
 echo "Done."
 echo "  Repo:  https://github.com/$GITHUB_USER/$VAULT_NAME"
-echo "  Site:  https://$BASE_URL  (live after CI finishes, ~1 min)"
+if [ "$PUBLISH_MODE" = "public" ]; then
+  echo "  Site:  https://$BASE_URL  (live after CI finishes, ~1 min)"
+elif [ "$PUBLISH_MODE" = "auth-gated" ]; then
+  echo "  Site:  https://$BASE_URL  (auth-gated — visible only to authorized GitHub users)"
+fi
 echo "  Vault: $MCP_VAULT_PATH"

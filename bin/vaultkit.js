@@ -18,14 +18,14 @@ const HELP = `
 vaultkit — Obsidian wiki management
 
 Commands:
-  vaultkit init <name> [--private]   Create a new vault with GitHub Pages + MCP
+  vaultkit init <name>               Create a new vault (asks: public site / private notes / auth-gated)
   vaultkit connect <owner/repo>      Clone a vault and register it as an MCP server
   vaultkit disconnect <name>         Remove a vault locally and from MCP (keeps GitHub repo)
-  vaultkit destroy <name>            Delete a vault locally, on GitHub, and from MCP
-  vaultkit list                      Show all registered vaults
+  vaultkit destroy <name>            Delete a vault locally, on GitHub (if you own it), and from MCP
+  vaultkit list                      Show all registered vaults with pinned SHA-256
   vaultkit pull                      Pull latest changes in all registered vaults
-  vaultkit update <name>             Update system files in a vault to the latest version
-  vaultkit doctor                    Check environment and vault health
+  vaultkit update <name>             Update the launcher script and re-pin its SHA-256
+  vaultkit doctor                    Check environment and vault health (flags hash drift)
   vaultkit help                      Show this help
 `.trim();
 

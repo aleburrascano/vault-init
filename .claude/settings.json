@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')); const f=d.tool_input&&d.tool_input.file_path||''; if(!f.endsWith('.sh'))process.exit(0); const r=require('child_process').spawnSync('bash',['-n',f],{encoding:'utf8'}); if(r.status!==0){process.stderr.write('Shell syntax error in '+f+':\\n'+r.stderr); process.exit(2);} process.exit(0);\""
+          }
+        ]
+      }
+    ]
+  }
+}

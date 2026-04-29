@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y shellcheck
+
+      - name: shellcheck (bash scripts)
+        run: shellcheck -x vault-*.sh install.sh lib/_helpers.sh
+
+      - name: node --check (dispatcher)
+        run: node --check bin/vaultkit.js
+
+      - name: parse-check launcher template
+        run: |
+          node -e "new (require('vm').Script)(require('fs').readFileSync('lib/mcp-start.js.tmpl', 'utf8'), {filename: 'mcp-start.js.tmpl'})"
+
+      - name: npm publish dry-run (verify package contents)
+        run: npm publish --dry-run --access public

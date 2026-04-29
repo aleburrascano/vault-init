@@ -3,6 +3,8 @@
 #
 # Usage: vaultkit update <vault-name>
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/lib/_helpers.sh"
 
 if [ $# -eq 0 ]; then
   echo "Usage: vaultkit update <vault-name>"
@@ -10,60 +12,27 @@ if [ $# -eq 0 ]; then
 fi
 
 VAULT_NAME="$1"
+vk_validate_vault_name "$VAULT_NAME" || exit 1
 
-if command -v cygpath >/dev/null 2>&1; then
-  CLAUDE_JSON=$(cygpath -m "$HOME/.claude.json")
-else
-  CLAUDE_JSON="$HOME/.claude.json"
-fi
+# Require MCP-registry entry — same policy as disconnect/destroy.
+VAULT_DIR=$(vk_resolve_vault_dir "$VAULT_NAME") || {
+  vk_error "'$VAULT_NAME' is not a registered vaultkit vault."
+  echo "Run 'vaultkit list' to see what's registered." >&2
+  exit 1
+}
 
-# Look up vault path from MCP registry first
-VAULT_DIR=$(node -e "
-const fs = require('fs');
-const path = require('path');
-const file = process.argv[1];
-const name = process.argv[2];
-if (!fs.existsSync(file)) process.exit(1);
-let config;
-try { config = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { process.exit(1); }
-const s = (config.mcpServers || {})[name];
-if (!s || !s.args) process.exit(1);
-const scriptArg = s.args.find(a => String(a).endsWith('.mcp-start.js'));
-if (!scriptArg) process.exit(1);
-console.log(path.dirname(scriptArg));
-" "$CLAUDE_JSON" "$VAULT_NAME" 2>/dev/null) || VAULT_DIR=""
+VAULT_DIR_POSIX=$(vk_to_posix "$VAULT_DIR")
 
-# Fall back to default location with identity check
-if [ -z "$VAULT_DIR" ]; then
-  VAULT_DIR="${VAULTKIT_HOME:-$HOME/vaults}/$VAULT_NAME"
-  if ! [ -d "$VAULT_DIR" ]; then
-    echo "Error: '$VAULT_NAME' not found in MCP registry or at $VAULT_DIR"
-    echo "Run 'vaultkit list' to see registered vaults."
-    exit 1
-  fi
-  if ! [ -f "$VAULT_DIR/CLAUDE.md" ] || ! [ -d "$VAULT_DIR/raw" ] || ! [ -d "$VAULT_DIR/wiki" ]; then
-    if ! [ -d "$VAULT_DIR/.obsidian" ]; then
-      echo "Error: $VAULT_DIR does not look like a vaultkit vault — aborting."
-      exit 1
-    fi
-  fi
-fi
-
-# Convert Windows path to POSIX for bash file operations
-if command -v cygpath >/dev/null 2>&1 && [[ "$VAULT_DIR" =~ ^[A-Za-z]: ]]; then
-  VAULT_DIR_POSIX=$(cygpath -u "$VAULT_DIR")
-else
-  VAULT_DIR_POSIX="$VAULT_DIR"
+if ! vk_is_vault_like "$VAULT_DIR_POSIX"; then
+  vk_error "$VAULT_DIR does not look like a vaultkit vault — aborting."
+  exit 1
 fi
 
 echo "Updating $VAULT_NAME at $VAULT_DIR..."
 
 BEFORE_HASH=""
 if [ -f "$VAULT_DIR_POSIX/.mcp-start.js" ]; then
-  BEFORE_HASH=$(node -e "
-const c=require('crypto'),fs=require('fs');
-console.log(c.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex'));
-" "$VAULT_DIR_POSIX/.mcp-start.js" 2>/dev/null || echo "")
+  BEFORE_HASH=$(vk_sha256 "$VAULT_DIR_POSIX/.mcp-start.js" 2>/dev/null || echo "")
   echo "  Current .mcp-start.js SHA-256: $BEFORE_HASH"
 fi
 echo ""
@@ -74,68 +43,85 @@ if ! [[ "${_CONFIRM:-}" =~ ^[Yy]$ ]]; then
 fi
 echo ""
 
-cat > "$VAULT_DIR_POSIX/.mcp-start.js" << 'JS'
-#!/usr/bin/env node
-const { spawnSync } = require('child_process');
-const path = require('path');
+# Copy from the single source-of-truth template.
+cp "$SCRIPT_DIR/lib/mcp-start.js.tmpl" "$VAULT_DIR_POSIX/.mcp-start.js"
 
-// Pull latest changes silently — don't fail if offline or no remote.
-// 5-second timeout prevents hanging on slow networks at startup.
-spawnSync('git', ['pull', '--ff-only', '--quiet'], {
-  cwd: __dirname,
-  stdio: 'ignore',
-  timeout: 5000,
-});
+AFTER_HASH=$(vk_sha256 "$VAULT_DIR_POSIX/.mcp-start.js" 2>/dev/null || echo "")
 
-// On Windows, npx ships as npx.cmd — a batch file that requires cmd.exe to
-// run. spawnSync without shell:true passes the path directly to CreateProcess,
-// which rejects .cmd files with EINVAL. Fix: prepend node's own directory to
-// PATH (so cmd.exe can find npx) then spawn with shell:true.
-if (process.platform === 'win32') {
-  const nodeDir = path.dirname(process.execPath);
-  process.env.PATH = nodeDir + ';' + (process.env.PATH || '');
-}
-
-const r = spawnSync('npx', ['-y', 'obsidian-mcp-pro', '--vault', __dirname], {
-  stdio: 'inherit',
-  shell: process.platform === 'win32',
-});
-if (r.error) {
-  process.stderr.write('[vaultkit] Failed to start MCP server: ' + r.error.message + '\n');
-  process.stderr.write('[vaultkit] Check your Node.js installation and restart Claude Code.\n');
-  process.exit(1);
-}
-process.exit(r.status ?? 1);
-JS
-
-AFTER_HASH=$(node -e "
-const c=require('crypto'),fs=require('fs');
-console.log(c.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex'));
-" "$VAULT_DIR_POSIX/.mcp-start.js" 2>/dev/null || echo "")
+# Re-pin the trusted hash in the MCP registration so the launcher's self-check
+# passes on next session. Even if the file content didn't change, the registered
+# hash may be missing on legacy registrations — re-running mcp add fixes that.
+if command -v claude >/dev/null 2>&1; then
+  MCP_VAULT_PATH=$(vk_to_windows "$VAULT_DIR_POSIX")
+  echo "Re-pinning MCP registration with SHA-256 $AFTER_HASH..."
+  claude mcp remove "$VAULT_NAME" --scope user >/dev/null 2>&1 || true
+  claude mcp add --scope user "$VAULT_NAME" -- node "$MCP_VAULT_PATH/.mcp-start.js" "--expected-sha256=$AFTER_HASH"
+else
+  vk_warning "Claude Code not found — MCP re-registration skipped."
+  echo "  Once installed, run:" >&2
+  echo "    claude mcp remove $VAULT_NAME --scope user" >&2
+  echo "    claude mcp add --scope user $VAULT_NAME -- node $VAULT_DIR_POSIX/.mcp-start.js --expected-sha256=$AFTER_HASH" >&2
+fi
 
 if [ "$AFTER_HASH" = "$BEFORE_HASH" ]; then
-  echo "  .mcp-start.js is already up to date — nothing to commit."
+  echo ""
+  echo "  .mcp-start.js content unchanged — nothing to commit."
+  echo "Done. Restart Claude Code to apply the re-pinned registration."
   exit 0
 fi
 
+echo ""
 echo "  Updated .mcp-start.js"
 echo "  New SHA-256: $AFTER_HASH"
 echo ""
 
-# Commit and push so git pull in .mcp-start.js doesn't revert the change
+# Commit and push so collaborators get the update.
 cd "$VAULT_DIR_POSIX"
 git add .mcp-start.js
 if git diff --cached --quiet; then
   echo "  Nothing staged — skipping commit."
+  echo "Done. Restart Claude Code to apply."
   exit 0
 fi
 
-git commit -m "chore: update .mcp-start.js to latest vaultkit version"
+COMMIT_MSG="chore: update .mcp-start.js to latest vaultkit version"
+git commit -m "$COMMIT_MSG"
 echo ""
 
+# Try direct push to main; fall back to a feature branch + PR if blocked
+# (branch protection or collaborator without write access on main).
 if git push 2>&1; then
   echo "Done. Restart Claude Code to apply the update."
+  exit 0
+fi
+
+vk_warning "Push to main was rejected (branch may be protected or you lack write access)."
+echo ""
+BRANCH="vaultkit-update-$(date +%Y%m%d%H%M%S)"
+echo "Creating branch '$BRANCH' for a pull request..."
+
+# Move the new commit off main so local main isn't ahead of upstream.
+git branch "$BRANCH"
+git reset --hard '@{u}'
+git checkout "$BRANCH"
+
+if git push -u origin "$BRANCH" 2>&1; then
+  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    echo "Opening pull request..."
+    gh pr create \
+      --title "$COMMIT_MSG" \
+      --body "Updates \`.mcp-start.js\` to the latest vaultkit launcher (SHA-256 \`$AFTER_HASH\`)." \
+      --base main \
+      --head "$BRANCH" \
+      || vk_warning "PR creation failed — open manually at the URL above."
+  else
+    REPO_SLUG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]([^/]+/[^/.]+)(\.git)?/?$|\1|')
+    echo "Open a pull request manually:"
+    echo "  https://github.com/$REPO_SLUG/compare/main...$BRANCH"
+  fi
+  echo ""
+  echo "Done. The launcher will start working after the PR is merged."
 else
-  echo "  Push failed (branch may be protected). Open a pull request:"
-  echo "  https://github.com/$(git remote get-url origin | sed 's|.*github.com[:/]||;s|\.git$||')/compare/main...$(git branch --show-current)"
+  vk_error "Could not push branch '$BRANCH'. Push manually with: git push -u origin $BRANCH"
+  exit 1
 fi

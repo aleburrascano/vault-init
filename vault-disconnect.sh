@@ -3,6 +3,8 @@
 #
 # Usage: vaultkit disconnect <vault-name>
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/lib/_helpers.sh"
 
 if [ $# -eq 0 ]; then
   echo "Usage: vaultkit disconnect <vault-name>"
@@ -10,48 +12,23 @@ if [ $# -eq 0 ]; then
 fi
 
 VAULT_NAME="$1"
-
-if [[ "$VAULT_NAME" =~ / ]]; then
-  echo "Error: provide the vault name only (e.g. 'SystemDesign'), not owner/repo."
-  exit 1
-fi
-
-if ! [[ "$VAULT_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-  echo "Error: vault name must contain only letters, numbers, hyphens, and underscores."
-  exit 1
-fi
-
-if command -v cygpath >/dev/null 2>&1; then
-  CLAUDE_JSON=$(cygpath -m "$HOME/.claude.json")
-else
-  CLAUDE_JSON="$HOME/.claude.json"
-fi
+vk_validate_vault_name "$VAULT_NAME" || exit 1
 
 # Require the vault to be in the MCP registry — no CWD fallback (too dangerous)
-VAULT_DIR=$(node -e "
-const fs = require('fs');
-const path = require('path');
-const file = process.argv[1];
-const name = process.argv[2];
-if (!fs.existsSync(file)) process.exit(1);
-let config;
-try { config = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { process.exit(1); }
-const s = (config.mcpServers || {})[name];
-if (!s || !s.args) process.exit(1);
-const scriptArg = s.args.find(a => String(a).endsWith('.mcp-start.js'));
-if (!scriptArg) process.exit(1);
-console.log(path.dirname(scriptArg));
-" "$CLAUDE_JSON" "$VAULT_NAME" 2>/dev/null) || {
-  echo "Error: '$VAULT_NAME' is not a registered vaultkit vault."
-  echo "Run 'vaultkit list' to see what's registered."
+VAULT_DIR=$(vk_resolve_vault_dir "$VAULT_NAME") || {
+  vk_error "'$VAULT_NAME' is not a registered vaultkit vault."
+  echo "Run 'vaultkit list' to see what's registered." >&2
   exit 1
 }
 
-# Convert Windows path to POSIX for bash file operations
-if command -v cygpath >/dev/null 2>&1 && [[ "$VAULT_DIR" =~ ^[A-Za-z]: ]]; then
-  VAULT_DIR_POSIX=$(cygpath -u "$VAULT_DIR")
-else
-  VAULT_DIR_POSIX="$VAULT_DIR"
+VAULT_DIR_POSIX=$(vk_to_posix "$VAULT_DIR")
+
+# Sanity-check before destructive operation: registry entry could in theory
+# point at any directory.
+if [ -d "$VAULT_DIR_POSIX" ] && ! vk_is_vault_like "$VAULT_DIR_POSIX"; then
+  vk_error "$VAULT_DIR does not look like a vaultkit vault — refusing to delete."
+  echo "  If this is correct, remove the directory manually." >&2
+  exit 1
 fi
 
 echo ""
@@ -74,8 +51,8 @@ if command -v claude >/dev/null 2>&1; then
   claude mcp remove "$VAULT_NAME" --scope user 2>/dev/null \
     && true || echo "  (not registered — skipping)"
 else
-  echo "Claude Code not found — MCP cleanup skipped."
-  echo "  If registered, run: claude mcp remove $VAULT_NAME --scope user"
+  vk_warning "Claude Code not found — MCP cleanup skipped."
+  echo "  If registered, run: claude mcp remove $VAULT_NAME --scope user" >&2
 fi
 
 if [ -d "$VAULT_DIR_POSIX" ]; then
