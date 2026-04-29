@@ -36,7 +36,9 @@ _win_find_gh() {
     [ -n "$CHECK_POSIX" ] && [ -f "$CHECK_POSIX" ] && { GH_WIN="$CHECK_WIN"; break; }
   done
   # Fall back to cmd.exe (works when PATH was inherited from a post-install shell)
-  [ -z "${GH_WIN:-}" ] && GH_WIN=$(cmd //c "where gh 2>nul" 2>/dev/null | tr -d '\r' | head -1) || true
+  if [ -z "${GH_WIN:-}" ]; then
+    GH_WIN=$(cmd //c "where gh 2>nul" 2>/dev/null | tr -d '\r' | head -1 || true)
+  fi
   [ -z "${GH_WIN:-}" ] && return 1
   GH_DIR=$(cygpath -u "$(dirname "$GH_WIN")" 2>/dev/null) || return 1
   export PATH="$GH_DIR:$PATH"
@@ -171,8 +173,9 @@ cleanup() {
   echo ""
   echo "Setup failed — rolling back..."
   if $REGISTERED_MCP && command -v claude >/dev/null 2>&1; then
-    claude mcp remove "$VAULT_NAME" --scope user 2>/dev/null && \
-      echo "  MCP registration removed." || true
+    if claude mcp remove "$VAULT_NAME" --scope user 2>/dev/null; then
+      echo "  MCP registration removed."
+    fi
   fi
   if $CREATED_REPO; then
     if gh repo delete "$GITHUB_USER/$VAULT_NAME" --yes 2>/dev/null; then
