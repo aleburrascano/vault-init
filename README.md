@@ -19,16 +19,23 @@ vaultkit help
 ## Commands
 
 ```
-vaultkit init <name>               Create a new vault (asks: public site / private notes / auth-gated)
-vaultkit connect <owner/repo>      Clone a vault and register it as an MCP server
-vaultkit disconnect <name>         Remove a vault locally and from MCP (keeps GitHub repo)
-vaultkit destroy <name>            Delete a vault locally, on GitHub (if you own it), and from MCP
-vaultkit list                      Show all registered vaults with pinned SHA-256
-vaultkit pull                      Pull latest changes in all registered vaults
-vaultkit update <name>             Update the launcher script and re-pin its SHA-256
-vaultkit doctor                    Check environment and vault health (flags hash drift)
-vaultkit help                      Show this reference
+vaultkit init <name>                Create a new vault (asks: public site / private notes / auth-gated)
+vaultkit connect <owner/repo>       Clone a vault and register it as an MCP server
+vaultkit disconnect <name>          Remove a vault locally and from MCP (keeps GitHub repo)
+vaultkit destroy <name>             Delete a vault locally, on GitHub (if you own it), and from MCP
+vaultkit list                       Show all registered vaults with pinned SHA-256
+vaultkit pull                       Pull latest changes in all registered vaults
+vaultkit update <name>              Update the launcher script and re-pin its SHA-256
+vaultkit verify <name>              Inspect launcher state and re-pin if you accept it
+vaultkit visibility <name> <mode>   Flip a vault between public / private / auth-gated
+vaultkit status [name]              Show git state across vaults
+vaultkit backup <name>              Create a local zip snapshot via git archive
+vaultkit doctor                     Check environment and vault health (flags hash drift)
+vaultkit version                    Print vaultkit + node version and registered vault count
+vaultkit help                       Show this reference
 ```
+
+Every command supports `--help` / `-h` for detailed usage. Pass `--verbose` (or `-v`) before the args to get trace output.
 
 ## What a vault is
 
@@ -181,12 +188,16 @@ Run `vaultkit doctor` periodically — it surfaces hash drift and missing pins a
 | Variable | Default | Description |
 |---|---|---|
 | `VAULTKIT_HOME` | `~/vaults` | Root directory where `vaultkit init` and `vaultkit connect` create vaults |
+| `VAULTKIT_LOG` | *(unset)* | If set, every `vaultkit` invocation appends a tab-separated audit line: `timestamp\tcommand\targs\texit=N\t<duration>ms` |
+| `VAULTKIT_PULL_TIMEOUT` | `30000` | Per-vault timeout in milliseconds for `vaultkit pull` |
+| `VAULTKIT_VERBOSE` | *(unset)* | Set automatically by the `--verbose` flag — scripts emit trace output to stderr when it's `1` |
 
 Set in your shell profile to override the default:
 
 ```bash
 # ~/.bashrc or ~/.zshrc
 export VAULTKIT_HOME=~/Documents/vaults
+export VAULTKIT_LOG=~/.vaultkit.log
 ```
 
 ## Platform support

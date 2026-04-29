@@ -6,6 +6,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/_helpers.sh"
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'EOF'
+Usage: vaultkit destroy <vault-name>
+
+Permanently delete a vault: local directory, GitHub repo (only if you own it),
+and MCP registration. Verifies admin permissions before attempting the
+GitHub deletion. Collaborators get a local-only cleanup (effectively a disconnect).
+EOF
+  exit 0
+fi
+
 if [ $# -eq 0 ]; then
   echo "Usage: vaultkit destroy <vault-name>"
   exit 1

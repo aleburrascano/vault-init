@@ -6,6 +6,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/_helpers.sh"
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'EOF'
+Usage: vaultkit disconnect <vault-name>
+
+Remove a vault locally and from Claude Code's MCP registry. The GitHub repo
+is preserved. Use 'vaultkit destroy' to delete the GitHub repo too.
+EOF
+  exit 0
+fi
+
 if [ $# -eq 0 ]; then
   echo "Usage: vaultkit disconnect <vault-name>"
   exit 1

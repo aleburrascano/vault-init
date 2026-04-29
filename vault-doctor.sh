@@ -4,6 +4,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/_helpers.sh"
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'EOF'
+Usage: vaultkit doctor
+
+Check environment prerequisites (git, node, gh, claude, git identity) and the
+health of every registered vault — directory exists, launcher present, pinned
+hash matches on-disk. Exits non-zero if any 'x' issue is reported.
+EOF
+  exit 0
+fi
+
 ISSUES=0
 ok()   { echo "  + $1"; }
 warn() { echo "  ! $1"; }

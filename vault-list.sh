@@ -4,6 +4,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/_helpers.sh"
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'EOF'
+Usage: vaultkit list
+
+Show every registered vaultkit vault with its directory, remote URL, and
+pinned launcher SHA-256.
+EOF
+  exit 0
+fi
+
 CLAUDE_JSON=$(vk_claude_json)
 
 node -e "

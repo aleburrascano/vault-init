@@ -7,6 +7,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/_helpers.sh"
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'EOF'
+Usage: vaultkit connect <owner/repo>
+       vaultkit connect https://github.com/owner/repo
+
+Clone a vaultkit vault and register its launcher with Claude Code MCP. Shows
+the launcher's SHA-256 + asks for confirmation before registration. The pinned
+hash is checked on every Claude Code session start (refuse-to-launch on drift).
+EOF
+  exit 0
+fi
+
 if [ $# -eq 0 ]; then
   echo "Usage: vaultkit connect <owner/repo>"
   echo "       vaultkit connect https://github.com/owner/repo"

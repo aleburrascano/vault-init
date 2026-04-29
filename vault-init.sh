@@ -7,6 +7,21 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/_helpers.sh"
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'EOF'
+Usage: vaultkit init <vault-name>
+
+Create a new Obsidian wiki vault: GitHub repo + Quartz Pages site (optional) +
+branch protection + Claude Code MCP registration.
+
+Asks how to publish:
+  (y) Public repo + public Quartz site
+  (n) Private repo, no Pages, no public URL  [default]
+  (a) Private repo + auth-gated Pages site (GitHub Pro+ only)
+EOF
+  exit 0
+fi
+
 if [ $# -eq 0 ]; then
   echo "Usage: vaultkit init <vault-name>"
   exit 1

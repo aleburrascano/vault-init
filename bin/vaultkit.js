@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 const COMMANDS = {
@@ -12,21 +12,40 @@ const COMMANDS = {
   pull:       'vault-pull.sh',
   update:     'vault-update.sh',
   doctor:     'vault-doctor.sh',
+  verify:     'vault-verify.sh',
+  status:     'vault-status.sh',
+  backup:     'vault-backup.sh',
+  version:    'vault-version.sh',
+  visibility: 'vault-visibility.sh',
 };
 
 const HELP = `
 vaultkit — Obsidian wiki management
 
 Commands:
-  vaultkit init <name>               Create a new vault (asks: public site / private notes / auth-gated)
-  vaultkit connect <owner/repo>      Clone a vault and register it as an MCP server
-  vaultkit disconnect <name>         Remove a vault locally and from MCP (keeps GitHub repo)
-  vaultkit destroy <name>            Delete a vault locally, on GitHub (if you own it), and from MCP
-  vaultkit list                      Show all registered vaults with pinned SHA-256
-  vaultkit pull                      Pull latest changes in all registered vaults
-  vaultkit update <name>             Update the launcher script and re-pin its SHA-256
-  vaultkit doctor                    Check environment and vault health (flags hash drift)
-  vaultkit help                      Show this help
+  vaultkit init <name>                Create a new vault (asks: public site / private notes / auth-gated)
+  vaultkit connect <owner/repo>       Clone a vault and register it as an MCP server
+  vaultkit disconnect <name>          Remove a vault locally and from MCP (keeps GitHub repo)
+  vaultkit destroy <name>             Delete a vault locally, on GitHub (if you own it), and from MCP
+  vaultkit list                       Show all registered vaults with pinned SHA-256
+  vaultkit pull                       Pull latest changes in all registered vaults
+  vaultkit update <name>              Update the launcher script and re-pin its SHA-256
+  vaultkit verify <name>              Inspect launcher state and re-pin if you accept it
+  vaultkit visibility <name> <mode>   Flip a vault between public / private / auth-gated
+  vaultkit status [name]              Show git state across vaults
+  vaultkit backup <name>              Create a local zip snapshot via git archive
+  vaultkit doctor                     Check environment and vault health (flags hash drift)
+  vaultkit version                    Print vaultkit version + runtime info
+  vaultkit help                       Show this help
+
+Flags:
+  --verbose, -v   Enable trace output (sets VAULTKIT_VERBOSE=1 for scripts)
+  --help,    -h   Per-command usage (e.g., 'vaultkit init --help')
+
+Environment:
+  VAULTKIT_HOME            Vaults root directory (default: ~/vaults)
+  VAULTKIT_LOG             If set, append timestamped command audit log to this file
+  VAULTKIT_PULL_TIMEOUT    Per-vault timeout for 'vaultkit pull' (default: 30000ms)
 `.trim();
 
 const sub = process.argv[2];
@@ -42,8 +61,14 @@ if (!script) {
   process.exit(1);
 }
 
+// Pull --verbose / -v out of the args before passing through to the script.
+const rawArgs = process.argv.slice(3);
+const verbose = rawArgs.includes('--verbose') || rawArgs.includes('-v');
+const scriptArgs = rawArgs.filter(a => a !== '--verbose' && a !== '-v');
+
 const cwd = resolve(import.meta.dirname, '..');
 const env = { ...process.env };
+if (verbose) env.VAULTKIT_VERBOSE = '1';
 
 let bash = 'bash';
 
@@ -107,7 +132,8 @@ if (process.platform === 'win32') {
   env.PATH = [...new Set([...[...toolDirs].map(toUnix), ...existing])].join(':');
 }
 
-const result = spawnSync(bash, [script, ...process.argv.slice(3)], {
+const startedAt = Date.now();
+const result = spawnSync(bash, [script, ...scriptArgs], {
   cwd,
   stdio: 'inherit',
   env,
@@ -115,6 +141,28 @@ const result = spawnSync(bash, [script, ...process.argv.slice(3)], {
 
 if (result.error) {
   process.stderr.write(`vaultkit: failed to launch bash — ${result.error.message}\n`);
+  writeAuditLog(sub, scriptArgs, 1, Date.now() - startedAt);
   process.exit(1);
 }
-process.exit(result.status ?? 1);
+
+const exitCode = result.status ?? 1;
+writeAuditLog(sub, scriptArgs, exitCode, Date.now() - startedAt);
+process.exit(exitCode);
+
+function writeAuditLog(command, args, code, durationMs) {
+  const logPath = process.env.VAULTKIT_LOG;
+  if (!logPath) return;
+  try {
+    mkdirSync(dirname(logPath), { recursive: true });
+    const line = [
+      new Date().toISOString(),
+      command,
+      args.join(' '),
+      `exit=${code}`,
+      `${durationMs}ms`,
+    ].join('\t') + '\n';
+    appendFileSync(logPath, line);
+  } catch {
+    // Logging must never break the command. Swallow.
+  }
+}

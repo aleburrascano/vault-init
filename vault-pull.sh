@@ -4,6 +4,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/_helpers.sh"
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'EOF'
+Usage: vaultkit pull
+
+Run 'git pull --ff-only --quiet' in every registered vault. Vaults with
+diverged history or no upstream are reported but not modified. Set
+VAULTKIT_PULL_TIMEOUT to override the per-vault timeout (default: 30 seconds).
+EOF
+  exit 0
+fi
+
 CLAUDE_JSON=$(vk_claude_json)
 
 node -e "
@@ -45,7 +56,8 @@ for (const [name, s] of vaults) {
   }
 
   const r = spawnSync('git', ['pull', '--ff-only', '--quiet'], {
-    cwd: vaultDir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000,
+    cwd: vaultDir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+    timeout: parseInt(process.env.VAULTKIT_PULL_TIMEOUT || '30000', 10),
   });
 
   if (r.signal === 'SIGTERM' || (r.error && r.error.code === 'ETIMEDOUT')) {

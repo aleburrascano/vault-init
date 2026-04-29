@@ -6,6 +6,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/_helpers.sh"
 
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  cat <<'EOF'
+Usage: vaultkit update <vault-name>
+
+Rewrite the vault's .mcp-start.js launcher to the latest version and re-pin
+its SHA-256 in the MCP registration. Commits and pushes the change. If push
+to main is rejected (branch protection), opens a PR from a feature branch.
+EOF
+  exit 0
+fi
+
 if [ $# -eq 0 ]; then
   echo "Usage: vaultkit update <vault-name>"
   exit 1
