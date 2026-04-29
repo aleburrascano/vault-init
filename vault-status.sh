@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Show per-vault git state: branch, ahead/behind, dirty flag, last commit.
+# Show registered vaults — registry data (path, remote, pinned SHA) plus git
+# state (branch, dirty, ahead/behind, last commit).
 #
-# Usage: vaultkit status            (one line per vault)
-#        vaultkit status <name>     (detailed status for one vault)
+# Usage: vaultkit status            (multi-line summary per vault)
+#        vaultkit status <name>     (detailed `git status` for one vault)
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/_helpers.sh"
@@ -11,7 +12,8 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   cat <<'EOF'
 Usage: vaultkit status [<vault-name>]
 
-Without args: one-line summary per registered vault (branch, ahead/behind, dirty).
+Without args: per-vault summary — directory, remote, pinned SHA-256, branch
+              + dirty/ahead/behind state, and last commit.
 With a name:  detailed `git status` for that vault.
 EOF
   exit 0
@@ -63,33 +65,50 @@ function git(dir, args) {
   return r.status === 0 ? (r.stdout || '').trim() : '';
 }
 
-const w = Math.max(...vaults.map(([n]) => n.length));
 console.log('');
 for (const [name, s] of vaults) {
   const scriptArg = s.args.find(a => String(a).endsWith('.mcp-start.js'));
   const dir = path.dirname(scriptArg);
-  if (!fs.existsSync(dir)) {
-    console.log(name.padEnd(w) + '  [DIR MISSING]');
-    continue;
-  }
+  const exists = fs.existsSync(dir);
+  const pinnedArg = s.args.find(a => typeof a === 'string' && a.startsWith('--expected-sha256='));
+  const pinned = pinnedArg ? pinnedArg.slice('--expected-sha256='.length) : null;
+
+  console.log(name + (exists ? '' : '  [DIR MISSING]'));
+  console.log('  ' + dir);
+
+  if (!exists) { console.log(''); continue; }
+
+  let remote = '';
+  try {
+    remote = git(dir, ['remote', 'get-url', 'origin']);
+  } catch {}
+  if (remote) console.log('  ' + remote);
+
   if (!fs.existsSync(path.join(dir, '.git'))) {
-    console.log(name.padEnd(w) + '  [not a git repo]');
-    continue;
-  }
-  const branch = git(dir, ['rev-parse', '--abbrev-ref', 'HEAD']) || '?';
-  const dirty = git(dir, ['status', '--porcelain']).length > 0 ? 'dirty' : 'clean';
-  let trail = '';
-  if (git(dir, ['rev-parse', '--abbrev-ref', '@{u}'])) {
-    const ahead = git(dir, ['rev-list', '--count', '@{u}..HEAD']) || '0';
-    const behind = git(dir, ['rev-list', '--count', 'HEAD..@{u}']) || '0';
-    if (ahead !== '0' || behind !== '0') {
-      trail = '  [ahead ' + ahead + ', behind ' + behind + ']';
-    }
+    console.log('  branch:  [not a git repo]');
   } else {
-    trail = '  [no upstream]';
+    const branch = git(dir, ['rev-parse', '--abbrev-ref', 'HEAD']) || '?';
+    const dirty = git(dir, ['status', '--porcelain']).length > 0 ? 'dirty' : 'clean';
+    let trail = '';
+    if (git(dir, ['rev-parse', '--abbrev-ref', '@{u}'])) {
+      const ahead = git(dir, ['rev-list', '--count', '@{u}..HEAD']) || '0';
+      const behind = git(dir, ['rev-list', '--count', 'HEAD..@{u}']) || '0';
+      if (ahead !== '0' || behind !== '0') {
+        trail = ' [ahead ' + ahead + ', behind ' + behind + ']';
+      }
+    } else {
+      trail = ' [no upstream]';
+    }
+    console.log('  branch:  ' + branch + ' (' + dirty + ')' + trail);
+    const last = git(dir, ['log', '-1', '--format=%h %s']);
+    if (last) console.log('  last:    ' + last);
   }
-  const last = git(dir, ['log', '-1', '--format=%h %s']) || '(no commits)';
-  console.log(name.padEnd(w) + '  ' + branch + '  ' + dirty + trail + '  — ' + last);
+
+  if (pinned) {
+    console.log('  pinned:  ' + pinned);
+  } else {
+    console.log('  pinned:  (none — run \`vaultkit update ' + name + '\`)');
+  }
+  console.log('');
 }
-console.log('');
 " "$CLAUDE_JSON"

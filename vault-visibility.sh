@@ -6,9 +6,10 @@
 #   private     Private repo, no Pages (notes-only)
 #   auth-gated  Private repo, auth-gated Pages site (requires GitHub Pro+)
 #
-# Caveat: if the vault was init'd with mode "private" (notes-only), it has no
-# .github/workflows/deploy.yml. Switching to public/auth-gated would require
-# adding that workflow — this command will not generate it. Re-init instead.
+# Promoting a notes-only vault (no deploy.yml) to public/auth-gated will
+# generate the Pages deploy workflow + _vault.json and commit them after
+# flipping visibility / enabling Pages, so the workflow's first run executes
+# against an already-configured Pages site.
 #
 # Usage: vaultkit visibility <vault-name> <public|private|auth-gated>
 set -euo pipefail
@@ -24,8 +25,8 @@ Flip a vault's GitHub repo + Pages visibility:
   private     Private repo, no Pages (notes-only)
   auth-gated  Private repo + auth-gated Pages (requires GitHub Pro+)
 
-Limitation: cannot promote a notes-only vault (no deploy.yml) to public —
-re-init instead of trying to flip.
+Promoting a notes-only vault to public/auth-gated will add the Pages deploy
+workflow automatically (commits + pushes before flipping visibility).
 EOF
   exit 0
 fi
@@ -93,15 +94,15 @@ echo "Current: repo=$CURRENT_VIS, pages=$( $PAGES_EXISTS && echo "$PAGES_PUBLIC"
 echo "Target:  $TARGET"
 echo ""
 
-# Sanity check for promoting a notes-only vault.
+# If we're promoting a notes-only vault → published, we'll need to add the
+# deploy workflow + _vault.json before flipping. Tracked here so it shows up
+# in the action plan and in the execute block below.
 HAS_DEPLOY=false
 [ -f "$VAULT_DIR_POSIX/.github/workflows/deploy.yml" ] && HAS_DEPLOY=true
 
+NEED_DEPLOY=false
 if { [ "$TARGET" = "public" ] || [ "$TARGET" = "auth-gated" ]; } && ! $HAS_DEPLOY; then
-  vk_error "$VAULT_NAME has no .github/workflows/deploy.yml — it was init'd as notes-only."
-  echo "  Promoting it to a published vault requires the deploy workflow." >&2
-  echo "  Easiest path: 'vaultkit destroy $VAULT_NAME' then 'vaultkit init $VAULT_NAME' and pick the desired mode." >&2
-  exit 1
+  NEED_DEPLOY=true
 fi
 
 # Plan check for auth-gated.
@@ -115,6 +116,9 @@ fi
 
 # Build the action list, then confirm before executing.
 ACTIONS=()
+if $NEED_DEPLOY; then
+  ACTIONS+=("add .github/workflows/deploy.yml + _vault.json")
+fi
 case "$TARGET" in
   public)
     [ "$CURRENT_VIS" != "public" ]   && ACTIONS+=("flip repo to public")
@@ -154,6 +158,26 @@ if ! [[ "${_CONFIRM:-}" =~ ^[Yy]$ ]]; then
   exit 0
 fi
 echo ""
+
+# If promoting notes-only → published, write deploy.yml + _vault.json now,
+# but don't commit yet. We push them after flipping visibility / enabling
+# Pages so the workflow's first run executes against an already-configured
+# Pages site (clean first deploy, no transient failure).
+if $NEED_DEPLOY; then
+  echo "Writing .github/workflows/deploy.yml + _vault.json..."
+  mkdir -p "$VAULT_DIR_POSIX/.github/workflows"
+  cp "$SCRIPT_DIR/lib/deploy.yml.tmpl" "$VAULT_DIR_POSIX/.github/workflows/deploy.yml"
+
+  REPO_NAME="${REPO_SLUG##*/}"
+  REPO_OWNER="${REPO_SLUG%%/*}"
+  cat > "$VAULT_DIR_POSIX/_vault.json" <<EOF
+{
+  "pageTitle": "${REPO_NAME}",
+  "baseUrl": "${REPO_OWNER}.github.io/${REPO_NAME}"
+}
+EOF
+  echo ""
+fi
 
 # Execute.
 case "$TARGET" in
@@ -198,6 +222,48 @@ case "$TARGET" in
     fi
     ;;
 esac
+
+# Push the deploy workflow last — by now the repo is in its target visibility
+# and Pages is configured, so the workflow's first run will deploy cleanly.
+if $NEED_DEPLOY; then
+  echo ""
+  cd "$VAULT_DIR_POSIX"
+  git add .github/workflows/deploy.yml _vault.json
+  if git diff --cached --quiet; then
+    echo "Workflow already committed — nothing to push."
+  else
+    git commit -m "chore: add Pages deploy workflow"
+    echo "Pushing workflow to main..."
+    if ! git push 2>&1; then
+      vk_warning "Push to main was rejected (branch may be protected)."
+      echo ""
+      BRANCH="vaultkit-pages-$(date +%Y%m%d%H%M%S)"
+      echo "Creating branch '$BRANCH' for a pull request..."
+      git branch "$BRANCH"
+      git reset --hard '@{u}'
+      git checkout "$BRANCH"
+      if git push -u origin "$BRANCH" 2>&1; then
+        if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+          gh pr create \
+            --title "chore: add Pages deploy workflow" \
+            --body "Adds the deploy workflow needed to publish this vault as a Pages site." \
+            --base main \
+            --head "$BRANCH" \
+            || vk_warning "PR creation failed — open one manually."
+        else
+          echo "Open a pull request manually:"
+          echo "  https://github.com/$REPO_SLUG/compare/main...$BRANCH"
+        fi
+      else
+        vk_error "Could not push branch '$BRANCH'."
+        exit 1
+      fi
+      echo ""
+      vk_note "Repo + Pages are configured, but the workflow is on a PR."
+      echo "      The site will deploy after you merge the PR." >&2
+    fi
+  fi
+fi
 
 echo ""
 echo "Done. Repo: https://github.com/$REPO_SLUG"

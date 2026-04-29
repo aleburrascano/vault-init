@@ -146,8 +146,19 @@ for (const [name, s] of vaults) {
     console.log('      Fix: inspect, then run vaultkit update ' + name);
     issues++;
   } else {
-    console.log('  + ' + name + '  (' + vaultDir + ')');
-    console.log('    pinned SHA-256: ' + hash);
+    // Layout check — same logic as vk_is_vault_like in lib/_helpers.sh.
+    const hasObsidian = fs.existsSync(path.join(vaultDir, '.obsidian'));
+    const hasStandard = fs.existsSync(path.join(vaultDir, 'CLAUDE.md'))
+      && fs.existsSync(path.join(vaultDir, 'raw'))
+      && fs.existsSync(path.join(vaultDir, 'wiki'));
+    if (!hasObsidian && !hasStandard) {
+      console.log('  ! ' + name + ' — pinned SHA-256 OK, but missing standard layout');
+      console.log('      Fix: vaultkit update ' + name);
+      issues++;
+    } else {
+      console.log('  + ' + name + '  (' + vaultDir + ')');
+      console.log('    pinned SHA-256: ' + hash);
+    }
   }
 }
 

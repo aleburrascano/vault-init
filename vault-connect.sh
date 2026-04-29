@@ -51,7 +51,7 @@ mkdir -p "$VAULTS_ROOT"
 # Reject if MCP name already registered
 if vk_resolve_vault_dir "$VAULT_NAME" >/dev/null; then
   vk_error "an MCP server named '$VAULT_NAME' is already registered."
-  echo "Run 'vaultkit list' to see what's registered, or 'vaultkit disconnect $VAULT_NAME' first." >&2
+  echo "Run 'vaultkit status' to see what's registered, or 'vaultkit disconnect $VAULT_NAME' first." >&2
   exit 1
 fi
 
@@ -102,9 +102,9 @@ if ! [ -f "$VAULT_DIR/.mcp-start.js" ]; then
 fi
 if ! vk_is_vault_like "$VAULT_DIR"; then
   echo ""
-  vk_error "$VAULT_DIR is missing the standard vault layout (.obsidian/ or CLAUDE.md+raw/+wiki/)."
-  echo "  This does not appear to be a vaultkit vault." >&2
-  exit 1
+  vk_warning "$VAULT_NAME is missing the standard vault layout (CLAUDE.md / raw/ / wiki/)."
+  echo "  Connecting anyway — but ask the owner to run 'vaultkit update $VAULT_NAME'" >&2
+  echo "  so layout-aware features (search, ingest) work cleanly." >&2
 fi
 
 # Show hash so the user can verify the script before trusting it

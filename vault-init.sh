@@ -218,77 +218,19 @@ mkdir -p raw/{articles,books,papers,notes,transcripts,assets}
 mkdir -p wiki/{concepts,topics,people,sources}
 mkdir -p .github/workflows
 
+# .gitkeep — keep raw/ and wiki/ tracked even when empty, so a clone of a
+# fresh vault still satisfies vk_is_vault_like.
+touch raw/.gitkeep wiki/.gitkeep
+
 # CLAUDE.md
-cat > CLAUDE.md << EOF
-# CLAUDE.md — ${VAULT_NAME}
-
-You maintain this personal knowledge wiki. Read this at session start, then search-first — see Session start below.
-
-## Layers
-1. \`raw/\` — immutable source material. Read; never modify.
-2. \`wiki/\` — your domain. Author and maintain pages here.
-
-## Page conventions
-- Frontmatter every page: \`type\`, \`created\`, \`updated\`, \`sources\`, \`tags\`
-- Cross-references: Obsidian wikilinks \`[[Page Name]]\`
-- Source pages in \`wiki/sources/\` with \`source_path\`, \`source_date\`, \`source_author\`
-- Never invent facts. Use \`> [!question] Unverified\` for uncertain claims.
-
-## Operations
-
-### Ingest (adding a source)
-1. Read raw source fully.
-2. Discuss takeaways before writing pages.
-3. Create source page in \`wiki/sources/\`.
-4. Update or create pages in \`wiki/topics/\` (synthesis) and \`wiki/concepts/\` touched.
-5. Update \`index.md\` (one line per page: \`- [[Page]] — summary\`). Append \`log.md\` entry (\`## [YYYY-MM-DD] ingest | title\`).
-
-### Query
-Use \`search_notes\` (folder: \`wiki\`) first → \`get_note\` on top 1–3 hits → synthesize.
-\`wiki/topics/\` = synthesis pages (start here). \`wiki/sources/\` = per-source detail.
-
-### Lint (on request)
-Find: orphans, contradictions, missing cross-refs, index drift. Discuss before bulk edits.
-
-## Session start
-- **Queries**: read this → \`search_notes\` directly → respond.
-- **Ingest / lint**: read this → read \`index.md\` → skim tail of \`log.md\` → proceed.
-- **Always** scope \`search_notes\` to \`folder: "wiki"\` or \`folder: "raw"\` — unscoped searches can hit \`.quartz\` noise.
-
-## You do NOT
-- Modify \`raw/\` (immutable).
-- Delete wiki pages without confirmation.
-- Fabricate sources or citations.
-- Skip the log.
-EOF
+vk_render_claude_md "$VAULT_NAME" > CLAUDE.md
 
 # README.md — site URL only when Pages is enabled
 if $ENABLE_PAGES; then
-  SITE_LINE="**Site**: https://${BASE_URL} *(live after first deploy)*"
+  vk_render_readme "$VAULT_NAME" "$BASE_URL" > README.md
 else
-  SITE_LINE="*(Notes-only vault — no public site.)*"
+  vk_render_readme "$VAULT_NAME" "" > README.md
 fi
-cat > README.md << EOF
-# ${VAULT_NAME}
-
-A personal knowledge wiki powered by [vaultkit](https://github.com/aleburrascano/vaultkit).
-
-${SITE_LINE}
-
-## Structure
-
-\`\`\`
-raw/    ← source material (immutable — never edit directly)
-wiki/   ← authored knowledge pages
-\`\`\`
-
-## Contributing
-
-1. Fork this repo on GitHub
-2. Add sources to \`raw/\` and pages to \`wiki/\`
-3. Open a pull request — CI checks for duplicate sources automatically
-4. The maintainer reviews and merges
-EOF
 
 # index.md
 cat > index.md << EOF
@@ -308,85 +250,11 @@ printf '# Log\n' > log.md
 cp "$SCRIPT_DIR/lib/mcp-start.js.tmpl" "$VAULT_DIR/.mcp-start.js"
 
 # Duplicate source check workflow — useful for any vault with collaborators
-cat > .github/workflows/duplicate-check.yml << 'YAML'
-name: Duplicate Source Check
-
-on:
-  pull_request:
-    paths:
-      - 'raw/**'
-
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check for duplicate filenames in raw/
-        run: |
-          DUPES=$(find raw/ -type f -printf '%f\n' | sort | uniq -d)
-          if [ -n "$DUPES" ]; then
-            echo "Duplicate filenames found in raw/:"
-            echo "$DUPES"
-            exit 1
-          fi
-          echo "No duplicate source filenames found."
-YAML
+vk_render_duplicate_check_yaml > .github/workflows/duplicate-check.yml
 
 # Deploy workflow — only generated when the vault publishes a site.
 if $WRITE_DEPLOY; then
-  cat > .github/workflows/deploy.yml << 'YAML'
-name: Deploy Wiki
-
-on:
-  push:
-    branches: [main]
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Clone and configure Quartz
-        run: |
-          git clone --depth 1 https://github.com/jackyzha0/quartz .quartz
-          node - <<'PATCH'
-          const fs = require('fs');
-          const cfg = JSON.parse(fs.readFileSync('_vault.json', 'utf8'));
-          const p = '.quartz/quartz.config.ts';
-          let t = fs.readFileSync(p, 'utf8');
-          t = t.replace(/pageTitle: "[^"]+"/, `pageTitle: "${cfg.pageTitle}"`);
-          t = t.replace(/baseUrl: "[^"]+"/, `baseUrl: "${cfg.baseUrl}"`);
-          t = t.replace(/ignorePatterns: \[[^\]]+\]/, 'ignorePatterns: ["raw", ".quartz", ".github", "CLAUDE.md", "*.sh"]');
-          fs.writeFileSync(p, t);
-          PATCH
-      - name: Build
-        run: cd .quartz && npm ci && chmod +x quartz/bootstrap-cli.mjs && npx quartz build --directory ../
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: .quartz/public
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
-YAML
+  cp "$SCRIPT_DIR/lib/deploy.yml.tmpl" .github/workflows/deploy.yml
 
   # _vault.json is read by the deploy workflow to configure Quartz
   cat > _vault.json << EOF

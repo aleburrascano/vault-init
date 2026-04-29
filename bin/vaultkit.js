@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 const COMMANDS = {
@@ -8,38 +8,42 @@ const COMMANDS = {
   connect:    'vault-connect.sh',
   disconnect: 'vault-disconnect.sh',
   destroy:    'vault-destroy.sh',
-  list:       'vault-list.sh',
   pull:       'vault-pull.sh',
   update:     'vault-update.sh',
   doctor:     'vault-doctor.sh',
   verify:     'vault-verify.sh',
   status:     'vault-status.sh',
   backup:     'vault-backup.sh',
-  version:    'vault-version.sh',
   visibility: 'vault-visibility.sh',
 };
 
 const HELP = `
 vaultkit — Obsidian wiki management
 
-Commands:
-  vaultkit init <name>                Create a new vault (asks: public site / private notes / auth-gated)
-  vaultkit connect <owner/repo>       Clone a vault and register it as an MCP server
-  vaultkit disconnect <name>          Remove a vault locally and from MCP (keeps GitHub repo)
-  vaultkit destroy <name>             Delete a vault locally, on GitHub (if you own it), and from MCP
-  vaultkit list                       Show all registered vaults with pinned SHA-256
-  vaultkit pull                       Pull latest changes in all registered vaults
-  vaultkit update <name>              Update the launcher script and re-pin its SHA-256
-  vaultkit verify <name>              Inspect launcher state and re-pin if you accept it
-  vaultkit visibility <name> <mode>   Flip a vault between public / private / auth-gated
-  vaultkit status [name]              Show git state across vaults
-  vaultkit backup <name>              Create a local zip snapshot via git archive
-  vaultkit doctor                     Check environment and vault health (flags hash drift)
-  vaultkit version                    Print vaultkit version + runtime info
-  vaultkit help                       Show this help
+CREATE & CONNECT
+  vaultkit init <name>                Create a new vault from scratch
+  vaultkit connect <owner/repo>       Clone someone else's vault and register it
+
+EVERYDAY USE
+  vaultkit status [name]              See your vaults + git state (or detailed status for one)
+  vaultkit pull                       Sync all vaults from their upstream
+  vaultkit backup <name>              Snapshot a vault to a local zip
+
+WHEN SOMETHING'S WRONG
+  vaultkit doctor                     Check environment + flag broken vaults
+  vaultkit update <name>              Vault is missing layout files or has a stale launcher
+  vaultkit verify <name>              Launcher refused to start (pinned SHA-256 mismatch)
+
+CHANGE OR REMOVE
+  vaultkit visibility <name> <mode>   Toggle public / private / auth-gated
+  vaultkit disconnect <name>          Stop using locally — keep the GitHub repo
+  vaultkit destroy <name>             Delete locally + on GitHub
+
+  vaultkit help                       Show this reference
 
 Flags:
   --verbose, -v   Enable trace output (sets VAULTKIT_VERBOSE=1 for scripts)
+  --version       Print vaultkit version + runtime info
   --help,    -h   Per-command usage (e.g., 'vaultkit init --help')
 
 Environment:
@@ -52,6 +56,11 @@ const sub = process.argv[2];
 
 if (!sub || sub === 'help' || sub === '--help' || sub === '-h') {
   console.log(HELP);
+  process.exit(0);
+}
+
+if (sub === '--version') {
+  printVersion();
   process.exit(0);
 }
 
@@ -165,4 +174,28 @@ function writeAuditLog(command, args, code, durationMs) {
   } catch {
     // Logging must never break the command. Swallow.
   }
+}
+
+function printVersion() {
+  const root = resolve(import.meta.dirname, '..');
+  const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+
+  const cfgPath = process.platform === 'win32'
+    ? (process.env.USERPROFILE ? join(process.env.USERPROFILE, '.claude.json') : null)
+    : (process.env.HOME ? join(process.env.HOME, '.claude.json') : null);
+  let count = 0;
+  if (cfgPath && existsSync(cfgPath)) {
+    try {
+      const cfg = JSON.parse(readFileSync(cfgPath, 'utf8'));
+      const servers = cfg.mcpServers || {};
+      count = Object.values(servers).filter(s =>
+        s && s.args && s.args.some(a => String(a).endsWith('.mcp-start.js'))
+      ).length;
+    } catch {}
+  }
+
+  console.log('vaultkit  ' + pkg.version);
+  console.log('node      ' + process.version);
+  console.log('platform  ' + process.platform + ' ' + process.arch);
+  console.log('vaults    ' + count + ' registered');
 }

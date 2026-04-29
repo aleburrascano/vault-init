@@ -16,19 +16,18 @@
     "vault-connect.sh",
     "vault-disconnect.sh",
     "vault-destroy.sh",
-    "vault-list.sh",
     "vault-pull.sh",
     "vault-update.sh",
     "vault-doctor.sh",
     "vault-verify.sh",
     "vault-status.sh",
     "vault-backup.sh",
-    "vault-version.sh",
     "vault-visibility.sh",
     "install.sh",
     "bin/vaultkit.js",
     "lib/_helpers.sh",
-    "lib/mcp-start.js.tmpl"
+    "lib/mcp-start.js.tmpl",
+    "lib/deploy.yml.tmpl"
   ],
   "scripts": {
     "lint": "shellcheck -x vault-*.sh install.sh lib/_helpers.sh",

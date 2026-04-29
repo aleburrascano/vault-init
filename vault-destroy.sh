@@ -30,7 +30,7 @@ vk_validate_vault_name "$VAULT_NAME" || exit 1
 # the default location, they must `vaultkit connect` it first or `rm` manually.
 VAULT_DIR=$(vk_resolve_vault_dir "$VAULT_NAME") || {
   vk_error "'$VAULT_NAME' is not a registered vaultkit vault."
-  echo "Run 'vaultkit list' to see what's registered." >&2
+  echo "Run 'vaultkit status' to see what's registered." >&2
   echo "If you have an orphaned directory, remove it manually." >&2
   exit 1
 }

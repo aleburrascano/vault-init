@@ -19,23 +19,29 @@ vaultkit help
 ## Commands
 
 ```
-vaultkit init <name>                Create a new vault (asks: public site / private notes / auth-gated)
-vaultkit connect <owner/repo>       Clone a vault and register it as an MCP server
-vaultkit disconnect <name>          Remove a vault locally and from MCP (keeps GitHub repo)
-vaultkit destroy <name>             Delete a vault locally, on GitHub (if you own it), and from MCP
-vaultkit list                       Show all registered vaults with pinned SHA-256
-vaultkit pull                       Pull latest changes in all registered vaults
-vaultkit update <name>              Update the launcher script and re-pin its SHA-256
-vaultkit verify <name>              Inspect launcher state and re-pin if you accept it
-vaultkit visibility <name> <mode>   Flip a vault between public / private / auth-gated
-vaultkit status [name]              Show git state across vaults
-vaultkit backup <name>              Create a local zip snapshot via git archive
-vaultkit doctor                     Check environment and vault health (flags hash drift)
-vaultkit version                    Print vaultkit + node version and registered vault count
-vaultkit help                       Show this reference
+CREATE & CONNECT
+  vaultkit init <name>                Create a new vault from scratch
+  vaultkit connect <owner/repo>       Clone someone else's vault and register it
+
+EVERYDAY USE
+  vaultkit status [name]              See your vaults + git state (or detailed status for one)
+  vaultkit pull                       Sync all vaults from their upstream
+  vaultkit backup <name>              Snapshot a vault to a local zip
+
+WHEN SOMETHING'S WRONG
+  vaultkit doctor                     Check environment + flag broken vaults
+  vaultkit update <name>              Vault is missing layout files or has a stale launcher
+  vaultkit verify <name>              Launcher refused to start (pinned SHA-256 mismatch)
+
+CHANGE OR REMOVE
+  vaultkit visibility <name> <mode>   Toggle public / private / auth-gated
+  vaultkit disconnect <name>          Stop using locally — keep the GitHub repo
+  vaultkit destroy <name>             Delete locally + on GitHub
+
+  vaultkit help                       Show this reference
 ```
 
-Every command supports `--help` / `-h` for detailed usage. Pass `--verbose` (or `-v`) before the args to get trace output.
+Every command supports `--help` / `-h` for detailed usage. Pass `--verbose` (or `-v`) before the args to get trace output. Pass `--version` to print the installed version + runtime info.
 
 ## What a vault is
 
