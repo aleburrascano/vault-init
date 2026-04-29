@@ -2,6 +2,11 @@
 
 CLI that connects Claude Code to Obsidian vaults via MCP. No build step. Zero npm dependencies.
 
+## Commands
+test:  npm test
+build: (none — published files)
+lint:  npm run lint
+
 ## Architecture
 
 **Dispatch flow**: `vaultkit <cmd>` → `bin/vaultkit.js` (COMMANDS lookup) → `vault-<cmd>.sh` (bash, cwd = package root)
@@ -77,3 +82,11 @@ npm unlink -g @aleburrascano/vaultkit
 - No build step — repo files are published files. `lib/` ships verbatim.
 - Windows compatibility is mandatory — test `cygpath` branches via the helpers.
 - Never duplicate the `.mcp-start.js` template — `cp` it from `lib/mcp-start.js.tmpl`.
+
+## Standing Workflows
+- Bug fix: write a failing test that reproduces the bug first. Show it fail. Fix it. Show it pass. Run full suite.
+- Feature: run full test suite before and after.
+- Refactor: confirm all tests pass before touching anything; confirm they still pass after.
+
+## Known Hallucination Patterns
+@.claude/rules/hallucination-patterns.md
