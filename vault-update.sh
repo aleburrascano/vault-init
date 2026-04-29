@@ -33,7 +33,7 @@ if (!scriptArg) process.exit(1);
 console.log(path.dirname(scriptArg));
 " "$CLAUDE_JSON" "$VAULT_NAME" 2>/dev/null) || VAULT_DIR=""
 
-# Fall back to CWD/<name> with identity check
+# Fall back to default location with identity check
 if [ -z "$VAULT_DIR" ]; then
   VAULT_DIR="${VAULTKIT_HOME:-$HOME/vaults}/$VAULT_NAME"
   if ! [ -d "$VAULT_DIR" ]; then
@@ -58,12 +58,13 @@ fi
 
 echo "Updating $VAULT_NAME at $VAULT_DIR..."
 
+BEFORE_HASH=""
 if [ -f "$VAULT_DIR_POSIX/.mcp-start.js" ]; then
-  CURRENT_HASH=$(node -e "
+  BEFORE_HASH=$(node -e "
 const c=require('crypto'),fs=require('fs');
 console.log(c.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex'));
-" "$VAULT_DIR_POSIX/.mcp-start.js" 2>/dev/null || echo "unknown")
-  echo "  Current .mcp-start.js SHA-256: $CURRENT_HASH"
+" "$VAULT_DIR_POSIX/.mcp-start.js" 2>/dev/null || echo "")
+  echo "  Current .mcp-start.js SHA-256: $BEFORE_HASH"
 fi
 echo ""
 read -r -p "Update .mcp-start.js to the latest version? [y/N] " _CONFIRM
@@ -79,29 +80,62 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 
 // Pull latest changes silently — don't fail if offline or no remote.
+// 5-second timeout prevents hanging on slow networks at startup.
 spawnSync('git', ['pull', '--ff-only', '--quiet'], {
   cwd: __dirname,
   stdio: 'ignore',
+  timeout: 5000,
 });
 
-// Derive npx from the node binary that launched this script — avoids PATH
-// issues when Claude Code starts as a desktop app and npm isn't in system PATH.
-const npx = process.platform === 'win32'
-  ? path.join(path.dirname(process.execPath), 'npx.cmd')
-  : 'npx';
-const r = spawnSync(npx, ['-y', 'obsidian-mcp-pro', '--vault', __dirname], {
+// On Windows, npx ships as npx.cmd — a batch file that requires cmd.exe to
+// run. spawnSync without shell:true passes the path directly to CreateProcess,
+// which rejects .cmd files with EINVAL. Fix: prepend node's own directory to
+// PATH (so cmd.exe can find npx) then spawn with shell:true.
+if (process.platform === 'win32') {
+  const nodeDir = path.dirname(process.execPath);
+  process.env.PATH = nodeDir + ';' + (process.env.PATH || '');
+}
+
+const r = spawnSync('npx', ['-y', 'obsidian-mcp-pro', '--vault', __dirname], {
   stdio: 'inherit',
+  shell: process.platform === 'win32',
 });
 if (r.error) {
   process.stderr.write('[vaultkit] Failed to start MCP server: ' + r.error.message + '\n');
-  process.stderr.write('[vaultkit] Check your internet connection and try restarting Claude Code.\n');
+  process.stderr.write('[vaultkit] Check your Node.js installation and restart Claude Code.\n');
+  process.exit(1);
 }
-process.exit(r.status ?? 0);
+process.exit(r.status ?? 1);
 JS
 
+AFTER_HASH=$(node -e "
+const c=require('crypto'),fs=require('fs');
+console.log(c.createHash('sha256').update(fs.readFileSync(process.argv[1])).digest('hex'));
+" "$VAULT_DIR_POSIX/.mcp-start.js" 2>/dev/null || echo "")
+
+if [ "$AFTER_HASH" = "$BEFORE_HASH" ]; then
+  echo "  .mcp-start.js is already up to date — nothing to commit."
+  exit 0
+fi
+
 echo "  Updated .mcp-start.js"
+echo "  New SHA-256: $AFTER_HASH"
 echo ""
-echo "Commit and push to apply:"
-echo "  cd \"$VAULT_DIR_POSIX\" && git add .mcp-start.js && git commit -m 'chore: update mcp-start.js' && git push"
+
+# Commit and push so git pull in .mcp-start.js doesn't revert the change
+cd "$VAULT_DIR_POSIX"
+git add .mcp-start.js
+if git diff --cached --quiet; then
+  echo "  Nothing staged — skipping commit."
+  exit 0
+fi
+
+git commit -m "chore: update .mcp-start.js to latest vaultkit version"
 echo ""
-echo "Note: if main is branch-protected, open a pull request instead."
+
+if git push 2>&1; then
+  echo "Done. Restart Claude Code to apply the update."
+else
+  echo "  Push failed (branch may be protected). Open a pull request:"
+  echo "  https://github.com/$(git remote get-url origin | sed 's|.*github.com[:/]||;s|\.git$||')/compare/main...$(git branch --show-current)"
+fi

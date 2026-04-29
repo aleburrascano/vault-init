@@ -264,24 +264,32 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 
 // Pull latest changes silently — don't fail if offline or no remote.
+// 5-second timeout prevents hanging on slow networks at startup.
 spawnSync('git', ['pull', '--ff-only', '--quiet'], {
   cwd: __dirname,
   stdio: 'ignore',
+  timeout: 5000,
 });
 
-// Derive npx from the node binary that launched this script — avoids PATH
-// issues when Claude Code starts as a desktop app and npm isn't in system PATH.
-const npx = process.platform === 'win32'
-  ? path.join(path.dirname(process.execPath), 'npx.cmd')
-  : 'npx';
-const r = spawnSync(npx, ['-y', 'obsidian-mcp-pro', '--vault', __dirname], {
+// On Windows, npx ships as npx.cmd — a batch file that requires cmd.exe to
+// run. spawnSync without shell:true passes the path directly to CreateProcess,
+// which rejects .cmd files with EINVAL. Fix: prepend node's own directory to
+// PATH (so cmd.exe can find npx) then spawn with shell:true.
+if (process.platform === 'win32') {
+  const nodeDir = path.dirname(process.execPath);
+  process.env.PATH = nodeDir + ';' + (process.env.PATH || '');
+}
+
+const r = spawnSync('npx', ['-y', 'obsidian-mcp-pro', '--vault', __dirname], {
   stdio: 'inherit',
+  shell: process.platform === 'win32',
 });
 if (r.error) {
   process.stderr.write('[vaultkit] Failed to start MCP server: ' + r.error.message + '\n');
-  process.stderr.write('[vaultkit] Check your internet connection and try restarting Claude Code.\n');
+  process.stderr.write('[vaultkit] Check your Node.js installation and restart Claude Code.\n');
+  process.exit(1);
 }
-process.exit(r.status ?? 0);
+process.exit(r.status ?? 1);
 JS
 
 # Duplicate source check workflow
