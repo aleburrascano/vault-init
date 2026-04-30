@@ -16,7 +16,7 @@ import {
   renderLogMd,
 } from '../../src/lib/vault.js';
 
-let tmp;
+let tmp: string;
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'vk-vault-test-'));
 });
@@ -228,7 +228,7 @@ describe('renderGitattributes', () => {
 
 describe('renderIndexMd', () => {
   it('contains standard headings', () => {
-    const out = renderIndexMd('TestVault');
+    const out = renderIndexMd();
     expect(out).toContain('# Index');
     expect(out).toContain('## Topics');
     expect(out).toContain('## Concepts');

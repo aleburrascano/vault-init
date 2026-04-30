@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-export function validateName(name) {
+export function validateName(name: string): void {
   if (name.includes('/')) {
     throw new Error("provide the vault name only (e.g. 'MyVault'), not owner/repo.");
   }
@@ -14,26 +14,26 @@ export function validateName(name) {
   }
 }
 
-function isDir(p) {
+function isDir(p: string): boolean {
   try { return statSync(p).isDirectory(); } catch { return false; }
 }
 
-function isFile(p) {
+function isFile(p: string): boolean {
   try { return statSync(p).isFile(); } catch { return false; }
 }
 
-export function isVaultLike(dir) {
+export function isVaultLike(dir: string): boolean {
   if (!isDir(dir)) return false;
   if (isDir(join(dir, '.obsidian'))) return true;
   return isFile(join(dir, 'CLAUDE.md')) && isDir(join(dir, 'raw')) && isDir(join(dir, 'wiki'));
 }
 
-export async function sha256(filePath) {
+export async function sha256(filePath: string): Promise<string> {
   const content = readFileSync(filePath);
   return createHash('sha256').update(content).digest('hex');
 }
 
-export function renderClaudeMd(vaultName) {
+export function renderClaudeMd(vaultName: string): string {
   return `# CLAUDE.md — ${vaultName}
 
 You maintain this personal knowledge wiki. Read this at session start, then search-first — see Session start below.
@@ -77,7 +77,7 @@ Find: orphans, contradictions, missing cross-refs, index drift. Discuss before b
 `;
 }
 
-export function renderReadme(vaultName, siteUrl = '') {
+export function renderReadme(vaultName: string, siteUrl: string = ''): string {
   const siteLine = siteUrl
     ? `**Site**: https://${siteUrl} *(live after first deploy)*`
     : '*(Notes-only vault — no public site.)*';
@@ -103,7 +103,7 @@ wiki/   ← authored knowledge pages
 `;
 }
 
-export function renderDuplicateCheckYaml() {
+export function renderDuplicateCheckYaml(): string {
   return `name: Duplicate Source Check
 
 on:
@@ -128,21 +128,21 @@ jobs:
 `;
 }
 
-export function renderVaultJson(repoOwner, repoName) {
+export function renderVaultJson(repoOwner: string, repoName: string): string {
   return JSON.stringify({
     pageTitle: repoName,
     baseUrl: `https://${repoOwner}.github.io/${repoName}/`,
   }, null, 2);
 }
 
-export function renderGitignore() {
+export function renderGitignore(): string {
   return `.quartz/
 .obsidian/
 .DS_Store
 `;
 }
 
-export function renderGitattributes() {
+export function renderGitattributes(): string {
   return `* text=auto
 *.js text eol=lf
 *.ts text eol=lf
@@ -152,7 +152,7 @@ export function renderGitattributes() {
 `;
 }
 
-export function renderIndexMd() {
+export function renderIndexMd(): string {
   return `# Index
 
 ## Topics
@@ -163,7 +163,7 @@ export function renderIndexMd() {
 `;
 }
 
-export function renderLogMd() {
+export function renderLogMd(): string {
   return `# Log
 `;
 }
