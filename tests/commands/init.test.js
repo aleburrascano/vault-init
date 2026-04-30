@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -278,5 +278,57 @@ describe('I-11: claude not found', () => {
     await run('NoClaude', { cfgPath: join(tmp, '.claude.json'), log: (m) => lines.push(m) }).catch(() => {});
 
     expect(lines.some(l => /claude mcp add/i.test(l))).toBe(true);
+  });
+});
+
+// ── LIVE: init creates real GitHub repo ───────────────────────────────────────
+
+const LIVE = !!process.env.VAULTKIT_LIVE_TEST;
+const LIVE_VAULT = `vk-live-init-${Date.now()}`;
+
+describe.skipIf(!LIVE)('live: init creates real GitHub repo', { timeout: 60_000 }, () => {
+  async function restoreReal() {
+    const { execa: realExeca } = await vi.importActual('execa');
+    vi.mocked(execa).mockImplementation(realExeca);
+    const realPlatform = await vi.importActual('../../src/lib/platform.js');
+    vi.mocked(findTool).mockImplementation(realPlatform.findTool);
+    vi.mocked(vaultsRoot).mockImplementation(realPlatform.vaultsRoot);
+  }
+
+  beforeEach(restoreReal);
+
+  beforeAll(async () => {
+    await restoreReal();
+    const { run } = await import('../../src/commands/init.js');
+    await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: () => {} });
+  }, 60_000);
+
+  afterAll(async () => {
+    await restoreReal();
+    const { run } = await import('../../src/commands/destroy.js');
+    await run(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: () => {} }).catch(() => {});
+  }, 60_000);
+
+  it('creates the GitHub repo', async () => {
+    const { repoExists, getCurrentUser } = await import('../../src/lib/github.js');
+    const user = await getCurrentUser();
+    expect(await repoExists(`${user}/${LIVE_VAULT}`)).toBe(true);
+  });
+
+  it('registers vault in ~/.claude.json', async () => {
+    const { getVaultDir } = await import('../../src/lib/registry.js');
+    const dir = await getVaultDir(LIVE_VAULT);
+    expect(dir).toBeTruthy();
+  });
+
+  it('creates vault directory structure on disk', async () => {
+    const { existsSync } = await import('node:fs');
+    const { vaultsRoot } = await import('../../src/lib/platform.js');
+    const { join } = await import('node:path');
+    const vaultDir = join(vaultsRoot(), LIVE_VAULT);
+    expect(existsSync(join(vaultDir, 'CLAUDE.md'))).toBe(true);
+    expect(existsSync(join(vaultDir, 'raw'))).toBe(true);
+    expect(existsSync(join(vaultDir, 'wiki'))).toBe(true);
+    expect(existsSync(join(vaultDir, '.mcp-start.js'))).toBe(true);
   });
 });

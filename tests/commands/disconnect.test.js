@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -59,5 +59,55 @@ describe('disconnect command', () => {
     const { run } = await import('../../src/commands/disconnect.js');
     await run('MyVault', { cfgPath, skipConfirm: true, skipMcp: true });
     expect(existsSync(vaultDir)).toBe(false);
+  });
+});
+
+// ── LIVE: disconnect removes local dir but keeps GitHub repo ──────────────────
+
+const LIVE = !!process.env.VAULTKIT_LIVE_TEST;
+const LIVE_VAULT = `vk-live-disconnect-${Date.now()}`;
+
+describe.skipIf(!LIVE)('live: disconnect removes local dir, keeps GitHub repo', { timeout: 60_000 }, () => {
+  beforeAll(async () => {
+    const { run } = await import('../../src/commands/init.js');
+    await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: () => {} });
+  });
+
+  afterAll(async () => {
+    // Cleanup GitHub repo (disconnect only removes local)
+    const { repoExists, getCurrentUser } = await import('../../src/lib/github.js');
+    const { execa } = await import('execa');
+    const { findTool } = await import('../../src/lib/platform.js');
+    const user = await getCurrentUser().catch(() => null);
+    if (user) {
+      const still = await repoExists(`${user}/${LIVE_VAULT}`).catch(() => false);
+      if (still) {
+        const gh = await findTool('gh');
+        if (gh) await execa(gh, ['repo', 'delete', `${user}/${LIVE_VAULT}`, '--yes'], { reject: false });
+      }
+    }
+  });
+
+  it('removes local vault directory', async () => {
+    const { getVaultDir } = await import('../../src/lib/registry.js');
+    const dir = await getVaultDir(LIVE_VAULT);
+
+    const { run } = await import('../../src/commands/disconnect.js');
+    await run(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: () => {} });
+
+    const { existsSync } = await import('node:fs');
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it('removes vault from registry', async () => {
+    const { getVaultDir } = await import('../../src/lib/registry.js');
+    const dir = await getVaultDir(LIVE_VAULT);
+    expect(dir).toBeNull();
+  });
+
+  it('GitHub repo still exists', async () => {
+    const { repoExists, getCurrentUser } = await import('../../src/lib/github.js');
+    const user = await getCurrentUser();
+    expect(await repoExists(`${user}/${LIVE_VAULT}`)).toBe(true);
   });
 });

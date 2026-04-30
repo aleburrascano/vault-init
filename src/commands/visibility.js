@@ -117,7 +117,7 @@ export async function run(name, target, { cfgPath, log = console.log, skipConfir
   if (target === 'public') {
     if (currentVis !== 'public') {
       log('Setting repo to public...');
-      await execa(gh, ['repo', 'edit', repoSlug, '--visibility', 'public', '--yes'], { reject: false });
+      await execa(gh, ['repo', 'edit', repoSlug, '--visibility', 'public', '--accept-visibility-change-consequences'], { reject: false });
     }
     if (hasPages) {
       if (pagesVis !== 'public') {
@@ -131,7 +131,7 @@ export async function run(name, target, { cfgPath, log = console.log, skipConfir
   } else if (target === 'private') {
     if (currentVis !== 'private') {
       log('Setting repo to private...');
-      await execa(gh, ['repo', 'edit', repoSlug, '--visibility', 'private', '--yes'], { reject: false });
+      await execa(gh, ['repo', 'edit', repoSlug, '--visibility', 'private', '--accept-visibility-change-consequences'], { reject: false });
     }
     if (hasPages) {
       log('Disabling Pages...');
@@ -140,7 +140,7 @@ export async function run(name, target, { cfgPath, log = console.log, skipConfir
   } else { // auth-gated
     if (currentVis !== 'private') {
       log('Setting repo to private...');
-      await execa(gh, ['repo', 'edit', repoSlug, '--visibility', 'private', '--yes'], { reject: false });
+      await execa(gh, ['repo', 'edit', repoSlug, '--visibility', 'private', '--accept-visibility-change-consequences'], { reject: false });
     }
     if (hasPages) {
       if (pagesVis !== 'private') {

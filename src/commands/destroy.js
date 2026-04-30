@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { input } from '@inquirer/prompts';
 import { execa } from 'execa';
 import { validateName, isVaultLike } from '../lib/vault.js';
-import { getVaultDir } from '../lib/registry.js';
+import { getVaultDir, removeFromRegistry } from '../lib/registry.js';
 import { findTool } from '../lib/platform.js';
 import { isAdmin, ensureDeleteRepoScope } from '../lib/github.js';
 
@@ -15,7 +15,7 @@ async function resolveRepoSlug(dir) {
   return m ? m[1] : null;
 }
 
-export async function run(name, { cfgPath, skipConfirm = false, skipMcp = false, log = console.log } = {}) {
+export async function run(name, { cfgPath, skipConfirm = false, skipMcp = false, confirmName, log = console.log } = {}) {
   validateName(name);
 
   const dir = await getVaultDir(name, cfgPath);
@@ -55,7 +55,7 @@ export async function run(name, { cfgPath, skipConfirm = false, skipMcp = false,
     }
     log(`  MCP:    ${name} server registration`);
     log('');
-    const typed = await input({ message: 'Type the vault name to confirm deletion:' });
+    const typed = confirmName ?? await input({ message: 'Type the vault name to confirm deletion:' });
     if (typed !== name) { log('Aborted.'); return; }
     log('');
   }
@@ -74,7 +74,10 @@ export async function run(name, { cfgPath, skipConfirm = false, skipMcp = false,
     }
   }
 
-  if (!skipMcp) {
+  if (skipMcp) {
+    await removeFromRegistry(name, cfgPath);
+    status.mcp = 'removed';
+  } else {
     const claudePath = await findTool('claude');
     if (claudePath) {
       log('Removing MCP server...');

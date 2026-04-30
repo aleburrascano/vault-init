@@ -14,10 +14,10 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const TMPL_PATH = join(SCRIPT_DIR, '../../lib/mcp-start.js.tmpl');
 const DEPLOY_TMPL = join(SCRIPT_DIR, '../../lib/deploy.yml.tmpl');
 
-async function installGh(log) {
+async function installGh(log, skipInstallCheck = false) {
   log('GitHub CLI not found — installing...');
   if (isWindows()) {
-    const ok = await confirm({ message: 'Install GitHub CLI via winget?', default: true });
+    const ok = skipInstallCheck || await confirm({ message: 'Install GitHub CLI via winget?', default: true });
     if (ok) {
       await execa('winget', ['install', '--id', 'GitHub.cli', '-e',
         '--accept-package-agreements', '--accept-source-agreements'], { reject: false });
@@ -52,7 +52,7 @@ async function installGh(log) {
   }
 }
 
-export async function run(name, { cfgPath, log = console.log } = {}) {
+export async function run(name, { cfgPath, publishMode: publishModeOpt, gitName: gitNameOpt, gitEmail: gitEmailOpt, skipInstallCheck = false, log = console.log } = {}) {
   validateName(name);
 
   const root = vaultsRoot();
@@ -68,7 +68,7 @@ export async function run(name, { cfgPath, log = console.log } = {}) {
 
   let ghPath = await findTool('gh');
   if (!ghPath) {
-    await installGh(log);
+    await installGh(log, skipInstallCheck);
     ghPath = await findTool('gh');
     if (!ghPath) {
       throw new Error('gh was installed but could not be found. Open a new terminal and re-run vaultkit init.');
@@ -86,17 +86,20 @@ export async function run(name, { cfgPath, log = console.log } = {}) {
   const gitName = (await execa('git', ['config', 'user.name'], { reject: false })).stdout?.trim();
   const gitEmail = (await execa('git', ['config', 'user.email'], { reject: false })).stdout?.trim();
   if (!gitName) {
-    const n = await input({ message: 'Enter your name for git commits:' });
+    const n = gitNameOpt ?? await input({ message: 'Enter your name for git commits:' });
     await execa('git', ['config', '--global', 'user.name', n]);
   }
   if (!gitEmail) {
-    const e = await input({ message: 'Enter your email for git commits:' });
+    const e = gitEmailOpt ?? await input({ message: 'Enter your email for git commits:' });
     await execa('git', ['config', '--global', 'user.email', e]);
   }
 
   // Publish mode
   log('');
-  const publishMode = await select({
+  if (publishModeOpt !== undefined && !['private', 'public', 'auth-gated'].includes(publishModeOpt)) {
+    throw new Error(`Invalid publishMode: "${publishModeOpt}". Must be one of: private, public, auth-gated`);
+  }
+  const publishMode = publishModeOpt ?? await select({
     message: 'Publish this vault as a public knowledge site?',
     choices: [
       { name: 'Private repo, notes-only (no Pages, no public URL)  [default]', value: 'private' },
@@ -219,7 +222,7 @@ export async function run(name, { cfgPath, log = console.log } = {}) {
     let claudePath = await findTool('claude');
 
     if (!claudePath) {
-      const installClaude = await confirm({ message: 'Claude Code CLI not found. Install it now?', default: false });
+      const installClaude = skipInstallCheck || await confirm({ message: 'Claude Code CLI not found. Install it now?', default: false });
       if (installClaude) {
         log('Installing Claude Code CLI...');
         await execa('npm', ['install', '-g', '@anthropic-ai/claude-code'], { reject: false });

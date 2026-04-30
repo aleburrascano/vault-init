@@ -120,5 +120,5 @@ export async function getPagesVisibility(slug) {
 export async function ensureDeleteRepoScope() {
   const ghPath = await findTool('gh');
   if (!ghPath) throw new Error('gh CLI not found');
-  await execa(ghPath, ['auth', 'refresh', '-h', 'github.com', '-s', 'delete_repo']);
+  await execa(ghPath, ['auth', 'refresh', '-h', 'github.com', '-s', 'delete_repo'], { timeout: 10_000, reject: false });
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -309,5 +309,64 @@ describe('VI-13: deploy added, pushed via PR', () => {
     );
     // PR mode warning should be logged
     expect(vi.mocked(pushOrPr)).toHaveBeenCalled();
+  });
+});
+
+// ── LIVE: visibility toggles real GitHub repo ─────────────────────────────────
+
+const LIVE = !!process.env.VAULTKIT_LIVE_TEST;
+const LIVE_VAULT = `vk-live-visibility-${Date.now()}`;
+
+describe.skipIf(!LIVE)('live: visibility toggles real GitHub repo', { timeout: 60_000 }, () => {
+  async function restoreReal() {
+    const { execa: realExeca } = await vi.importActual('execa');
+    vi.mocked(execa).mockImplementation(realExeca);
+    const realPlatform = await vi.importActual('../../src/lib/platform.js');
+    vi.mocked(findTool).mockImplementation(realPlatform.findTool);
+    const realGit = await vi.importActual('../../src/lib/git.js');
+    vi.mocked(add).mockImplementation(realGit.add);
+    vi.mocked(commit).mockImplementation(realGit.commit);
+    vi.mocked(pushOrPr).mockImplementation(realGit.pushOrPr);
+    const realGithub = await vi.importActual('../../src/lib/github.js');
+    vi.mocked(isAdmin).mockImplementation(realGithub.isAdmin);
+    vi.mocked(getVisibility).mockImplementation(realGithub.getVisibility);
+    vi.mocked(getUserPlan).mockImplementation(realGithub.getUserPlan);
+    vi.mocked(enablePages).mockImplementation(realGithub.enablePages);
+    vi.mocked(setPagesVisibility).mockImplementation(realGithub.setPagesVisibility);
+    vi.mocked(disablePages).mockImplementation(realGithub.disablePages);
+    vi.mocked(pagesExist).mockImplementation(realGithub.pagesExist);
+    vi.mocked(getPagesVisibility).mockImplementation(realGithub.getPagesVisibility);
+  }
+
+  beforeEach(restoreReal);
+
+  beforeAll(async () => {
+    await restoreReal();
+    const { run } = await import('../../src/commands/init.js');
+    await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: () => {} });
+  }, 60_000);
+
+  afterAll(async () => {
+    await restoreReal();
+    const { run } = await import('../../src/commands/destroy.js');
+    await run(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: () => {} }).catch(() => {});
+  }, 60_000);
+
+  it('switches vault to public', async () => {
+    const { run } = await import('../../src/commands/visibility.js');
+    await run(LIVE_VAULT, 'public', { skipConfirm: true, log: () => {} });
+
+    const { getVisibility, getCurrentUser } = await import('../../src/lib/github.js');
+    const user = await getCurrentUser();
+    expect(await getVisibility(`${user}/${LIVE_VAULT}`)).toBe('public');
+  });
+
+  it('switches vault back to private', async () => {
+    const { run } = await import('../../src/commands/visibility.js');
+    await run(LIVE_VAULT, 'private', { skipConfirm: true, log: () => {} });
+
+    const { getVisibility, getCurrentUser } = await import('../../src/lib/github.js');
+    const user = await getCurrentUser();
+    expect(await getVisibility(`${user}/${LIVE_VAULT}`)).toBe('private');
   });
 });

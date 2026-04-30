@@ -6,7 +6,7 @@ import { validateName, sha256 } from '../lib/vault.js';
 import { getVaultDir, getExpectedHash } from '../lib/registry.js';
 import { findTool } from '../lib/platform.js';
 
-export async function run(name, { cfgPath, log = console.log } = {}) {
+export async function run(name, { cfgPath, yes = false, log = console.log } = {}) {
   validateName(name);
 
   const dir = await getVaultDir(name, cfgPath);
@@ -60,7 +60,7 @@ export async function run(name, { cfgPath, log = console.log } = {}) {
     log('  1. git pull --ff-only (applies the upstream .mcp-start.js)');
     log('  2. Re-pin the new SHA-256 in your MCP registration');
     log('');
-    const ok = await confirm({ message: 'Pull upstream and re-pin?', default: false });
+    const ok = yes || await confirm({ message: 'Pull upstream and re-pin?', default: false });
     if (!ok) { log('Aborted.'); return; }
     const pullResult = await execa('git', ['-C', dir, 'pull', '--ff-only', '--quiet'], { reject: false });
     if (pullResult.exitCode !== 0) {
@@ -73,7 +73,7 @@ export async function run(name, { cfgPath, log = console.log } = {}) {
     log('Inspect the file before trusting it:');
     log(`  cat "${launcherPath}"`);
     log('');
-    const ok = await confirm({ message: `Re-pin the on-disk SHA-256 (${onDisk})?`, default: false });
+    const ok = yes || await confirm({ message: `Re-pin the on-disk SHA-256 (${onDisk})?`, default: false });
     if (!ok) { log('Aborted.'); return; }
   }
 

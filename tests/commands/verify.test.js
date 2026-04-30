@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -220,5 +220,40 @@ describe('V-8: no pinned hash', () => {
 
     expect(lines.some(l => /none registered/i.test(l))).toBe(true);
     expect(lines.some(l => /aborted/i.test(l))).toBe(true);
+  });
+});
+
+// ── LIVE: verify checks real launcher hash ────────────────────────────────────
+
+const LIVE = !!process.env.VAULTKIT_LIVE_TEST;
+const LIVE_VAULT = `vk-live-verify-${Date.now()}`;
+
+describe.skipIf(!LIVE)('live: verify checks real launcher hash', { timeout: 60_000 }, () => {
+  async function restoreReal() {
+    const { execa: realExeca } = await vi.importActual('execa');
+    vi.mocked(execa).mockImplementation(realExeca);
+    const realPlatform = await vi.importActual('../../src/lib/platform.js');
+    vi.mocked(findTool).mockImplementation(realPlatform.findTool);
+  }
+
+  beforeEach(restoreReal);
+
+  beforeAll(async () => {
+    await restoreReal();
+    const { run } = await import('../../src/commands/init.js');
+    await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: () => {} });
+  }, 60_000);
+
+  afterAll(async () => {
+    await restoreReal();
+    const { run } = await import('../../src/commands/destroy.js');
+    await run(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: () => {} }).catch(() => {});
+  }, 60_000);
+
+  it('verifies launcher hash matches pinned hash', async () => {
+    const { run } = await import('../../src/commands/verify.js');
+    const lines = [];
+    await run(LIVE_VAULT, { yes: false, log: (m) => lines.push(m) });
+    expect(lines.some(l => /verified/i.test(l))).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { claudeJsonPath } from './platform.js';
 
@@ -49,4 +49,20 @@ export async function getExpectedHash(name, cfgPath = claudeJsonPath()) {
   const server = config.mcpServers?.[name];
   const entry = extractVaultEntry(name, server);
   return entry?.hash ?? null;
+}
+
+export async function removeFromRegistry(name, cfgPath = claudeJsonPath()) {
+  const config = parseConfig(cfgPath);
+  if (!config?.mcpServers) return;
+  delete config.mcpServers[name];
+  writeFileSync(cfgPath, JSON.stringify(config, null, 2), 'utf8');
+}
+
+export async function addToRegistry(name, launcherPath, hash, cfgPath = claudeJsonPath()) {
+  let config = parseConfig(cfgPath) ?? {};
+  if (!config.mcpServers) config.mcpServers = {};
+  const args = [launcherPath];
+  if (hash) args.push(`--expected-sha256=${hash}`);
+  config.mcpServers[name] = { command: 'node', args };
+  writeFileSync(cfgPath, JSON.stringify(config, null, 2), 'utf8');
 }

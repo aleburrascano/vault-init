@@ -3,7 +3,7 @@ import { join, basename } from 'node:path';
 import { confirm } from '@inquirer/prompts';
 import { execa } from 'execa';
 import { validateName, sha256, isVaultLike } from '../lib/vault.js';
-import { getVaultDir } from '../lib/registry.js';
+import { getVaultDir, addToRegistry } from '../lib/registry.js';
 import { findTool, vaultsRoot, npmGlobalBin } from '../lib/platform.js';
 import { clone } from '../lib/git.js';
 
@@ -24,7 +24,7 @@ export function _normalizeInput(input) {
   throw new Error(`Unrecognized format. Use owner/repo or a GitHub URL.`);
 }
 
-export async function run(input, { cfgPath, log = console.log } = {}) {
+export async function run(input, { cfgPath, skipMcp = false, log = console.log } = {}) {
   const { repo, name } = _normalizeInput(input);
   validateName(name);
 
@@ -72,6 +72,15 @@ export async function run(input, { cfgPath, log = console.log } = {}) {
     log(`  File:    ${launcherPath}`);
     log(`  SHA-256: ${hash}`);
     log('');
+
+    if (skipMcp) {
+      await addToRegistry(name, join(vaultDir, '.mcp-start.js'), hash, cfgPath);
+      cloned = false;
+      log('');
+      log(`Done. ${name} registered (MCP CLI skipped).`);
+      log(`  Vault: ${vaultDir}`);
+      return;
+    }
 
     const confirmed = await confirm({ message: 'Register as MCP server?', default: false });
     if (!confirmed) {

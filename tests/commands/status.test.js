@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -274,4 +274,45 @@ describe('S-12: single-vault detail mode — real git repo', () => {
     // git status output should mention "nothing to commit" or "up to date"
     expect(lines.some(l => /nothing to commit|up to date|working tree clean/i.test(l))).toBe(true);
   }, 15000);
+});
+
+// ── LIVE: status reports real vault state ─────────────────────────────────────
+
+const LIVE = !!process.env.VAULTKIT_LIVE_TEST;
+const LIVE_VAULT = `vk-live-status-${Date.now()}`;
+
+describe.skipIf(!LIVE)('live: status reports real vault state', { timeout: 60_000 }, () => {
+  async function restoreReal() {
+    const realGit = await vi.importActual('../../src/lib/git.js');
+    vi.mocked(getStatus).mockImplementation(realGit.getStatus);
+  }
+
+  beforeEach(restoreReal);
+
+  beforeAll(async () => {
+    await restoreReal();
+    const { run } = await import('../../src/commands/init.js');
+    await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: () => {} });
+  }, 60_000);
+
+  afterAll(async () => {
+    await restoreReal();
+    const { run } = await import('../../src/commands/destroy.js');
+    await run(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: () => {} }).catch(() => {});
+  }, 60_000);
+
+  it('lists vault in summary mode', async () => {
+    const { run } = await import('../../src/commands/status.js');
+    const lines = [];
+    await run(undefined, { log: (m) => lines.push(m) });
+    expect(lines.some(l => l.includes(LIVE_VAULT))).toBe(true);
+  });
+
+  it('shows detail in single-vault mode', async () => {
+    const { run } = await import('../../src/commands/status.js');
+    const lines = [];
+    await run(LIVE_VAULT, { log: (m) => lines.push(m) });
+    expect(lines.some(l => /main/i.test(l))).toBe(true);
+    expect(lines.some(l => /clean|nothing to commit|up.to.date/i.test(l))).toBe(true);
+  });
 });

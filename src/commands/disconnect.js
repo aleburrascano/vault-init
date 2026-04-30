@@ -1,11 +1,11 @@
 import { existsSync, rmSync } from 'node:fs';
-import { confirm, input } from '@inquirer/prompts';
+import { input } from '@inquirer/prompts';
 import { validateName, isVaultLike } from '../lib/vault.js';
-import { getVaultDir } from '../lib/registry.js';
+import { getVaultDir, removeFromRegistry } from '../lib/registry.js';
 import { findTool } from '../lib/platform.js';
 import { execa } from 'execa';
 
-export async function run(name, { cfgPath, skipConfirm = false, skipMcp = false, log = console.log } = {}) {
+export async function run(name, { cfgPath, skipConfirm = false, skipMcp = false, confirmName, log = console.log } = {}) {
   validateName(name);
 
   const dir = await getVaultDir(name, cfgPath);
@@ -25,7 +25,7 @@ export async function run(name, { cfgPath, skipConfirm = false, skipMcp = false,
     log('');
     log('The GitHub repo will NOT be deleted.');
     log('');
-    const typed = await input({ message: 'Type the vault name to confirm:' });
+    const typed = confirmName ?? await input({ message: 'Type the vault name to confirm:' });
     if (typed !== name) {
       log('Aborted.');
       return;
@@ -33,7 +33,9 @@ export async function run(name, { cfgPath, skipConfirm = false, skipMcp = false,
     log('');
   }
 
-  if (!skipMcp) {
+  if (skipMcp) {
+    await removeFromRegistry(name, cfgPath);
+  } else {
     const claudePath = await findTool('claude');
     if (claudePath) {
       log('Removing MCP server...');
