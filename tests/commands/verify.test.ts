@@ -9,13 +9,13 @@ vi.mock('@inquirer/prompts', () => ({ confirm: vi.fn() }));
 
 // Mock execa for network-free git fetch/diff/pull
 vi.mock('execa', async (importOriginal) => {
-  const real = await importOriginal();
+  const real = await importOriginal<typeof import('execa')>();
   return { ...real, execa: vi.fn() };
 });
 
 // Mock findTool to control whether claude is "installed"
 vi.mock('../../src/lib/platform.js', async (importOriginal) => {
-  const real = await importOriginal();
+  const real = await importOriginal<typeof import('../../src/lib/platform.js')>();
   return { ...real, findTool: vi.fn() };
 });
 
@@ -23,7 +23,9 @@ import { confirm } from '@inquirer/prompts';
 import { execa } from 'execa';
 import { findTool } from '../../src/lib/platform.js';
 
-let tmp;
+interface VaultEntry { dir: string; hash: string | null }
+
+let tmp: string;
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'vk-verify-test-'));
@@ -36,8 +38,8 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-function writeCfg(cfgPath, vaults) {
-  const mcpServers = {};
+function writeCfg(cfgPath: string, vaults: Record<string, VaultEntry>): void {
+  const mcpServers: Record<string, { command: string; args: string[] }> = {};
   for (const [name, { dir, hash }] of Object.entries(vaults)) {
     const args = [`${dir}/.mcp-start.js`];
     if (hash) args.push(`--expected-sha256=${hash}`);
@@ -46,24 +48,24 @@ function writeCfg(cfgPath, vaults) {
   writeFileSync(cfgPath, JSON.stringify({ mcpServers }), 'utf8');
 }
 
-function computeHash(content) {
+function computeHash(content: string): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
-function writeLauncher(dir, content = '// launcher') {
+function writeLauncher(dir: string, content: string = '// launcher'): string {
   writeFileSync(join(dir, '.mcp-start.js'), content, 'utf8');
   return computeHash(content);
 }
 
-function mockNoGit() {
+function mockNoGit(): void {
   // No .git directory, so upstream drift check is skipped
-  vi.mocked(execa).mockResolvedValue({ exitCode: 1, stdout: '', stderr: '' });
+  vi.mocked(execa).mockResolvedValue({ exitCode: 1, stdout: '', stderr: '' } as never);
 }
 
-async function runVerify(name, cfgPath) {
+async function runVerify(name: string, cfgPath: string): Promise<string[]> {
   const { run } = await import('../../src/commands/verify.js');
-  const lines = [];
-  await run(name, { cfgPath, log: (m) => lines.push(m) });
+  const lines: string[] = [];
+  await run(name, { cfgPath, log: (m: unknown) => lines.push(String(m)) });
   return lines;
 }
 
@@ -162,21 +164,25 @@ describe('V-6: hash mismatch, user confirms re-pin', () => {
     vi.mocked(confirm).mockResolvedValueOnce(true);
     vi.mocked(findTool).mockResolvedValue('/usr/bin/claude');
     // After confirm, execa is called for mcp remove + add
-    vi.mocked(execa).mockImplementation(async (cmd, args) => {
-      return { exitCode: 0, stdout: '', stderr: '' };
-    });
+    vi.mocked(execa).mockImplementation((async () => ({ exitCode: 0, stdout: '', stderr: '' })) as never);
 
     const lines = await runVerify('RepinVault', cfgPath);
 
     expect(lines.some(l => /re-pinning/i.test(l))).toBe(true);
     expect(lines.some(l => /done/i.test(l))).toBe(true);
     // claude mcp remove called
-    const removeCalls = vi.mocked(execa).mock.calls.filter(c => c[1]?.includes('remove'));
+    const removeCalls = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args.includes('remove');
+    });
     expect(removeCalls.length).toBeGreaterThan(0);
     // claude mcp add called with expected-sha256
-    const addCalls = vi.mocked(execa).mock.calls.filter(c => c[1]?.some(a => a?.includes('expected-sha256')));
+    const addCalls = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args.some((a: unknown) => typeof a === 'string' && a.includes('expected-sha256'));
+    });
     expect(addCalls.length).toBeGreaterThan(0);
-    expect(addCalls[0][1]).toContain(`--expected-sha256=${realHash}`);
+    expect(addCalls[0]?.[1]).toContain(`--expected-sha256=${realHash}`);
   });
 });
 
@@ -196,8 +202,8 @@ describe('V-7: hash mismatch, claude not found', () => {
     vi.mocked(findTool).mockResolvedValue(null);
 
     const { run } = await import('../../src/commands/verify.js');
-    const lines = [];
-    await expect(run('NoClaude', { cfgPath, log: (m) => lines.push(m) })).rejects.toThrow(/Claude Code not found/i);
+    const lines: string[] = [];
+    await expect(run('NoClaude', { cfgPath, log: (m: unknown) => lines.push(String(m)) })).rejects.toThrow(/Claude Code not found/i);
     expect(lines.some(l => /claude mcp/i.test(l))).toBe(true);
   });
 });
@@ -230,9 +236,9 @@ const LIVE_VAULT = `vk-live-verify-${Date.now()}`;
 
 describe.skipIf(!LIVE)('live: verify checks real launcher hash', { timeout: 60_000 }, () => {
   async function restoreReal() {
-    const { execa: realExeca } = await vi.importActual('execa');
-    vi.mocked(execa).mockImplementation(realExeca);
-    const realPlatform = await vi.importActual('../../src/lib/platform.js');
+    const { execa: realExeca } = await vi.importActual<typeof import('execa')>('execa');
+    vi.mocked(execa).mockImplementation(realExeca as never);
+    const realPlatform = await vi.importActual<typeof import('../../src/lib/platform.js')>('../../src/lib/platform.js');
     vi.mocked(findTool).mockImplementation(realPlatform.findTool);
   }
 
@@ -241,19 +247,21 @@ describe.skipIf(!LIVE)('live: verify checks real launcher hash', { timeout: 60_0
   beforeAll(async () => {
     await restoreReal();
     const { run } = await import('../../src/commands/init.js');
+    // @ts-expect-error TS infers only default-valued options from init.js — phase 5 init.ts migration restores the full type.
     await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: () => {} });
   }, 60_000);
 
   afterAll(async () => {
     await restoreReal();
     const { run } = await import('../../src/commands/destroy.js');
+    // @ts-expect-error destroy.js options incomplete under JS inference until phase 5
     await run(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: () => {} }).catch(() => {});
   }, 60_000);
 
   it('verifies launcher hash matches pinned hash', async () => {
     const { run } = await import('../../src/commands/verify.js');
-    const lines = [];
-    await run(LIVE_VAULT, { yes: false, log: (m) => lines.push(m) });
+    const lines: string[] = [];
+    await run(LIVE_VAULT, { yes: false, log: (m: unknown) => lines.push(String(m)) });
     expect(lines.some(l => /verified/i.test(l))).toBe(true);
   });
 });

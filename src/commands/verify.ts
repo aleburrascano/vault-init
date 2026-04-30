@@ -5,8 +5,16 @@ import { execa } from 'execa';
 import { validateName, sha256 } from '../lib/vault.js';
 import { getVaultDir, getExpectedHash } from '../lib/registry.js';
 import { findTool } from '../lib/platform.js';
+import type { RunOptions } from '../types.js';
 
-export async function run(name, { cfgPath, yes = false, log = console.log } = {}) {
+export interface VerifyOptions extends RunOptions {
+  yes?: boolean;
+}
+
+export async function run(
+  name: string,
+  { cfgPath, yes = false, log = console.log }: VerifyOptions = {},
+): Promise<void> {
   validateName(name);
 
   const dir = await getVaultDir(name, cfgPath);
@@ -33,15 +41,16 @@ export async function run(name, { cfgPath, yes = false, log = console.log } = {}
     await execa('git', ['-C', dir, 'fetch', '--quiet'], { reject: false });
     const hasUpstream = (await execa('git', ['-C', dir, 'rev-parse', '@{u}'], { reject: false })).exitCode === 0;
     if (hasUpstream) {
-      const diffFiles = (await execa('git', [
+      const diffResult = await execa('git', [
         '-C', dir, 'diff', '--name-only', 'HEAD..@{u}', '--', '.mcp-start.js',
-      ], { reject: false })).stdout?.trim();
+      ], { reject: false });
+      const diffFiles = String(diffResult.stdout ?? '').trim();
       if (diffFiles === '.mcp-start.js') {
         upstreamDrift = true;
         log('Upstream has a different .mcp-start.js — diff:');
         log('----------------------------------------');
-        const diff = (await execa('git', ['-C', dir, '--no-pager', 'diff', 'HEAD..@{u}', '--', '.mcp-start.js'], { reject: false })).stdout;
-        log(diff ?? '');
+        const diffOut = await execa('git', ['-C', dir, '--no-pager', 'diff', 'HEAD..@{u}', '--', '.mcp-start.js'], { reject: false });
+        log(String(diffOut.stdout ?? ''));
         log('----------------------------------------');
         log('');
       }
