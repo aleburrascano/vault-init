@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execa } from 'execa';
 import { init, add, commit, push, pull, getStatus, archiveZip } from '../../src/lib/git.js';
 
-let tmp;
+let tmp: string;
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'vk-git-test-'));
@@ -14,13 +14,13 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-async function makeRepo(dir) {
+async function makeRepo(dir: string): Promise<void> {
   await execa('git', ['init', '-b', 'main', dir]);
   await execa('git', ['-C', dir, 'config', 'user.email', 'test@test.com']);
   await execa('git', ['-C', dir, 'config', 'user.name', 'Test']);
 }
 
-async function makeCommit(dir, filename = 'file.txt', content = 'hello') {
+async function makeCommit(dir: string, filename: string = 'file.txt', content: string = 'hello'): Promise<void> {
   writeFileSync(join(dir, filename), content);
   await execa('git', ['-C', dir, 'add', '.']);
   await execa('git', ['-C', dir, 'commit', '-m', 'test commit']);
@@ -45,7 +45,7 @@ describe('add + commit', () => {
     await add(dir, ['hello.txt']);
     await commit(dir, 'test: add hello');
     const log = await execa('git', ['-C', dir, 'log', '--oneline'], { reject: false });
-    expect(log.stdout).toContain('test: add hello');
+    expect(String(log.stdout)).toContain('test: add hello');
   });
 
   it('stages all files when given "."', async () => {
@@ -57,7 +57,7 @@ describe('add + commit', () => {
     await add(dir, '.');
     await commit(dir, 'add all');
     const log = await execa('git', ['-C', dir, 'log', '--oneline']);
-    expect(log.stdout).toContain('add all');
+    expect(String(log.stdout)).toContain('add all');
   });
 });
 
@@ -157,7 +157,6 @@ describe('archiveZip', () => {
     await makeCommit(dir);
     const out = join(tmp, 'archive.zip');
     await archiveZip(dir, out);
-    const { statSync } = await import('node:fs');
     const stat = statSync(out);
     expect(stat.size).toBeGreaterThan(0);
   });
