@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { getAllVaults, getVaultDir, getExpectedHash } from '../../src/lib/registry.js';
 
-let tmp;
+let tmp: string;
 beforeEach(() => {
   tmp = join(tmpdir(), `vk-test-${Date.now()}`);
   mkdirSync(tmp);
@@ -13,12 +13,12 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-function writeCfg(obj) {
+function writeCfg(obj: unknown): string {
   writeFileSync(join(tmp, '.claude.json'), JSON.stringify(obj), 'utf8');
   return join(tmp, '.claude.json');
 }
 
-const vaultEntry = (dir, hash) => ({
+const vaultEntry = (dir: string, hash: string | null) => ({
   command: 'node',
   args: hash
     ? [`${dir}/.mcp-start.js`, `--expected-sha256=${hash}`]
@@ -88,7 +88,7 @@ describe('getAllVaults', () => {
     });
     const result = await getAllVaults(cfg);
     expect(result).toHaveLength(1);
-    expect(result[0].name).toBe('MyVault');
+    expect(result[0]?.name).toBe('MyVault');
   });
 });
 
