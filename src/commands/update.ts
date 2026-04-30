@@ -1,25 +1,33 @@
-import { existsSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readdirSync, copyFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { confirm } from '@inquirer/prompts';
 import { execa } from 'execa';
 import {
-  validateName, sha256, isVaultLike,
+  validateName, sha256,
   renderClaudeMd, renderReadme, renderDuplicateCheckYaml,
   renderGitignore, renderGitattributes, renderIndexMd, renderLogMd,
 } from '../lib/vault.js';
 import { getVaultDir } from '../lib/registry.js';
 import { findTool } from '../lib/platform.js';
 import { add, commit, pushOrPr } from '../lib/git.js';
+import type { RunOptions } from '../types.js';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const TMPL_PATH = join(SCRIPT_DIR, '../../lib/mcp-start.js.tmpl');
 
-function isDirEmpty(dir) {
+export interface UpdateOptions extends RunOptions {
+  skipConfirm?: boolean;
+}
+
+function isDirEmpty(dir: string): boolean {
   try { return readdirSync(dir).length === 0; } catch { return true; }
 }
 
-export async function run(name, { cfgPath, log = console.log, skipConfirm = false } = {}) {
+export async function run(
+  name: string,
+  { cfgPath, log = console.log, skipConfirm = false }: UpdateOptions = {},
+): Promise<void> {
   validateName(name);
 
   const dir = await getVaultDir(name, cfgPath);
@@ -38,7 +46,7 @@ export async function run(name, { cfgPath, log = console.log, skipConfirm = fals
   const launcherWillChange = beforeHash !== tmplHash;
 
   // Layout-repair detection
-  const missing = [];
+  const missing: string[] = [];
   if (!existsSync(join(dir, 'CLAUDE.md'))) missing.push('CLAUDE.md');
   if (!existsSync(join(dir, 'README.md'))) missing.push('README.md');
   if (!existsSync(join(dir, 'index.md'))) missing.push('index.md');
@@ -79,19 +87,18 @@ export async function run(name, { cfgPath, log = console.log, skipConfirm = fals
   }
 
   // Apply: copy launcher
-  const { copyFileSync } = await import('node:fs');
   copyFileSync(TMPL_PATH, launcherPath);
   const afterHash = await sha256(launcherPath);
 
   // Apply: create missing layout files
-  const added = [];
+  const added: string[] = [];
   for (const f of missing) {
     const target = join(dir, f);
     mkdirSync(dirname(target), { recursive: true });
     switch (f) {
       case 'CLAUDE.md': writeFileSync(target, renderClaudeMd(name)); break;
       case 'README.md': writeFileSync(target, renderReadme(name, '')); break;
-      case 'index.md': writeFileSync(target, renderIndexMd(name)); break;
+      case 'index.md': writeFileSync(target, renderIndexMd()); break;
       case 'log.md': writeFileSync(target, renderLogMd()); break;
       case 'raw/.gitkeep': writeFileSync(target, ''); break;
       case 'wiki/.gitkeep': writeFileSync(target, ''); break;
@@ -129,20 +136,21 @@ export async function run(name, { cfgPath, log = console.log, skipConfirm = fals
   }
 
   // Commit
-  const filesToStage = [];
+  const filesToStage: string[] = [];
   if (launcherChanged) filesToStage.push('.mcp-start.js');
   filesToStage.push(...added);
 
   await add(dir, filesToStage);
 
-  const staged = (await execa('git', ['-C', dir, 'diff', '--cached', '--name-only'], { reject: false })).stdout?.trim();
+  const stagedResult = await execa('git', ['-C', dir, 'diff', '--cached', '--name-only'], { reject: false });
+  const staged = String(stagedResult.stdout ?? '').trim();
   if (!staged) {
     log('  Nothing staged — skipping commit.');
     log('Done. Restart Claude Code to apply.');
     return;
   }
 
-  let commitMsg;
+  let commitMsg: string;
   if (launcherChanged && added.length > 0) {
     commitMsg = 'chore: update .mcp-start.js + restore standard layout files';
   } else if (launcherChanged) {

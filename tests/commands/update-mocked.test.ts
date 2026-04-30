@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -8,15 +8,15 @@ const TMPL_PATH = join(dirname(fileURLToPath(import.meta.url)), '../../lib/mcp-s
 
 vi.mock('@inquirer/prompts', () => ({ confirm: vi.fn() }));
 vi.mock('execa', async (importOriginal) => {
-  const real = await importOriginal();
+  const real = await importOriginal<typeof import('execa')>();
   return { ...real, execa: vi.fn() };
 });
 vi.mock('../../src/lib/git.js', async (importOriginal) => {
-  const real = await importOriginal();
+  const real = await importOriginal<typeof import('../../src/lib/git.js')>();
   return { ...real, add: vi.fn(), commit: vi.fn(), pushOrPr: vi.fn() };
 });
 vi.mock('../../src/lib/platform.js', async (importOriginal) => {
-  const real = await importOriginal();
+  const real = await importOriginal<typeof import('../../src/lib/platform.js')>();
   return { ...real, findTool: vi.fn() };
 });
 
@@ -25,7 +25,7 @@ import { execa } from 'execa';
 import { add, commit, pushOrPr } from '../../src/lib/git.js';
 import { findTool } from '../../src/lib/platform.js';
 
-let tmp;
+let tmp: string;
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'vk-update-mock-'));
@@ -36,7 +36,7 @@ beforeEach(() => {
   vi.mocked(pushOrPr).mockReset();
   vi.mocked(findTool).mockReset();
   // Default: no staged changes, claude not found
-  vi.mocked(execa).mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' });
+  vi.mocked(execa).mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' } as never);
   vi.mocked(findTool).mockResolvedValue(null);
   vi.mocked(pushOrPr).mockResolvedValue({ mode: 'direct' });
 });
@@ -45,15 +45,15 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-function writeCfg(cfgPath, vaults) {
-  const mcpServers = {};
+function writeCfg(cfgPath: string, vaults: Record<string, string>): void {
+  const mcpServers: Record<string, { command: string; args: string[] }> = {};
   for (const [name, dir] of Object.entries(vaults)) {
     mcpServers[name] = { command: 'node', args: [`${dir}/.mcp-start.js`] };
   }
   writeFileSync(cfgPath, JSON.stringify({ mcpServers }), 'utf8');
 }
 
-function makeGitDir(dir) {
+function makeGitDir(dir: string): void {
   mkdirSync(join(dir, '.git'), { recursive: true });
 }
 
@@ -97,8 +97,8 @@ describe('U-2: already up to date, re-pins', () => {
     writeCfg(cfgPath, { UpToDate: vaultDir });
 
     const { run } = await import('../../src/commands/update.js');
-    const lines = [];
-    await run('UpToDate', { cfgPath, skipConfirm: true, log: (m) => lines.push(m) });
+    const lines: string[] = [];
+    await run('UpToDate', { cfgPath, skipConfirm: true, log: (m: unknown) => lines.push(String(m)) });
 
     expect(lines.some(l => /already up to date/i.test(l))).toBe(true);
     // No actual commit should be made
@@ -118,8 +118,8 @@ describe('U-3: user declines', () => {
     vi.mocked(confirm).mockResolvedValueOnce(false);
 
     const { run } = await import('../../src/commands/update.js');
-    const lines = [];
-    await run('AbortVault', { cfgPath, log: (m) => lines.push(m) });
+    const lines: string[] = [];
+    await run('AbortVault', { cfgPath, log: (m: unknown) => lines.push(String(m)) });
 
     expect(lines.some(l => /aborted/i.test(l))).toBe(true);
     expect(vi.mocked(commit)).not.toHaveBeenCalled();
@@ -139,11 +139,11 @@ describe('U-4: launcher updated, direct push', () => {
 
     vi.mocked(pushOrPr).mockResolvedValueOnce({ mode: 'direct' });
     // Simulate "git diff --cached" showing staged files
-    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 0, stdout: '.mcp-start.js', stderr: '' });
+    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 0, stdout: '.mcp-start.js', stderr: '' } as never);
 
     const { run } = await import('../../src/commands/update.js');
-    const lines = [];
-    await run('DirectPush', { cfgPath, skipConfirm: true, log: (m) => lines.push(m) });
+    const lines: string[] = [];
+    await run('DirectPush', { cfgPath, skipConfirm: true, log: (m: unknown) => lines.push(String(m)) });
 
     expect(vi.mocked(commit)).toHaveBeenCalled();
     expect(vi.mocked(pushOrPr)).toHaveBeenCalled();
@@ -162,11 +162,11 @@ describe('U-5: launcher updated, PR mode', () => {
     writeCfg(cfgPath, { PrMode: vaultDir });
 
     vi.mocked(pushOrPr).mockResolvedValueOnce({ mode: 'pr', branch: 'vaultkit-update-1234567890' });
-    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 0, stdout: '.mcp-start.js', stderr: '' });
+    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 0, stdout: '.mcp-start.js', stderr: '' } as never);
 
     const { run } = await import('../../src/commands/update.js');
-    const lines = [];
-    await run('PrMode', { cfgPath, skipConfirm: true, log: (m) => lines.push(m) });
+    const lines: string[] = [];
+    await run('PrMode', { cfgPath, skipConfirm: true, log: (m: unknown) => lines.push(String(m)) });
 
     expect(lines.some(l => /PR|branch/i.test(l))).toBe(true);
     expect(lines.some(l => /vaultkit-update/i.test(l))).toBe(true);
@@ -184,12 +184,12 @@ describe('U-6: claude not found', () => {
     writeCfg(cfgPath, { NoClaude: vaultDir });
 
     vi.mocked(findTool).mockResolvedValue(null);
-    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 0, stdout: '.mcp-start.js', stderr: '' });
+    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 0, stdout: '.mcp-start.js', stderr: '' } as never);
     vi.mocked(pushOrPr).mockResolvedValueOnce({ mode: 'direct' });
 
     const { run } = await import('../../src/commands/update.js');
-    const lines = [];
-    await run('NoClaude', { cfgPath, skipConfirm: true, log: (m) => lines.push(m) });
+    const lines: string[] = [];
+    await run('NoClaude', { cfgPath, skipConfirm: true, log: (m: unknown) => lines.push(String(m)) });
 
     expect(lines.some(l => /Claude Code not found|MCP re-registration skipped/i.test(l))).toBe(true);
     expect(lines.some(l => /claude mcp/i.test(l))).toBe(true);
@@ -209,7 +209,7 @@ describe('U-7: layout-only restore', () => {
     const cfgPath = join(tmp, '.claude.json');
     writeCfg(cfgPath, { LayoutOnly: vaultDir });
 
-    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 0, stdout: 'CLAUDE.md', stderr: '' });
+    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 0, stdout: 'CLAUDE.md', stderr: '' } as never);
     vi.mocked(pushOrPr).mockResolvedValueOnce({ mode: 'direct' });
 
     const { run } = await import('../../src/commands/update.js');

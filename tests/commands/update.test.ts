@@ -1,28 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execa } from 'execa';
 
-let tmp;
+let tmp: string;
 beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'vk-update-test-')); });
 afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 
-function writeCfg(cfgPath, vaults) {
-  const mcpServers = {};
+function writeCfg(cfgPath: string, vaults: Record<string, string>): void {
+  const mcpServers: Record<string, { command: string; args: string[] }> = {};
   for (const [name, dir] of Object.entries(vaults)) {
     mcpServers[name] = { command: 'node', args: [`${dir}/.mcp-start.js`] };
   }
   writeFileSync(cfgPath, JSON.stringify({ mcpServers }), 'utf8');
-}
-
-async function makeGitRepo(dir) {
-  await execa('git', ['init', '-b', 'main', dir]);
-  await execa('git', ['-C', dir, 'config', 'user.email', 'test@test.com']);
-  await execa('git', ['-C', dir, 'config', 'user.name', 'Test']);
-  writeFileSync(join(dir, 'placeholder.txt'), '');
-  await execa('git', ['-C', dir, 'add', '.']);
-  await execa('git', ['-C', dir, 'commit', '-m', 'init']);
 }
 
 describe('update command', () => {
