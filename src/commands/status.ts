@@ -1,11 +1,15 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { execa } from 'execa';
 import { getAllVaults, getVaultDir } from '../lib/registry.js';
 import { getStatus } from '../lib/git.js';
 import { validateName } from '../lib/vault.js';
-import { execa } from 'execa';
+import type { RunOptions } from '../types.js';
 
-export async function run(name, { cfgPath, log = console.log } = {}) {
+export async function run(
+  name: string | undefined,
+  { cfgPath, log = console.log }: RunOptions = {},
+): Promise<void> {
   if (name) {
     // Single-vault detailed mode
     validateName(name);
@@ -19,7 +23,7 @@ export async function run(name, { cfgPath, log = console.log } = {}) {
     log(`${name}`);
     log(`  Path: ${dir}`);
     const result = await execa('git', ['-C', dir, 'status'], { reject: false });
-    log(result.stdout);
+    log(String(result.stdout ?? ''));
     return;
   }
 

@@ -5,13 +5,15 @@ import { tmpdir } from 'node:os';
 import { execa } from 'execa';
 
 vi.mock('../../src/lib/git.js', async (importOriginal) => {
-  const real = await importOriginal();
+  const real = await importOriginal<typeof import('../../src/lib/git.js')>();
   return { ...real, getStatus: vi.fn() };
 });
 
 import { getStatus } from '../../src/lib/git.js';
 
-let tmp;
+interface VaultEntry { dir: string; hash: string | null }
+
+let tmp: string;
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'vk-status-test-'));
@@ -22,8 +24,8 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-function writeCfg(cfgPath, vaults) {
-  const mcpServers = {};
+function writeCfg(cfgPath: string, vaults: Record<string, VaultEntry>): void {
+  const mcpServers: Record<string, { command: string; args: string[] }> = {};
   for (const [name, { dir, hash }] of Object.entries(vaults)) {
     const args = [`${dir}/.mcp-start.js`];
     if (hash) args.push(`--expected-sha256=${hash}`);
@@ -32,14 +34,14 @@ function writeCfg(cfgPath, vaults) {
   writeFileSync(cfgPath, JSON.stringify({ mcpServers }), 'utf8');
 }
 
-function makeGitRepo(dir) {
+function makeGitRepo(dir: string): void {
   mkdirSync(join(dir, '.git'), { recursive: true });
 }
 
-async function runStatus(name, cfgPath) {
+async function runStatus(name: string | undefined, cfgPath: string): Promise<string[]> {
   const { run } = await import('../../src/commands/status.js');
-  const lines = [];
-  await run(name, { cfgPath, log: (m) => lines.push(m) });
+  const lines: string[] = [];
+  await run(name, { cfgPath, log: (m: unknown) => lines.push(String(m)) });
   return lines;
 }
 
@@ -266,8 +268,8 @@ describe('S-12: single-vault detail mode — real git repo', () => {
     writeCfg(cfgPath, { DetailVault: { dir: vaultDir, hash: null } });
 
     const { run } = await import('../../src/commands/status.js');
-    const lines = [];
-    await run('DetailVault', { cfgPath, log: (m) => lines.push(m) });
+    const lines: string[] = [];
+    await run('DetailVault', { cfgPath, log: (m: unknown) => lines.push(String(m)) });
 
     expect(lines.some(l => /DetailVault/i.test(l))).toBe(true);
     expect(lines.some(l => /Path:/i.test(l))).toBe(true);
@@ -283,7 +285,7 @@ const LIVE_VAULT = `vk-live-status-${Date.now()}`;
 
 describe.skipIf(!LIVE)('live: status reports real vault state', { timeout: 60_000 }, () => {
   async function restoreReal() {
-    const realGit = await vi.importActual('../../src/lib/git.js');
+    const realGit = await vi.importActual<typeof import('../../src/lib/git.js')>('../../src/lib/git.js');
     vi.mocked(getStatus).mockImplementation(realGit.getStatus);
   }
 
@@ -292,26 +294,28 @@ describe.skipIf(!LIVE)('live: status reports real vault state', { timeout: 60_00
   beforeAll(async () => {
     await restoreReal();
     const { run } = await import('../../src/commands/init.js');
+    // @ts-expect-error TS infers only default-valued options from init.js — phase 5 init.ts migration restores the full type.
     await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: () => {} });
   }, 60_000);
 
   afterAll(async () => {
     await restoreReal();
     const { run } = await import('../../src/commands/destroy.js');
+    // @ts-expect-error destroy.js's options type also incomplete under JS inference until phase 5
     await run(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: () => {} }).catch(() => {});
   }, 60_000);
 
   it('lists vault in summary mode', async () => {
     const { run } = await import('../../src/commands/status.js');
-    const lines = [];
-    await run(undefined, { log: (m) => lines.push(m) });
+    const lines: string[] = [];
+    await run(undefined, { log: (m: unknown) => lines.push(String(m)) });
     expect(lines.some(l => l.includes(LIVE_VAULT))).toBe(true);
   });
 
   it('shows detail in single-vault mode', async () => {
     const { run } = await import('../../src/commands/status.js');
-    const lines = [];
-    await run(LIVE_VAULT, { log: (m) => lines.push(m) });
+    const lines: string[] = [];
+    await run(LIVE_VAULT, { log: (m: unknown) => lines.push(String(m)) });
     expect(lines.some(l => /main/i.test(l))).toBe(true);
     expect(lines.some(l => /clean|nothing to commit|up.to.date/i.test(l))).toBe(true);
   });
