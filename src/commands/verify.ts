@@ -2,6 +2,7 @@ import { confirm } from '@inquirer/prompts';
 import { execa } from 'execa';
 import { Vault, sha256 } from '../lib/vault.js';
 import { findTool } from '../lib/platform.js';
+import { runMcpRepin, manualMcpRepinCommands } from '../lib/mcp.js';
 import type { RunOptions } from '../types.js';
 
 export interface VerifyOptions extends RunOptions {
@@ -82,19 +83,15 @@ export async function run(
 
   const claudePath = await findTool('claude');
   if (!claudePath) {
+    const manual = manualMcpRepinCommands(name, vault.launcherPath, finalHash);
     log('Warning: Claude Code not found — re-pin manually:');
-    log(`  claude mcp remove ${name} --scope user`);
-    log(`  claude mcp add --scope user ${name} -- node "${vault.launcherPath}" --expected-sha256=${finalHash}`);
+    log(`  ${manual.remove}`);
+    log(`  ${manual.add}`);
     throw new Error('Claude Code not found.');
   }
 
   log(`Re-pinning MCP registration with SHA-256 ${finalHash}...`);
-  await execa(claudePath, ['mcp', 'remove', name, '--scope', 'user'], { reject: false });
-  await execa(claudePath, [
-    'mcp', 'add', '--scope', 'user',
-    name, '--', 'node', vault.launcherPath,
-    `--expected-sha256=${finalHash}`,
-  ]);
+  await runMcpRepin(claudePath, name, vault.launcherPath, finalHash);
 
   log('');
   log('Done. Restart Claude Code to apply the new pin.');

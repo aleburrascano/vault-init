@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { confirm } from '@inquirer/prompts';
-import { execa } from 'execa';
 import { validateName, sha256, isVaultLike } from '../lib/vault.js';
 import { getVaultDir, addToRegistry } from '../lib/registry.js';
-import { findTool, vaultsRoot, npmGlobalBin } from '../lib/platform.js';
+import { findTool, vaultsRoot } from '../lib/platform.js';
+import { findOrInstallClaude, runMcpAdd, manualMcpAddCommand } from '../lib/mcp.js';
 import { clone } from '../lib/git.js';
 import type { RunOptions } from '../types.js';
 
@@ -99,28 +99,15 @@ export async function run(
       return;
     }
 
-    let claudePath = await findTool('claude');
-    if (!claudePath) {
-      log('');
-      const installClaude = await confirm({ message: 'Claude Code CLI not found. Install it now?', default: false });
-      if (installClaude) {
-        log('Installing Claude Code CLI...');
-        await execa('npm', ['install', '-g', '@anthropic-ai/claude-code'], { reject: false });
-        const bin = await npmGlobalBin();
-        if (bin && bin !== '') {
-          process.env.PATH = `${bin}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH ?? ''}`;
-        }
-        claudePath = await findTool('claude');
-      }
-    }
+    log('');
+    const claudePath = await findOrInstallClaude({
+      log,
+      promptInstall: () => confirm({ message: 'Claude Code CLI not found. Install it now?', default: false }),
+    });
 
     if (claudePath) {
       log(`Registering MCP server: ${name}`);
-      await execa(claudePath, [
-        'mcp', 'add', '--scope', 'user',
-        name, '--', 'node', join(vaultDir, '.mcp-start.js'),
-        `--expected-sha256=${hash}`,
-      ]);
+      await runMcpAdd(claudePath, name, launcherPath, hash);
       cloned = false;
       log('');
       log(`Done. ${name} is now available in Claude Code.`);
@@ -131,7 +118,7 @@ export async function run(
     log('');
     log('Warning: Claude Code CLI not installed — MCP registration skipped.');
     log(`  Once installed, run:`);
-    log(`  claude mcp add --scope user ${name} -- node "${join(vaultDir, '.mcp-start.js')}" --expected-sha256=${hash}`);
+    log(`  ${manualMcpAddCommand(name, launcherPath, hash)}`);
     cloned = false;
   } finally {
     if (cloned && existsSync(vaultDir)) {

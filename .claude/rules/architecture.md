@@ -52,6 +52,7 @@ To scaffold a new command: `/add-command`.
 | `registry.ts` | `getAllVaults`, `getVaultDir`, `getExpectedHash`, `addToRegistry`, `removeFromRegistry` — reads/writes `~/.claude.json` |
 | `vault.ts` | `Vault` class (`tryFromName`, `fromRecord`, `launcherPath`, `existsOnDisk`, `isVaultLike`, `hasGitRepo`, `hasLauncher`, `sha256OfLauncher`); `validateName`, `isVaultLike`, `sha256` |
 | `vault-templates.ts` | Static-content builders for new vault scaffolding: `renderClaudeMd`, `renderReadme`, `renderDuplicateCheckYaml`, `renderVaultJson`, `renderGitignore`, `renderGitattributes`, `renderIndexMd`, `renderLogMd`. Used by `init.ts`, `update.ts`, and `visibility.ts`. |
+| `mcp.ts` | `claude mcp` CLI helpers: `runMcpAdd` (single source of truth for the `--expected-sha256=<hash>` invariant), `runMcpRepin`, `manualMcpAddCommand`, `manualMcpRepinCommands`, `findOrInstallClaude`. |
 | `platform.ts` | `isWindows`, `claudeJsonPath`, `vaultsRoot`, `findTool`, `npmGlobalBin` |
 | `git.ts` | `init`, `add`, `commit`, `push`, `pull`, `getStatus`, `pushOrPr`, `archiveZip`, `clone` (function form — `GitClient` class evaluated and rejected per Phase 6 stop signal) |
 | `github.ts` | `createRepo`, `deleteRepo`, `repoExists`, `isAdmin`, `getVisibility`, `enablePages`, `setPagesVisibility`, `disablePages`, `pagesExist`, `getPagesVisibility`, `getCurrentUser`, `getUserPlan`, `isAuthenticated`, `ensureDeleteRepoScope` |

@@ -9,6 +9,7 @@ import {
   renderGitignore, renderGitattributes, renderIndexMd, renderLogMd,
 } from '../lib/vault-templates.js';
 import { findTool } from '../lib/platform.js';
+import { runMcpRepin, manualMcpRepinCommands } from '../lib/mcp.js';
 import { add, commit, pushOrPr } from '../lib/git.js';
 import type { RunOptions } from '../types.js';
 
@@ -110,17 +111,13 @@ export async function run(
   const claudePath = await findTool('claude');
   if (claudePath) {
     log(`Re-pinning MCP registration with SHA-256 ${afterHash}...`);
-    await execa(claudePath, ['mcp', 'remove', name, '--scope', 'user'], { reject: false });
-    await execa(claudePath, [
-      'mcp', 'add', '--scope', 'user',
-      name, '--', 'node', vault.launcherPath,
-      `--expected-sha256=${afterHash}`,
-    ]);
+    await runMcpRepin(claudePath, name, vault.launcherPath, afterHash);
   } else {
+    const manual = manualMcpRepinCommands(name, vault.launcherPath, afterHash);
     log('Warning: Claude Code not found — MCP re-registration skipped.');
     log(`  Once installed, run:`);
-    log(`    claude mcp remove ${name} --scope user`);
-    log(`    claude mcp add --scope user ${name} -- node "${vault.launcherPath}" --expected-sha256=${afterHash}`);
+    log(`    ${manual.remove}`);
+    log(`    ${manual.add}`);
   }
 
   const launcherChanged = afterHash !== beforeHash;
