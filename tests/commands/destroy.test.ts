@@ -59,7 +59,6 @@ const LIVE_VAULT = `vk-live-destroy-${Date.now()}`;
 describe.skipIf(!LIVE)('live: destroy removes real GitHub repo', { timeout: 60_000 }, () => {
   beforeAll(async () => {
     const { run } = await import('../../src/commands/init.js');
-    // @ts-expect-error TS infers only default-valued options from init.js — phase 5 init.ts migration restores the full type.
     await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: () => {} });
   });
 

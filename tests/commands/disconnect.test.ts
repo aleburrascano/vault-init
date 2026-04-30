@@ -70,8 +70,6 @@ const LIVE_VAULT = `vk-live-disconnect-${Date.now()}`;
 describe.skipIf(!LIVE)('live: disconnect removes local dir, keeps GitHub repo', { timeout: 60_000 }, () => {
   beforeAll(async () => {
     const { run } = await import('../../src/commands/init.js');
-    // @ts-expect-error TS infers only default-valued options from init.js (cfgPath, publishMode,
-    // gitName, gitEmail are missing). Phase 5 init.ts migration restores the full type.
     await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: () => {} });
   });
 

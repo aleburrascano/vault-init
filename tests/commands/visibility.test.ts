@@ -350,7 +350,6 @@ describe.skipIf(!LIVE)('live: visibility toggles real GitHub repo', { timeout: 6
   beforeAll(async () => {
     await restoreReal();
     const { run } = await import('../../src/commands/init.js');
-    // @ts-expect-error TS infers only default-valued options from init.js — phase 5 init.ts migration restores the full type.
     await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: () => {} });
   }, 60_000);
 

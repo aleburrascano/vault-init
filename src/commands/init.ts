@@ -9,12 +9,22 @@ import {
   renderVaultJson, renderGitignore, renderGitattributes, renderIndexMd, renderLogMd,
 } from '../lib/vault.js';
 import { findTool, vaultsRoot, npmGlobalBin, isWindows } from '../lib/platform.js';
+import type { LogFn, RunOptions } from '../types.js';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const TMPL_PATH = join(SCRIPT_DIR, '../../lib/mcp-start.js.tmpl');
 const DEPLOY_TMPL = join(SCRIPT_DIR, '../../lib/deploy.yml.tmpl');
 
-async function installGh(log, skipInstallCheck = false) {
+export type PublishMode = 'private' | 'public' | 'auth-gated';
+
+export interface InitOptions extends RunOptions {
+  publishMode?: PublishMode;
+  gitName?: string;
+  gitEmail?: string;
+  skipInstallCheck?: boolean;
+}
+
+async function installGh(log: LogFn, skipInstallCheck: boolean = false): Promise<void> {
   log('GitHub CLI not found — installing...');
   if (isWindows()) {
     const ok = skipInstallCheck || await confirm({ message: 'Install GitHub CLI via winget?', default: true });
@@ -52,7 +62,17 @@ async function installGh(log, skipInstallCheck = false) {
   }
 }
 
-export async function run(name, { cfgPath, publishMode: publishModeOpt, gitName: gitNameOpt, gitEmail: gitEmailOpt, skipInstallCheck = false, log = console.log } = {}) {
+export async function run(
+  name: string,
+  {
+    cfgPath: _cfgPath,
+    publishMode: publishModeOpt,
+    gitName: gitNameOpt,
+    gitEmail: gitEmailOpt,
+    skipInstallCheck = false,
+    log = console.log,
+  }: InitOptions = {},
+): Promise<void> {
   validateName(name);
 
   const root = vaultsRoot();
@@ -61,7 +81,7 @@ export async function run(name, { cfgPath, publishMode: publishModeOpt, gitName:
   // [1/6] Prerequisites
   log('[1/6] Checking prerequisites...');
 
-  const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
+  const nodeMajor = parseInt(process.versions.node.split('.')[0] ?? '0', 10);
   if (nodeMajor < 22) {
     throw new Error(`Node.js 22+ required (found v${process.versions.node}).\n  Update at: https://nodejs.org`);
   }
@@ -83,8 +103,10 @@ export async function run(name, { cfgPath, publishMode: publishModeOpt, gitName:
   }
 
   // Git user config
-  const gitName = (await execa('git', ['config', 'user.name'], { reject: false })).stdout?.trim();
-  const gitEmail = (await execa('git', ['config', 'user.email'], { reject: false })).stdout?.trim();
+  const gitNameResult = await execa('git', ['config', 'user.name'], { reject: false });
+  const gitEmailResult = await execa('git', ['config', 'user.email'], { reject: false });
+  const gitName = String(gitNameResult.stdout ?? '').trim();
+  const gitEmail = String(gitEmailResult.stdout ?? '').trim();
   if (!gitName) {
     const n = gitNameOpt ?? await input({ message: 'Enter your name for git commits:' });
     await execa('git', ['config', '--global', 'user.name', n]);
@@ -99,7 +121,7 @@ export async function run(name, { cfgPath, publishMode: publishModeOpt, gitName:
   if (publishModeOpt !== undefined && !['private', 'public', 'auth-gated'].includes(publishModeOpt)) {
     throw new Error(`Invalid publishMode: "${publishModeOpt}". Must be one of: private, public, auth-gated`);
   }
-  const publishMode = publishModeOpt ?? await select({
+  const publishMode: PublishMode = publishModeOpt ?? await select<PublishMode>({
     message: 'Publish this vault as a public knowledge site?',
     choices: [
       { name: 'Private repo, notes-only (no Pages, no public URL)  [default]', value: 'private' },
@@ -115,7 +137,7 @@ export async function run(name, { cfgPath, publishMode: publishModeOpt, gitName:
 
   if (publishMode === 'auth-gated') {
     const planResult = await execa(ghPath, ['api', 'user', '--jq', '.plan.name'], { reject: false });
-    const plan = planResult.stdout?.trim() ?? 'free';
+    const plan = String(planResult.stdout ?? '').trim() || 'free';
     if (plan === 'free') {
       throw new Error(`auth-gated Pages requires GitHub Pro+ (you're on Free).\n  Choose Public or Private instead.`);
     }
@@ -125,7 +147,7 @@ export async function run(name, { cfgPath, publishMode: publishModeOpt, gitName:
   if (existsSync(vaultDir)) throw new Error(`${vaultDir} already exists.`);
 
   const userResult = await execa(ghPath, ['api', 'user', '--jq', '.login'], { reject: false });
-  const githubUser = userResult.stdout?.trim();
+  const githubUser = String(userResult.stdout ?? '').trim();
   if (!githubUser) throw new Error('Could not fetch your GitHub username. Run: gh auth status');
 
   const baseUrl = `${githubUser}.github.io/${name}`;
@@ -150,7 +172,7 @@ export async function run(name, { cfgPath, publishMode: publishModeOpt, gitName:
     writeFileSync(join(vaultDir, 'wiki', '.gitkeep'), '');
     writeFileSync(join(vaultDir, 'CLAUDE.md'), renderClaudeMd(name));
     writeFileSync(join(vaultDir, 'README.md'), renderReadme(name, enablePages ? baseUrl : ''));
-    writeFileSync(join(vaultDir, 'index.md'), renderIndexMd(name));
+    writeFileSync(join(vaultDir, 'index.md'), renderIndexMd());
     writeFileSync(join(vaultDir, 'log.md'), renderLogMd());
     writeFileSync(join(vaultDir, '.gitignore'), renderGitignore());
     writeFileSync(join(vaultDir, '.gitattributes'), renderGitattributes());

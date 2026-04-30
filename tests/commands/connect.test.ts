@@ -228,7 +228,6 @@ describe.skipIf(!LIVE)('live: connect clones real GitHub repo', { timeout: 90_00
     await restoreReal();
     // Create a vault (creates the GitHub repo)
     const { run: initRun } = await import('../../src/commands/init.js');
-    // @ts-expect-error TS infers only default-valued options from init.js — phase 5.11 init.ts migration restores the full type.
     await initRun(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: () => {} });
 
     // Get the repo slug for later use
