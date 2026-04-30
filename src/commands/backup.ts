@@ -1,11 +1,20 @@
 import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { execa } from 'execa';
 import { validateName } from '../lib/vault.js';
 import { getVaultDir } from '../lib/registry.js';
 import { archiveZip } from '../lib/git.js';
 import { vaultsRoot } from '../lib/platform.js';
+import type { RunOptions } from '../types.js';
 
-export async function run(name, { cfgPath, backupsDir, log = console.log } = {}) {
+export interface BackupOptions extends RunOptions {
+  backupsDir?: string;
+}
+
+export async function run(
+  name: string,
+  { cfgPath, backupsDir, log = console.log }: BackupOptions = {},
+): Promise<string> {
   validateName(name);
 
   const dir = await getVaultDir(name, cfgPath);
@@ -15,9 +24,8 @@ export async function run(name, { cfgPath, backupsDir, log = console.log } = {})
     throw new Error(`${dir} is not a git repository.`);
   }
 
-  const { execa } = await import('execa');
   const statusResult = await execa('git', ['-C', dir, 'status', '--porcelain'], { reject: false });
-  if ((statusResult.stdout ?? '').trim().length > 0) {
+  if (String(statusResult.stdout ?? '').trim().length > 0) {
     log(`Warning: Vault has uncommitted changes — they will NOT be in the backup.`);
     log(`  Hint: cd "${dir}" && git add . && git commit -m "wip: pre-backup snapshot"`);
   }

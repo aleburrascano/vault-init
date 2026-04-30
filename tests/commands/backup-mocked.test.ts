@@ -4,44 +4,42 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 vi.mock('../../src/lib/git.js', async (importOriginal) => {
-  const real = await importOriginal();
+  const real = await importOriginal<typeof import('../../src/lib/git.js')>();
   return { ...real, archiveZip: vi.fn() };
 });
 
-// Also mock execa to avoid spawning real git processes in these tests.
-// backup.js does `const { execa } = await import('execa')` inside the function,
-// so we must mock the module to intercept that dynamic import.
+// Also mock execa for the git status call inside backup.run.
 vi.mock('execa', async (importOriginal) => {
-  const real = await importOriginal();
+  const real = await importOriginal<typeof import('execa')>();
   return { ...real, execa: vi.fn() };
 });
 
 import { archiveZip } from '../../src/lib/git.js';
 import { execa } from 'execa';
 
-let tmp;
+let tmp: string;
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'vk-backup-mock-'));
   vi.mocked(archiveZip).mockReset();
   vi.mocked(execa).mockReset();
   // Default: git status returns clean (no uncommitted changes)
-  vi.mocked(execa).mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' });
+  vi.mocked(execa).mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' } as never);
 });
 
 afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-function writeCfg(cfgPath, vaults) {
-  const mcpServers = {};
+function writeCfg(cfgPath: string, vaults: Record<string, string>): void {
+  const mcpServers: Record<string, { command: string; args: string[] }> = {};
   for (const [name, dir] of Object.entries(vaults)) {
     mcpServers[name] = { command: 'node', args: [`${dir}/.mcp-start.js`] };
   }
   writeFileSync(cfgPath, JSON.stringify({ mcpServers }), 'utf8');
 }
 
-function makeGitDir(dir) {
+function makeGitDir(dir: string): void {
   mkdirSync(join(dir, '.git'), { recursive: true });
 }
 
@@ -85,16 +83,16 @@ describe('B-5: uncommitted changes', () => {
     const backupsDir = join(tmp, '.backups');
 
     // Simulate dirty working tree: git status --porcelain returns non-empty output
-    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 0, stdout: ' M uncommitted.md\n', stderr: '' });
+    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 0, stdout: ' M uncommitted.md\n', stderr: '' } as never);
 
-    vi.mocked(archiveZip).mockImplementation(async (_dir, zipPath) => {
+    vi.mocked(archiveZip).mockImplementation(async (_dir: string, zipPath: string) => {
       mkdirSync(backupsDir, { recursive: true });
       writeFileSync(zipPath, 'fake-zip-content');
     });
 
     const { run } = await import('../../src/commands/backup.js');
-    const lines = [];
-    await run('DirtyVault', { cfgPath, backupsDir, log: (m) => lines.push(m) });
+    const lines: string[] = [];
+    await run('DirtyVault', { cfgPath, backupsDir, log: (m: unknown) => lines.push(String(m)) });
 
     expect(lines.some(l => /uncommitted changes/i.test(l))).toBe(true);
     expect(vi.mocked(archiveZip)).toHaveBeenCalledOnce();
@@ -145,7 +143,7 @@ describe('B-8: backupsDir created automatically', () => {
     const backupsDir = join(tmp, 'new', 'nested', '.backups');
     // backupsDir does NOT exist yet
 
-    vi.mocked(archiveZip).mockImplementation(async (_dir, zipPath) => {
+    vi.mocked(archiveZip).mockImplementation(async (_dir: string, zipPath: string) => {
       writeFileSync(zipPath, 'fake-zip');
     });
 
@@ -166,7 +164,7 @@ describe('B-9: zip filename format', () => {
     writeCfg(cfgPath, { NameCheck: vaultDir });
     const backupsDir = join(tmp, '.backups');
 
-    vi.mocked(archiveZip).mockImplementation(async (_dir, zipPath) => {
+    vi.mocked(archiveZip).mockImplementation(async (_dir: string, zipPath: string) => {
       mkdirSync(backupsDir, { recursive: true });
       writeFileSync(zipPath, 'fake-zip');
     });
