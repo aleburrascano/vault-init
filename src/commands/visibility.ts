@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { confirm } from '@inquirer/prompts';
@@ -11,19 +11,28 @@ import {
   getVisibility, isAdmin, getUserPlan,
   enablePages, setPagesVisibility, disablePages, pagesExist, getPagesVisibility,
 } from '../lib/github.js';
+import type { RunOptions } from '../types.js';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DEPLOY_TMPL = join(SCRIPT_DIR, '../../lib/deploy.yml.tmpl');
 
-async function resolveRepoSlug(dir) {
-  const result = await execa('git', ['-C', dir, 'remote', 'get-url', 'origin'], { reject: false });
-  if (result.exitCode !== 0) return null;
-  const url = result.stdout.trim();
-  const m = url.match(/github\.com[:/]([^/]+\/[^/.]+?)(\.git)?\/?$/);
-  return m ? m[1] : null;
+export interface VisibilityOptions extends RunOptions {
+  skipConfirm?: boolean;
 }
 
-export async function run(name, target, { cfgPath, log = console.log, skipConfirm = false } = {}) {
+async function resolveRepoSlug(dir: string): Promise<string | null> {
+  const result = await execa('git', ['-C', dir, 'remote', 'get-url', 'origin'], { reject: false });
+  if (result.exitCode !== 0) return null;
+  const url = String(result.stdout ?? '').trim();
+  const m = url.match(/github\.com[:/]([^/]+\/[^/.]+?)(\.git)?\/?$/);
+  return m?.[1] ?? null;
+}
+
+export async function run(
+  name: string,
+  target: string,
+  { cfgPath, log = console.log, skipConfirm = false }: VisibilityOptions = {},
+): Promise<void> {
   validateName(name);
 
   const validTargets = ['public', 'private', 'auth-gated'];
@@ -63,7 +72,7 @@ export async function run(name, target, { cfgPath, log = console.log, skipConfir
   const needDeploy = (target === 'public' || target === 'auth-gated') && !hasDeploy;
 
   // Build action plan
-  const actions = [];
+  const actions: string[] = [];
   if (needDeploy) actions.push('add .github/workflows/deploy.yml + _vault.json');
   if (target === 'public') {
     if (currentVis !== 'public') actions.push('flip repo to public');
@@ -105,10 +114,9 @@ export async function run(name, target, { cfgPath, log = console.log, skipConfir
     log('Adding deploy workflow...');
     const wfDir = join(dir, '.github', 'workflows');
     mkdirSync(wfDir, { recursive: true });
-    const { readFileSync, copyFileSync } = await import('node:fs');
     copyFileSync(DEPLOY_TMPL, join(wfDir, 'deploy.yml'));
 
-    const [owner, repo] = repoSlug.split('/');
+    const [owner = '', repo = ''] = repoSlug.split('/');
     writeFileSync(join(dir, '_vault.json'), renderVaultJson(owner, repo));
     workflowAdded = true;
   }

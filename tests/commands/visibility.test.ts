@@ -5,19 +5,19 @@ import { tmpdir } from 'node:os';
 
 vi.mock('@inquirer/prompts', () => ({ confirm: vi.fn() }));
 vi.mock('execa', async (importOriginal) => {
-  const real = await importOriginal();
+  const real = await importOriginal<typeof import('execa')>();
   return { ...real, execa: vi.fn() };
 });
 vi.mock('../../src/lib/git.js', async (importOriginal) => {
-  const real = await importOriginal();
+  const real = await importOriginal<typeof import('../../src/lib/git.js')>();
   return { ...real, add: vi.fn(), commit: vi.fn(), pushOrPr: vi.fn() };
 });
 vi.mock('../../src/lib/platform.js', async (importOriginal) => {
-  const real = await importOriginal();
+  const real = await importOriginal<typeof import('../../src/lib/platform.js')>();
   return { ...real, findTool: vi.fn() };
 });
 vi.mock('../../src/lib/github.js', async (importOriginal) => {
-  const real = await importOriginal();
+  const real = await importOriginal<typeof import('../../src/lib/github.js')>();
   return {
     ...real,
     isAdmin: vi.fn(),
@@ -40,7 +40,7 @@ import {
   enablePages, setPagesVisibility, disablePages, pagesExist, getPagesVisibility,
 } from '../../src/lib/github.js';
 
-let tmp;
+let tmp: string;
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'vk-visibility-test-'));
@@ -65,35 +65,40 @@ beforeEach(() => {
   vi.mocked(pagesExist).mockResolvedValue(false);
   vi.mocked(pushOrPr).mockResolvedValue({ mode: 'direct' });
   // git remote returns a GitHub URL
-  vi.mocked(execa).mockImplementation(async (cmd, args) => {
+  vi.mocked(execa).mockImplementation((async (_cmd: string, args?: readonly string[]) => {
     if (args?.[2] === 'remote' && args?.[3] === 'get-url') {
       return { exitCode: 0, stdout: 'https://github.com/owner/MyVault.git', stderr: '' };
     }
     return { exitCode: 0, stdout: '', stderr: '' };
-  });
+  }) as never);
 });
 
 afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-function writeCfg(cfgPath, vaultDir, name = 'MyVault') {
+function writeCfg(cfgPath: string, vaultDir: string, name: string = 'MyVault'): void {
   const mcpServers = {
     [name]: { command: 'node', args: [`${vaultDir}/.mcp-start.js`] },
   };
   writeFileSync(cfgPath, JSON.stringify({ mcpServers }), 'utf8');
 }
 
-function makeVaultDir(name = 'MyVault') {
+function makeVaultDir(name: string = 'MyVault'): string {
   const dir = join(tmp, name);
   mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-async function runVisibility(name, target, options = {}) {
+interface RunVisOptions {
+  cfgPath?: string;
+  skipConfirm?: boolean;
+}
+
+async function runVisibility(name: string, target: string, options: RunVisOptions = {}): Promise<string[]> {
   const { run } = await import('../../src/commands/visibility.js');
-  const lines = [];
-  await run(name, target, { log: (m) => lines.push(m), ...options });
+  const lines: string[] = [];
+  await run(name, target, { log: (m: unknown) => lines.push(String(m)), ...options });
   return lines;
 }
 
@@ -149,7 +154,7 @@ describe('VI-5: no origin remote', () => {
     const vaultDir = makeVaultDir();
     const cfgPath = join(tmp, '.claude.json');
     writeCfg(cfgPath, vaultDir);
-    vi.mocked(execa).mockResolvedValue({ exitCode: 1, stdout: '', stderr: 'no remote' });
+    vi.mocked(execa).mockResolvedValue({ exitCode: 1, stdout: '', stderr: 'no remote' } as never);
     const { run } = await import('../../src/commands/visibility.js');
     await expect(run('MyVault', 'public', { cfgPath, log: () => {} })).rejects.toThrow(/no.*origin/i);
   });
@@ -206,9 +211,10 @@ describe('VI-8: private → public, enabling Pages', () => {
 
     await runVisibility('MyVault', 'public', { cfgPath, skipConfirm: true });
 
-    const repoEditCalls = vi.mocked(execa).mock.calls.filter(c =>
-      c[1]?.includes('edit') && c[1]?.includes('public')
-    );
+    const repoEditCalls = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args.includes('edit') && args.includes('public');
+    });
     expect(repoEditCalls.length).toBeGreaterThan(0);
     expect(vi.mocked(enablePages)).toHaveBeenCalled();
   });
@@ -227,9 +233,10 @@ describe('VI-9: public → private, disables Pages', () => {
 
     await runVisibility('MyVault', 'private', { cfgPath, skipConfirm: true });
 
-    const repoEditCalls = vi.mocked(execa).mock.calls.filter(c =>
-      c[1]?.includes('edit') && c[1]?.includes('private')
-    );
+    const repoEditCalls = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args.includes('edit') && args.includes('private');
+    });
     expect(repoEditCalls.length).toBeGreaterThan(0);
     expect(vi.mocked(disablePages)).toHaveBeenCalled();
   });
@@ -319,15 +326,15 @@ const LIVE_VAULT = `vk-live-visibility-${Date.now()}`;
 
 describe.skipIf(!LIVE)('live: visibility toggles real GitHub repo', { timeout: 60_000 }, () => {
   async function restoreReal() {
-    const { execa: realExeca } = await vi.importActual('execa');
-    vi.mocked(execa).mockImplementation(realExeca);
-    const realPlatform = await vi.importActual('../../src/lib/platform.js');
+    const { execa: realExeca } = await vi.importActual<typeof import('execa')>('execa');
+    vi.mocked(execa).mockImplementation(realExeca as never);
+    const realPlatform = await vi.importActual<typeof import('../../src/lib/platform.js')>('../../src/lib/platform.js');
     vi.mocked(findTool).mockImplementation(realPlatform.findTool);
-    const realGit = await vi.importActual('../../src/lib/git.js');
+    const realGit = await vi.importActual<typeof import('../../src/lib/git.js')>('../../src/lib/git.js');
     vi.mocked(add).mockImplementation(realGit.add);
     vi.mocked(commit).mockImplementation(realGit.commit);
     vi.mocked(pushOrPr).mockImplementation(realGit.pushOrPr);
-    const realGithub = await vi.importActual('../../src/lib/github.js');
+    const realGithub = await vi.importActual<typeof import('../../src/lib/github.js')>('../../src/lib/github.js');
     vi.mocked(isAdmin).mockImplementation(realGithub.isAdmin);
     vi.mocked(getVisibility).mockImplementation(realGithub.getVisibility);
     vi.mocked(getUserPlan).mockImplementation(realGithub.getUserPlan);
@@ -343,12 +350,14 @@ describe.skipIf(!LIVE)('live: visibility toggles real GitHub repo', { timeout: 6
   beforeAll(async () => {
     await restoreReal();
     const { run } = await import('../../src/commands/init.js');
+    // @ts-expect-error TS infers only default-valued options from init.js — phase 5 init.ts migration restores the full type.
     await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: () => {} });
   }, 60_000);
 
   afterAll(async () => {
     await restoreReal();
     const { run } = await import('../../src/commands/destroy.js');
+    // @ts-expect-error destroy.js options incomplete under JS inference until phase 5
     await run(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: () => {} }).catch(() => {});
   }, 60_000);
 
