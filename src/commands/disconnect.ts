@@ -1,11 +1,21 @@
 import { existsSync, rmSync } from 'node:fs';
 import { input } from '@inquirer/prompts';
+import { execa } from 'execa';
 import { validateName, isVaultLike } from '../lib/vault.js';
 import { getVaultDir, removeFromRegistry } from '../lib/registry.js';
 import { findTool } from '../lib/platform.js';
-import { execa } from 'execa';
+import type { RunOptions } from '../types.js';
 
-export async function run(name, { cfgPath, skipConfirm = false, skipMcp = false, confirmName, log = console.log } = {}) {
+export interface DisconnectOptions extends RunOptions {
+  skipConfirm?: boolean;
+  skipMcp?: boolean;
+  confirmName?: string;
+}
+
+export async function run(
+  name: string,
+  { cfgPath, skipConfirm = false, skipMcp = false, confirmName, log = console.log }: DisconnectOptions = {},
+): Promise<void> {
   validateName(name);
 
   const dir = await getVaultDir(name, cfgPath);

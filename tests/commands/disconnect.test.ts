@@ -3,19 +3,19 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-let tmp;
+let tmp: string;
 beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'vk-disconnect-test-')); });
 afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 
-function writeCfg(cfgPath, vaults) {
-  const mcpServers = {};
+function writeCfg(cfgPath: string, vaults: Record<string, string>): void {
+  const mcpServers: Record<string, { command: string; args: string[] }> = {};
   for (const [name, dir] of Object.entries(vaults)) {
     mcpServers[name] = { command: 'node', args: [`${dir}/.mcp-start.js`] };
   }
   writeFileSync(cfgPath, JSON.stringify({ mcpServers }), 'utf8');
 }
 
-function makeVaultDir(dir) {
+function makeVaultDir(dir: string): void {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'CLAUDE.md'), '');
   mkdirSync(join(dir, 'raw'), { recursive: true });
@@ -70,6 +70,8 @@ const LIVE_VAULT = `vk-live-disconnect-${Date.now()}`;
 describe.skipIf(!LIVE)('live: disconnect removes local dir, keeps GitHub repo', { timeout: 60_000 }, () => {
   beforeAll(async () => {
     const { run } = await import('../../src/commands/init.js');
+    // @ts-expect-error TS infers only default-valued options from init.js (cfgPath, publishMode,
+    // gitName, gitEmail are missing). Phase 5 init.ts migration restores the full type.
     await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: () => {} });
   });
 
@@ -96,7 +98,7 @@ describe.skipIf(!LIVE)('live: disconnect removes local dir, keeps GitHub repo', 
     await run(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: () => {} });
 
     const { existsSync } = await import('node:fs');
-    expect(existsSync(dir)).toBe(false);
+    expect(existsSync(dir as string)).toBe(false);
   });
 
   it('removes vault from registry', async () => {

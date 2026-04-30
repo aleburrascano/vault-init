@@ -5,11 +5,11 @@ import { tmpdir } from 'node:os';
 
 vi.mock('@inquirer/prompts', () => ({ confirm: vi.fn(), input: vi.fn() }));
 vi.mock('execa', async (importOriginal) => {
-  const real = await importOriginal();
+  const real = await importOriginal<typeof import('execa')>();
   return { ...real, execa: vi.fn() };
 });
 vi.mock('../../src/lib/platform.js', async (importOriginal) => {
-  const real = await importOriginal();
+  const real = await importOriginal<typeof import('../../src/lib/platform.js')>();
   return { ...real, findTool: vi.fn() };
 });
 
@@ -17,7 +17,7 @@ import { input } from '@inquirer/prompts';
 import { execa } from 'execa';
 import { findTool } from '../../src/lib/platform.js';
 
-let tmp;
+let tmp: string;
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'vk-disconnect-mock-'));
@@ -30,15 +30,15 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-function writeCfg(cfgPath, vaults) {
-  const mcpServers = {};
+function writeCfg(cfgPath: string, vaults: Record<string, string>): void {
+  const mcpServers: Record<string, { command: string; args: string[] }> = {};
   for (const [name, dir] of Object.entries(vaults)) {
     mcpServers[name] = { command: 'node', args: [`${dir}/.mcp-start.js`] };
   }
   writeFileSync(cfgPath, JSON.stringify({ mcpServers }), 'utf8');
 }
 
-function makeVaultDir(dir) {
+function makeVaultDir(dir: string): void {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'CLAUDE.md'), '');
   mkdirSync(join(dir, 'raw'), { recursive: true });
@@ -57,11 +57,11 @@ describe('DIS-1: vault dir missing', () => {
     vi.mocked(findTool).mockResolvedValue(null);
 
     const { run } = await import('../../src/commands/disconnect.js');
-    const lines = [];
-    await run('GhostVault', { cfgPath, skipConfirm: true, skipMcp: true, log: (m) => lines.push(m) });
+    const lines: unknown[] = [];
+    await run('GhostVault', { cfgPath, skipConfirm: true, skipMcp: true, log: (m: unknown) => lines.push(m) });
 
-    expect(lines.some(l => /not found.*skip|skip/i.test(l))).toBe(true);
-    expect(lines.some(l => /done/i.test(l))).toBe(true);
+    expect(lines.some(l => /not found.*skip|skip/i.test(String(l)))).toBe(true);
+    expect(lines.some(l => /done/i.test(String(l)))).toBe(true);
   });
 });
 
@@ -77,10 +77,10 @@ describe('DIS-2: wrong name typed', () => {
     vi.mocked(input).mockResolvedValueOnce('WrongName');
 
     const { run } = await import('../../src/commands/disconnect.js');
-    const lines = [];
-    await run('MyVault', { cfgPath, skipMcp: true, log: (m) => lines.push(m) });
+    const lines: unknown[] = [];
+    await run('MyVault', { cfgPath, skipMcp: true, log: (m: unknown) => lines.push(m) });
 
-    expect(lines.some(l => /aborted/i.test(l))).toBe(true);
+    expect(lines.some(l => /aborted/i.test(String(l)))).toBe(true);
     expect(existsSync(vaultDir)).toBe(true);
   });
 });
@@ -113,14 +113,15 @@ describe('DIS-4: MCP removal with claude found', () => {
     writeCfg(cfgPath, { McpVault: vaultDir });
 
     vi.mocked(findTool).mockResolvedValue('/usr/bin/claude');
-    vi.mocked(execa).mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' });
+    vi.mocked(execa).mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' } as never);
 
     const { run } = await import('../../src/commands/disconnect.js');
     await run('McpVault', { cfgPath, skipConfirm: true, log: () => {} });
 
-    const removeCalls = vi.mocked(execa).mock.calls.filter(c =>
-      c[1]?.includes('remove') && c[1]?.includes('McpVault')
-    );
+    const removeCalls = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args.includes('remove') && args.includes('McpVault');
+    });
     expect(removeCalls.length).toBeGreaterThan(0);
   });
 });
@@ -137,10 +138,10 @@ describe('DIS-5: MCP removal skipped', () => {
     vi.mocked(findTool).mockResolvedValue(null);
 
     const { run } = await import('../../src/commands/disconnect.js');
-    const lines = [];
-    await run('NoClaudeVault', { cfgPath, skipConfirm: true, log: (m) => lines.push(m) });
+    const lines: unknown[] = [];
+    await run('NoClaudeVault', { cfgPath, skipConfirm: true, log: (m: unknown) => lines.push(m) });
 
-    expect(lines.some(l => /Claude Code not found|MCP cleanup skipped/i.test(l))).toBe(true);
-    expect(lines.some(l => /claude mcp remove/i.test(l))).toBe(true);
+    expect(lines.some(l => /Claude Code not found|MCP cleanup skipped/i.test(String(l)))).toBe(true);
+    expect(lines.some(l => /claude mcp remove/i.test(String(l)))).toBe(true);
   });
 });
