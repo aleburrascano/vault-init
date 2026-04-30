@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { confirm } from '@inquirer/prompts';
-import { validateName, sha256, isVaultLike } from '../lib/vault.js';
-import { getVaultDir, addToRegistry } from '../lib/registry.js';
+import { Vault, sha256, isVaultLike } from '../lib/vault.js';
+import { addToRegistry } from '../lib/registry.js';
 import { findTool, vaultsRoot } from '../lib/platform.js';
 import { findOrInstallClaude, runMcpAdd, manualMcpAddCommand } from '../lib/mcp.js';
 import { clone } from '../lib/git.js';
@@ -34,9 +34,8 @@ export async function run(
   { cfgPath, skipMcp = false, log = console.log }: ConnectOptions = {},
 ): Promise<void> {
   const { repo, name } = _normalizeInput(input);
-  validateName(name);
 
-  const existing = await getVaultDir(name, cfgPath);
+  const existing = await Vault.tryFromName(name, cfgPath);
   if (existing) {
     throw new Error(`An MCP server named '${name}' is already registered.\nRun 'vaultkit status' or 'vaultkit disconnect ${name}' first.`);
   }
