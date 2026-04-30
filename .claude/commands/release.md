@@ -13,9 +13,5 @@ Prepare a vaultkit release.
 6. Run `npm run check && npm run build && npm test` to confirm the release will pass CI (type-check, build dist/, run the full test suite).
 7. Run `git add package.json CHANGELOG.md && git commit -m "chore: bump version to X.Y.Z"`.
 8. Run `git tag vX.Y.Z`.
-9. Show (but do NOT run) the push command:
-   ```bash
-   git push && git push --tags
-   ```
-   Explain that pushing the tag triggers `.github/workflows/release.yml`, which runs `npm test` again and then publishes to npm with provenance — so manual `npm publish` is not needed.
-10. Ask me to confirm before proceeding.
+9. Run `git push && git push --tags`. Pushing the tag triggers `.github/workflows/release.yml`, which runs `npm test` again and then publishes to npm with provenance — no manual `npm publish` needed.
+10. Report the tag URL and the Actions URL (e.g. `https://github.com/aleburrascano/vaultkit/actions`) so I can watch the publish workflow.
