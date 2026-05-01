@@ -12,6 +12,9 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 
 ### Docs
 - **README `connect` example now shows the SSH URL form** (`git@github.com:owner/repo`). The parser in [src/commands/connect.ts](src/commands/connect.ts) `_normalizeInput` already accepted SSH URLs and `.git` suffixes (covered by `tests/commands/connect.test.ts:72-73`); the README only documented two of three forms, so users copy-pasting from `gh repo view` thought they were getting away with something undocumented.
+- **README Prerequisites now leads with "GitHub account required."** vaultkit cannot work without GitHub — every vault is a GitHub repo. The previous Prerequisites only listed Node and Git, leaving the GitHub dependency to be inferred from later mentions of `gh`, GitHub Pages, and `owner/repo`. Surfacing it explicitly lets GitHub-averse users bounce off the README in 30 seconds rather than after running `vaultkit setup`.
+- **README defines [Quartz](https://quartz.jzhc.io/) on first prose mention.** Quartz appeared in the publish-mode prompt (`(y)` option) and in the vault tree (`.quartz/`) without ever being defined. New users had to guess; now there's a one-line gloss with link.
+- **README Security & Trust section names `obsidian-mcp-pro`.** SECURITY.md mentioned that the launcher invokes [`obsidian-mcp-pro`](https://www.npmjs.com/package/obsidian-mcp-pro) via `npx`, but the README's own Security section only described the launcher abstractly. Trust-conscious users now see the actual MCP-server package name in the README's trust narrative — no need to dig into SECURITY.md to learn what code is actually running.
 
 ## [2.5.0] - 2026-05-01
 

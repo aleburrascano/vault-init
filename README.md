@@ -89,8 +89,9 @@ Vaults live in `~/vaults/` by default (override with `VAULTKIT_HOME` — see [Co
 
 ## Prerequisites
 
-Only two things must be installed manually:
+You'll need:
 
+- **A GitHub account.** Every vault is backed by a GitHub repo — there's no GitLab, self-hosted-git, or local-only mode. If you don't want a GitHub repo, vaultkit isn't for you.
 - **Node.js 22+** — [nodejs.org](https://nodejs.org)
 - **Git** (+ Git Bash on Windows) — [git-scm.com](https://git-scm.com)
 
@@ -113,7 +114,7 @@ Publish this vault as a public knowledge site?
   (a) Private repo + auth-gated Pages site (requires GitHub Pro+)
 ```
 
-- **`y`** publishes a public Quartz site on GitHub Pages.
+- **`y`** publishes a public [Quartz](https://quartz.jzhc.io/) site on GitHub Pages. ([Quartz](https://quartz.jzhc.io/) is an Obsidian-aware static-site generator that renders your `wiki/` and `raw/` markdown into a browsable web wiki.)
 - **`n`** (default) creates a private repo with no Pages workflow at all — fully hidden, even by URL.
 - **`a`** creates a private repo with auth-gated Pages so only authorized GitHub users can view the site. Requires GitHub Pro or higher.
 
@@ -170,6 +171,8 @@ Multiple wikis are available simultaneously under their own MCP namespaces:
 ## Security & Trust
 
 `vaultkit connect` clones a vault and registers its `.mcp-start.js` as a Claude Code MCP server. That script runs automatically with your **full user permissions** on every Claude Code session start — equivalent to adding the vault author to your system PATH.
+
+The launcher itself is small (~70 lines — see [`lib/mcp-start.js.tmpl`](./lib/mcp-start.js.tmpl) for the canonical bytes). On startup it does a SHA-256 self-check, runs a guarded `git fetch`, and then spawns [`obsidian-mcp-pro`](https://www.npmjs.com/package/obsidian-mcp-pro) via `npx` — that's the package that exposes the `search_notes` / `get_note` / etc. tools to Claude Code. Trust thus extends to: vaultkit itself, the per-vault launcher (SHA-pinned), the vault's git history, and `obsidian-mcp-pro`.
 
 ### Two-layer protection
 
