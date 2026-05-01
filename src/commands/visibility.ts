@@ -2,14 +2,13 @@ import { existsSync, mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { confirm } from '@inquirer/prompts';
-import { execa } from 'execa';
 import { Vault } from '../lib/vault.js';
 import { renderVaultJson } from '../lib/vault-templates.js';
 import { findTool } from '../lib/platform.js';
 import { add, commit, pushOrPr, getRepoSlug } from '../lib/git.js';
 import {
   getVisibility, isAdmin, getUserPlan,
-  enablePages, setPagesVisibility, disablePages, pagesExist, getPagesVisibility,
+  enablePages, setPagesVisibility, setRepoVisibility, disablePages, pagesExist, getPagesVisibility,
   repoUrl,
 } from '../lib/github.js';
 import { ConsoleLogger } from '../lib/logger.js';
@@ -38,8 +37,9 @@ export async function run(
   const vault = await Vault.tryFromName(name, cfgPath);
   if (!vault) throw new VaultkitError('NOT_REGISTERED', `"${name}" ${DEFAULT_MESSAGES.NOT_REGISTERED}`);
 
-  const gh = await findTool('gh');
-  if (!gh) throw new VaultkitError('TOOL_MISSING', 'GitHub CLI (gh) is required for vaultkit visibility.');
+  if (!await findTool('gh')) {
+    throw new VaultkitError('TOOL_MISSING', 'GitHub CLI (gh) is required for vaultkit visibility.');
+  }
 
   const repoSlug = await getRepoSlug(vault.dir);
   if (!repoSlug) throw new VaultkitError('NOT_VAULT_LIKE', "Vault has no 'origin' remote — cannot determine GitHub repo.");
@@ -120,7 +120,7 @@ export async function run(
   if (target === 'public') {
     if (currentVis !== 'public') {
       log.info('Setting repo to public...');
-      await execa(gh, ['repo', 'edit', repoSlug, '--visibility', 'public', '--accept-visibility-change-consequences'], { reject: false });
+      await setRepoVisibility(repoSlug, 'public');
     }
     if (hasPages) {
       if (pagesVis !== 'public') {
@@ -134,7 +134,7 @@ export async function run(
   } else if (target === 'private') {
     if (currentVis !== 'private') {
       log.info('Setting repo to private...');
-      await execa(gh, ['repo', 'edit', repoSlug, '--visibility', 'private', '--accept-visibility-change-consequences'], { reject: false });
+      await setRepoVisibility(repoSlug, 'private');
     }
     if (hasPages) {
       log.info('Disabling Pages...');
@@ -143,7 +143,7 @@ export async function run(
   } else { // auth-gated
     if (currentVis !== 'private') {
       log.info('Setting repo to private...');
-      await execa(gh, ['repo', 'edit', repoSlug, '--visibility', 'private', '--accept-visibility-change-consequences'], { reject: false });
+      await setRepoVisibility(repoSlug, 'private');
     }
     if (hasPages) {
       if (pagesVis !== 'private') {
