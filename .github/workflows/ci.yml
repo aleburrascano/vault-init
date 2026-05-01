@@ -56,8 +56,11 @@ jobs:
         shell: bash
         run: |
           USER=$(gh api user --jq .login)
-          gh repo list "$USER" --limit 200 --json name --jq '.[].name' \
-            | grep -E '^vk-live-' \
+          # Filter inside jq so an empty result is an empty stream (exit 0),
+          # not `grep`'s no-match exit 1 — bash -e -o pipefail treats the
+          # latter as fatal and kills the workflow.
+          gh repo list "$USER" --limit 200 --json name \
+            --jq '.[] | select(.name | startswith("vk-live-")) | .name' \
             | while read -r repo; do
                 echo "Deleting orphan: $USER/$repo"
                 gh repo delete "$USER/$repo" --yes || true
@@ -71,8 +74,8 @@ jobs:
         shell: bash
         run: |
           USER=$(gh api user --jq .login)
-          gh repo list "$USER" --limit 200 --json name --jq '.[].name' \
-            | grep -E '^vk-live-' \
+          gh repo list "$USER" --limit 200 --json name \
+            --jq '.[] | select(.name | startswith("vk-live-")) | .name' \
             | while read -r repo; do
                 echo "Cleaning up: $USER/$repo"
                 gh repo delete "$USER/$repo" --yes || true
