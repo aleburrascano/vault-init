@@ -45,14 +45,18 @@ describe('launcher: SHA-256 verification (step 1)', () => {
 
   it('emits a warning and continues when --expected-sha256 is omitted', () => {
     // Without the pinned hash the launcher prints a warning, then proceeds.
-    // We use a 3s timeout so step 6 (npx obsidian-mcp-pro) does not hang the test.
+    // We pass an empty PATH so the launcher's spawnSync('npx', ...) at
+    // step 6 fails fast (r.error set) instead of hanging or invoking a
+    // real obsidian-mcp-pro install — much more deterministic than a
+    // wall-clock timeout.
     const launcherPath = join(tmp, '.mcp-start.js');
     copyFileSync(TMPL_PATH, launcherPath);
 
     const result = spawnSync(process.execPath, [launcherPath], {
       cwd: tmp,
-      timeout: 3000,
+      timeout: 5000,
       encoding: 'utf8',
+      env: { ...process.env, PATH: '' },
     });
 
     // Hash-missing warning is emitted before any other step runs.
@@ -71,13 +75,18 @@ describe('launcher: .obsidian/ stub creation (step 5)', () => {
 
     expect(existsSync(join(tmp, '.obsidian'))).toBe(false);
 
-    // Run with a timeout so npx in step 6 does not hang. Whether step 6
-    // fails fast (no obsidian-mcp-pro available) or hangs until timeout,
-    // step 5 will have already executed.
+    // Empty PATH makes step 6's spawnSync('npx', ...) fail-fast (r.error
+    // set → abort) so this test does not depend on a wall-clock timeout
+    // racing the npx package install. Steps 1-5 still run as designed —
+    // node itself was invoked via process.execPath (absolute), so the
+    // launcher script executes; its own spawnSync('git', ...) calls in
+    // steps 2-4 fail with r.error and emit warnings, then step 5 creates
+    // .obsidian/.
     const result = spawnSync(process.execPath, [launcherPath, `--expected-sha256=${expected}`], {
       cwd: tmp,
-      timeout: 3000,
+      timeout: 5000,
       encoding: 'utf8',
+      env: { ...process.env, PATH: '' },
     });
 
     // No hash-mismatch error — we got past step 1.
