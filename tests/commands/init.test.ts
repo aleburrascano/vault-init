@@ -49,8 +49,8 @@ beforeEach(() => {
     if (args?.[0] === 'auth' && args?.[1] === 'status') {
       return { exitCode: 0, stdout: '', stderr: '' };
     }
-    if (args?.includes('--jq') && args?.includes('.login')) {
-      return { exitCode: 0, stdout: 'testuser', stderr: '' };
+    if (args?.[0] === 'api' && args?.[1] === 'user') {
+      return { exitCode: 0, stdout: JSON.stringify({ login: 'testuser', plan: { name: 'pro' } }), stderr: '' };
     }
     return { exitCode: 0, stdout: '', stderr: '' };
   }) as never);
@@ -144,8 +144,8 @@ describe('I-5: gh not authenticated', () => {
       if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.email') {
         return { exitCode: 0, stdout: 'test@example.com', stderr: '' };
       }
-      if (args?.includes('--jq') && args?.includes('.login')) {
-        return { exitCode: 0, stdout: 'testuser', stderr: '' };
+      if (args?.[0] === 'api' && args?.[1] === 'user') {
+        return { exitCode: 0, stdout: JSON.stringify({ login: 'testuser', plan: { name: 'pro' } }), stderr: '' };
       }
       return { exitCode: 0, stdout: '', stderr: '' };
     }) as never);
@@ -175,7 +175,9 @@ describe('I-6: git user.name not configured', () => {
         return { exitCode: 0, stdout: 'test@example.com', stderr: '' };
       }
       if (args?.[0] === 'auth' && args?.[1] === 'status') return { exitCode: 0, stdout: '', stderr: '' };
-      if (args?.includes('--jq') && args?.includes('.login')) return { exitCode: 0, stdout: 'testuser', stderr: '' };
+      if (args?.[0] === 'api' && args?.[1] === 'user') {
+        return { exitCode: 0, stdout: JSON.stringify({ login: 'testuser', plan: { name: 'pro' } }), stderr: '' };
+      }
       return { exitCode: 0, stdout: '', stderr: '' };
     }) as never);
     vi.mocked(input).mockResolvedValueOnce('Test User');
@@ -197,8 +199,9 @@ describe('I-7: auth-gated on free plan', () => {
       if (args?.[0] === 'auth' && args?.[1] === 'status') return { exitCode: 0, stdout: '', stderr: '' };
       if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.name') return { exitCode: 0, stdout: 'User', stderr: '' };
       if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.email') return { exitCode: 0, stdout: 'u@e.com', stderr: '' };
-      if (args?.includes('--jq') && args?.includes('.plan.name')) return { exitCode: 0, stdout: 'free', stderr: '' };
-      if (args?.includes('--jq') && args?.includes('.login')) return { exitCode: 0, stdout: 'testuser', stderr: '' };
+      if (args?.[0] === 'api' && args?.[1] === 'user') {
+        return { exitCode: 0, stdout: JSON.stringify({ login: 'testuser', plan: { name: 'free' } }), stderr: '' };
+      }
       return { exitCode: 0, stdout: '', stderr: '' };
     }) as never);
 
@@ -215,7 +218,9 @@ describe('I-8: GitHub username not fetchable', () => {
     vi.mocked(execa).mockImplementation((async (cmd: string, args?: readonly string[]) => {
       if (args?.[0] === 'auth' && args?.[1] === 'status') return { exitCode: 0, stdout: '', stderr: '' };
       if (cmd === 'git' && args?.[0] === 'config') return { exitCode: 0, stdout: 'User', stderr: '' };
-      if (args?.includes('--jq') && args?.includes('.login')) return { exitCode: 0, stdout: '', stderr: '' }; // empty
+      if (args?.[0] === 'api' && args?.[1] === 'user') {
+        return { exitCode: 0, stdout: JSON.stringify({ login: '' }), stderr: '' }; // empty login → fetch fails
+      }
       return { exitCode: 0, stdout: '', stderr: '' };
     }) as never);
 
@@ -233,7 +238,9 @@ describe('I-9: rollback on push failure', () => {
       if (args?.[0] === 'auth' && args?.[1] === 'status') return { exitCode: 0, stdout: '', stderr: '' };
       if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.name') return { exitCode: 0, stdout: 'User', stderr: '' };
       if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.email') return { exitCode: 0, stdout: 'u@e.com', stderr: '' };
-      if (args?.includes('--jq') && args?.includes('.login')) return { exitCode: 0, stdout: 'testuser', stderr: '' };
+      if (args?.[0] === 'api' && args?.[1] === 'user') {
+        return { exitCode: 0, stdout: JSON.stringify({ login: 'testuser', plan: { name: 'pro' } }), stderr: '' };
+      }
       if (cmd === 'git' && args?.includes('push')) {
         // execa throws (not returns) on non-zero exit when reject:true (default)
         throw Object.assign(new Error('git push failed: Permission denied'), { exitCode: 1 });

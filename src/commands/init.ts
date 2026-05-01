@@ -8,7 +8,11 @@ import { renderVaultJson } from '../lib/vault-templates.js';
 import { createDirectoryTree, writeLayoutFiles, CANONICAL_LAYOUT_FILES } from '../lib/vault-layout.js';
 import { findTool, vaultsRoot, isWindows } from '../lib/platform.js';
 import { findOrInstallClaude, runMcpAdd, runMcpRemove, manualMcpAddCommand } from '../lib/mcp.js';
-import { repoUrl, repoCloneUrl } from '../lib/github.js';
+import {
+  createRepo, deleteRepo, getCurrentUser, getUserPlan,
+  enablePages, setPagesVisibility,
+  repoUrl, repoCloneUrl,
+} from '../lib/github.js';
 import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { VAULT_FILES, VAULT_DIRS, WORKFLOW_FILES } from '../lib/constants.js';
 import { PROMPTS } from '../lib/messages.js';
@@ -96,7 +100,7 @@ interface PublishConfig {
   writeDeploy: boolean;
 }
 
-async function selectPublishMode(publishModeOpt: PublishMode | undefined, ghPath: string): Promise<PublishConfig> {
+async function selectPublishMode(publishModeOpt: PublishMode | undefined): Promise<PublishConfig> {
   if (publishModeOpt !== undefined && !['private', 'public', 'auth-gated'].includes(publishModeOpt)) {
     throw new Error(`Invalid publishMode: "${publishModeOpt}". Must be one of: private, public, auth-gated`);
   }
@@ -110,8 +114,7 @@ async function selectPublishMode(publishModeOpt: PublishMode | undefined, ghPath
   });
 
   if (publishMode === 'auth-gated') {
-    const planResult = await execa(ghPath, ['api', 'user', '--jq', '.plan.name'], { reject: false });
-    const plan = String(planResult.stdout ?? '').trim() || 'free';
+    const plan = await getUserPlan().catch(() => 'free');
     if (plan === 'free') {
       throw new Error(`auth-gated Pages requires GitHub Pro+ (you're on Free).\n  Choose Public or Private instead.`);
     }
@@ -126,34 +129,32 @@ async function selectPublishMode(publishModeOpt: PublishMode | undefined, ghPath
   };
 }
 
-async function getGithubUser(ghPath: string): Promise<string> {
-  const result = await execa(ghPath, ['api', 'user', '--jq', '.login'], { reject: false });
-  const login = String(result.stdout ?? '').trim();
-  if (!login) throw new Error('Could not fetch your GitHub username. Run: gh auth status');
-  return login;
+async function getGithubUser(): Promise<string> {
+  try {
+    return await getCurrentUser();
+  } catch {
+    throw new Error('Could not fetch your GitHub username. Run: gh auth status');
+  }
 }
 
-async function createRemoteRepo(ghPath: string, vaultDir: string, name: string, githubUser: string, repoVisibility: 'public' | 'private'): Promise<void> {
-  await execa(ghPath, ['repo', 'create', name, `--${repoVisibility}`]);
+async function createRemoteRepo(vaultDir: string, name: string, githubUser: string, repoVisibility: 'public' | 'private'): Promise<void> {
+  await createRepo(name, { visibility: repoVisibility });
   await execa('git', ['-C', vaultDir, 'remote', 'add', 'origin', repoCloneUrl(githubUser, name)]);
 }
 
-async function setupGitHubPages(ghPath: string, githubUser: string, name: string, pagesPrivate: boolean, log: Logger): Promise<void> {
-  const pagesResult = await execa(ghPath, [
-    'api', `repos/${githubUser}/${name}/pages`,
-    '--method', 'POST', '-f', 'build_type=workflow',
-  ], { reject: false });
-  if (pagesResult.exitCode !== 0) {
+async function setupGitHubPages(githubUser: string, name: string, pagesPrivate: boolean, log: Logger): Promise<void> {
+  const slug = `${githubUser}/${name}`;
+  try {
+    await enablePages(slug);
+  } catch {
     log.info(`  Warning: Could not auto-enable GitHub Pages.`);
-    log.info(`  Enable manually: ${repoUrl(`${githubUser}/${name}`, 'settings/pages')}`);
+    log.info(`  Enable manually: ${repoUrl(slug, 'settings/pages')}`);
     return;
   }
   if (pagesPrivate) {
-    const privResult = await execa(ghPath, [
-      'api', `repos/${githubUser}/${name}/pages`,
-      '--method', 'PUT', '-f', 'visibility=private',
-    ], { reject: false });
-    if (privResult.exitCode !== 0) {
+    try {
+      await setPagesVisibility(slug, 'private');
+    } catch {
       log.info(`  Warning: Could not set Pages to private — may be publicly accessible.`);
     }
   }
@@ -247,13 +248,13 @@ export async function run(
   await ensureGitConfig(gitNameOpt, gitEmailOpt);
 
   log.info('');
-  const { publishMode, repoVisibility, enablePages, pagesPrivate, writeDeploy } =
-    await selectPublishMode(publishModeOpt, ghPath);
+  const { publishMode, repoVisibility, enablePages: doEnablePages, pagesPrivate, writeDeploy } =
+    await selectPublishMode(publishModeOpt);
 
   mkdirSync(root, { recursive: true });
   if (existsSync(vaultDir)) throw new Error(`${vaultDir} already exists.`);
 
-  const githubUser = await getGithubUser(ghPath);
+  const githubUser = await getGithubUser();
   const baseUrl = `${githubUser}.github.io/${name}`;
 
   let createdDir = false;
@@ -267,7 +268,7 @@ export async function run(
     createdDir = true;
 
     createDirectoryTree(vaultDir);
-    writeLayoutFiles(vaultDir, { name, siteUrl: enablePages ? baseUrl : '' }, CANONICAL_LAYOUT_FILES);
+    writeLayoutFiles(vaultDir, { name, siteUrl: doEnablePages ? baseUrl : '' }, CANONICAL_LAYOUT_FILES);
     copyFileSync(TMPL_PATH, join(vaultDir, VAULT_FILES.LAUNCHER));
 
     if (writeDeploy) {
@@ -284,13 +285,13 @@ export async function run(
 
     // [4/6] GitHub repo
     log.info(`[4/6] Creating GitHub repo: ${name} (${repoVisibility})...`);
-    await createRemoteRepo(ghPath, vaultDir, name, githubUser, repoVisibility);
+    await createRemoteRepo(vaultDir, name, githubUser, repoVisibility);
     createdRepo = true;
 
     // [5/6] Pages + push
-    if (enablePages) {
+    if (doEnablePages) {
       log.info('[5/6] Enabling Pages and pushing...');
-      await setupGitHubPages(ghPath, githubUser, name, pagesPrivate, log);
+      await setupGitHubPages(githubUser, name, pagesPrivate, log);
     } else {
       log.info('[5/6] Pushing (no Pages — notes-only vault)...');
     }
@@ -317,9 +318,12 @@ export async function run(
       }
     }
     if (createdRepo) {
-      const result = await execa(ghPath, ['repo', 'delete', `${githubUser}/${name}`, '--yes'], { reject: false });
-      if (result.exitCode === 0) log.info('  GitHub repo deleted.');
-      else log.info(`  Warning: could not delete GitHub repo — run manually: gh repo delete ${githubUser}/${name} --yes`);
+      try {
+        await deleteRepo(`${githubUser}/${name}`);
+        log.info('  GitHub repo deleted.');
+      } catch {
+        log.info(`  Warning: could not delete GitHub repo — run manually: gh repo delete ${githubUser}/${name} --yes`);
+      }
     }
     if (createdDir && existsSync(vaultDir)) {
       rmSync(vaultDir, { recursive: true, force: true });
