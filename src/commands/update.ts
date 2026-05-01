@@ -81,7 +81,7 @@ export async function run(
     await runMcpRepin(claudePath, name, vault.launcherPath, afterHash);
   } else {
     const manual = manualMcpRepinCommands(name, vault.launcherPath, afterHash);
-    log.info('Warning: Claude Code not found — MCP re-registration skipped.');
+    log.warn('Claude Code not found — MCP re-registration skipped.');
     log.info(`  Once installed, run:`);
     log.info(`    ${manual.remove}`);
     log.info(`    ${manual.add}`);

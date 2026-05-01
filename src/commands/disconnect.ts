@@ -52,7 +52,7 @@ export async function run(
       log.info('Removing MCP server...');
       await runMcpRemove(claudePath, name);
     } else {
-      log.info(`Warning: Claude Code not found — MCP cleanup skipped.`);
+      log.warn(`Claude Code not found — MCP cleanup skipped.`);
       log.info(`  If registered, run: ${manualMcpRemoveCommand(name)}`);
     }
   }

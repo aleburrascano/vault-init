@@ -166,7 +166,7 @@ export async function run(
       prBody: 'Adds GitHub Pages deploy workflow.',
     });
     if (pushResult.mode === 'pr') {
-      log.info(`Warning: Repo/Pages configured but workflow pending PR (branch: ${pushResult.branch}).`);
+      log.warn(`Repo/Pages configured but workflow pending PR (branch: ${pushResult.branch}).`);
     }
   }
 

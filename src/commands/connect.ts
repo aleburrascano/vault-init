@@ -61,7 +61,7 @@ export async function run(
     const launcherPath = join(vaultDir, VAULT_FILES.LAUNCHER);
     if (!existsSync(launcherPath)) {
       log.info('');
-      log.info(`Warning: ${name} is missing .mcp-start.js — it may have been created with an older version.`);
+      log.warn(`${name} is missing .mcp-start.js — it may have been created with an older version.`);
       log.info('  MCP registration skipped.');
       log.info('  Ask the owner to run \'vaultkit update\' and push, then reconnect.');
       cloned = false;
@@ -70,7 +70,7 @@ export async function run(
 
     if (!isVaultLike(vaultDir)) {
       log.info('');
-      log.info(`Warning: ${name} is missing the standard vault layout (CLAUDE.md / raw/ / wiki/).`);
+      log.warn(`${name} is missing the standard vault layout (CLAUDE.md / raw/ / wiki/).`);
       log.info('  Connecting anyway — ask the owner to run \'vaultkit update\' so layout-aware features work.');
     }
 
@@ -119,7 +119,7 @@ export async function run(
     }
 
     log.info('');
-    log.info('Warning: Claude Code CLI not installed — MCP registration skipped.');
+    log.warn('Claude Code CLI not installed — MCP registration skipped.');
     log.info(`  Once installed, run:`);
     log.info(`  ${manualMcpAddCommand(name, launcherPath, hash)}`);
     cloned = false;

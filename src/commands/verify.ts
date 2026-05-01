@@ -86,7 +86,7 @@ export async function run(
   const claudePath = await findTool('claude');
   if (!claudePath) {
     const manual = manualMcpRepinCommands(name, vault.launcherPath, finalHash);
-    log.info('Warning: Claude Code not found — re-pin manually:');
+    log.warn('Claude Code not found — re-pin manually:');
     log.info(`  ${manual.remove}`);
     log.info(`  ${manual.add}`);
     throw new VaultkitError('TOOL_MISSING', 'Claude Code not found.');

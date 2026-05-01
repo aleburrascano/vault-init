@@ -73,7 +73,7 @@ export async function run(
       const result = await execa(gh, ['repo', 'delete', repoSlug, '--yes'], { reject: false });
       status.github = result.exitCode === 0 ? 'deleted' : 'failed';
       if (status.github === 'failed') {
-        log.info(`Warning: GitHub repo deletion failed — continuing with local + MCP cleanup.`);
+        log.warn(`GitHub repo deletion failed — continuing with local + MCP cleanup.`);
       }
     }
   }
@@ -89,7 +89,7 @@ export async function run(
       status.mcp = removed ? 'removed' : 'not-registered';
       if (!removed) log.info('  (not registered — skipping)');
     } else {
-      log.info('Warning: Claude Code not found — MCP cleanup skipped.');
+      log.warn('Claude Code not found — MCP cleanup skipped.');
       log.info(`  If registered, run: ${manualMcpRemoveCommand(name)}`);
     }
   }

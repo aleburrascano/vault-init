@@ -147,7 +147,7 @@ async function setupGitHubPages(githubUser: string, name: string, pagesPrivate: 
   try {
     await enablePages(slug);
   } catch {
-    log.info(`  Warning: Could not auto-enable GitHub Pages.`);
+    log.warn(`  Could not auto-enable GitHub Pages.`);
     log.info(`  Enable manually: ${repoUrl(slug, 'settings/pages')}`);
     return;
   }
@@ -155,7 +155,7 @@ async function setupGitHubPages(githubUser: string, name: string, pagesPrivate: 
     try {
       await setPagesVisibility(slug, 'private');
     } catch {
-      log.info(`  Warning: Could not set Pages to private — may be publicly accessible.`);
+      log.warn(`  Could not set Pages to private — may be publicly accessible.`);
     }
   }
 }
@@ -322,7 +322,7 @@ export async function run(
         await deleteRepo(`${githubUser}/${name}`);
         log.info('  GitHub repo deleted.');
       } catch {
-        log.info(`  Warning: could not delete GitHub repo — run manually: gh repo delete ${githubUser}/${name} --yes`);
+        log.warn(`  Could not delete GitHub repo — run manually: gh repo delete ${githubUser}/${name} --yes`);
       }
     }
     if (createdDir && existsSync(vaultDir)) {

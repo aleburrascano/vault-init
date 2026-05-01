@@ -23,7 +23,7 @@ export async function run(
 
   const statusResult = await execa('git', ['-C', vault.dir, 'status', '--porcelain'], { reject: false });
   if (String(statusResult.stdout ?? '').trim().length > 0) {
-    log.info(`Warning: Vault has uncommitted changes — they will NOT be in the backup.`);
+    log.warn(`Vault has uncommitted changes — they will NOT be in the backup.`);
     log.info(`  Hint: cd "${vault.dir}" && git add . && git commit -m "wip: pre-backup snapshot"`);
   }
 
