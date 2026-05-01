@@ -8,6 +8,7 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 - **`runMcpRemove(claudePath, name) → { removed }`** and **`manualMcpRemoveCommand(name)`** in [src/lib/mcp.ts](src/lib/mcp.ts) — single source of truth for the `claude mcp remove --scope user` argv shape, parallel to the existing `runMcpAdd` / `runMcpRepin` pattern. `runMcpRepin` and `manualMcpRepinCommands` now delegate to these helpers internally.
 - **`setRepoVisibility(slug, 'public' | 'private')`** in [src/lib/github.ts](src/lib/github.ts) — wraps `gh repo edit --visibility=<v> --accept-visibility-change-consequences`. Parallel to the existing `setPagesVisibility` / `enablePages` / `disablePages` helpers.
 - **`Vault.requireFromName(name, cfgPath?)`** in [src/lib/vault.ts](src/lib/vault.ts) — throw-on-missing variant of `tryFromName` that consolidates the canonical `"${name}" ${DEFAULT_MESSAGES.NOT_REGISTERED}` phrasing. Five commands collapse the four-line `tryFromName` + `if (!vault) throw …` preamble to a single line.
+- **`PUBLISH_MODES` + `PublishMode` type + `isPublishMode` type guard** in [src/lib/constants.ts](src/lib/constants.ts) — single source of truth for the `'private' | 'public' | 'auth-gated'` enumeration. Replaces the previous three sources (a local `PublishMode` type in `init.ts`, an inline validation array in `init.ts`, and a separate `validTargets` array in `visibility.ts`). User-facing error messages now derive their valid-mode list from `PUBLISH_MODES.join(', ')`, so adding a new mode is one edit.
 
 ### Changed (internal — no user-facing behavior change)
 - **`destroy`, `disconnect`, and the `init` rollback path** now route MCP removal through `runMcpRemove` / `manualMcpRemoveCommand` instead of inlining the `claude mcp remove` argv. Closes the architectural gap where mcp.ts was single source of truth for `mcp add` / `mcp repin` but not `mcp remove`.
@@ -17,6 +18,10 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 
 ### Style
 - **`Warning:` prefix removed** from 13 log call sites across 8 commands (`disconnect`, `init`, `backup`, `connect`, `update`, `verify`, `destroy`, `visibility`). Per `code-style.md`: the `log.warn(…)` level conveys the warning; the prefix was redundant. Visible behavior change: warnings now go to stderr (via `console.warn` in `ConsoleLogger`) instead of stdout.
+
+### Housekeeping
+- Removed the deprecated `.claude/skills/code-auditor/SKILL.md` (was already staged for deletion before this refactor).
+- Refreshed `.claude/MEMORY.md` to reflect the actual rule files. Dropped the stale `shell-conventions.md` ghost reference and the pre-TS-migration "bash, JavaScript, and template conventions" description; added the previously-missing `architecture.md`, `doc-sync.md`, and `security-invariants.md` index entries.
 
 ### Tests
 - **`tests/helpers/registry.ts`** — shared `writeCfg(cfgPath, vaults)` helper replacing 14 near-identical local copies. Single signature accepts either `name → dir` shorthand or `name → { dir, hash? }`. 15 test files updated.
