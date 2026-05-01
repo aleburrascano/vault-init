@@ -18,8 +18,13 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 ### Style
 - **`Warning:` prefix removed** from 13 log call sites across 8 commands (`disconnect`, `init`, `backup`, `connect`, `update`, `verify`, `destroy`, `visibility`). Per `code-style.md`: the `log.warn(…)` level conveys the warning; the prefix was redundant. Visible behavior change: warnings now go to stderr (via `console.warn` in `ConsoleLogger`) instead of stdout.
 
+### Tests
+- **`tests/helpers/registry.ts`** — shared `writeCfg(cfgPath, vaults)` helper replacing 14 near-identical local copies. Single signature accepts either `name → dir` shorthand or `name → { dir, hash? }`. 15 test files updated.
+- **`tests/helpers/git.ts`** — shared `mockGitConfig({ name?, email? })`. The well-formed local helper in `doctor.test.ts` moves here; `init.test.ts` and `destroy-mocked.test.ts` keep their inline patterns (multi-handler `mockImplementation` doesn't extract cleanly).
+- **`tests/lib/launcher-integration.test.ts`** — closes the largest test blind spot. Spawns `lib/mcp-start.js.tmpl` as a real Node process and asserts: (1) SHA-256 mismatch exits non-zero with the production diagnostic, (2) missing `--expected-sha256` warns but continues, (3) `.obsidian/` stub creation runs even when step 6 (npx) fails, (4) upstream launcher tampering triggers the refuse-to-auto-update abort against a real git topology (bare upstream + work + tamper clones).
+
 ### Internal
-- Test count: 292 → 303 passing (11 new tests covering `runMcpRemove` argv + return shape, `setRepoVisibility` argv + error path, and `Vault.requireFromName` happy / not-registered / invalid-name paths).
+- Test count: 292 → 307 passing (15 new: 11 from Tier 1 / 2 helpers, 4 from launcher integration test).
 
 ## [2.2.0] - 2026-04-30
 
