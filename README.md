@@ -12,12 +12,39 @@ vaultkit help
 
 `vaultkit setup` walks through every prerequisite in one go (node 22+, gh CLI, gh auth with `repo` + `workflow` scopes, git config, claude CLI). It's idempotent — re-run any time. The `delete_repo` scope is requested separately on the first `vaultkit destroy` so you're never asked up front to authorize a destructive permission you may never use.
 
+**Updating**: `npm update -g @aleburrascano/vaultkit` to pull a new release; re-run `vaultkit setup` after major versions to re-check prerequisites and `vaultkit doctor` to flag any vault whose pinned launcher hash has drifted.
+
 ## What you'd use this for
 
 - **Personal knowledge base.** A vault of research notes, papers, books you've read, recurring ideas. Open Claude Code on any project and your notes are queryable mid-conversation — no copy-paste, no "let me find that link."
 - **Team wiki.** A shared decision log, runbook collection, or product knowledge base lives in one GitHub repo. Every teammate's Claude Code can answer from it without anyone manually pasting context, and PRs gate every change.
 - **Public reference.** Publish a curated wiki for a domain you know well; others run `vaultkit connect owner/repo` and their Claude Code now has access too — like a knowledge graph anyone can subscribe to. Optional public Quartz site so non-Claude users can read it in a browser.
 - **Reading notebook.** Drop source PDFs/articles into `raw/`, write synthesis pages in `wiki/`, ask Claude to surface contradictions between sources or pull every quote on a topic.
+
+## Quick Start
+
+A 60-second path from install to "Claude knows my notes":
+
+1. **Install + onboard** (one-time):
+   ```bash
+   npm install -g @aleburrascano/vaultkit
+   vaultkit setup
+   ```
+
+2. **Create a vault** (interactive — choose `n` for private notes-only):
+   ```bash
+   vaultkit init my-wiki
+   ```
+
+3. **Drop in a note**:
+   ```bash
+   echo "# Mitochondria" > ~/vaults/my-wiki/wiki/concepts/mitochondria.md
+   echo "Powerhouse of the cell." >> ~/vaults/my-wiki/wiki/concepts/mitochondria.md
+   ```
+
+4. **Open Claude Code in any project** and ask: *"What do I know about mitochondria?"* — Claude calls `mcp__my-wiki__search_notes`, finds your note, answers.
+
+That's it. Push to GitHub when you want teammates' Claude Code sessions to see the same content (`cd ~/vaults/my-wiki && git add -A && git commit -m "first note" && git push`).
 
 ## Commands
 
@@ -75,6 +102,13 @@ my-wiki/
 ├── .mcp-start.js     ← MCP server launcher (SHA-pinned, see Security)
 └── .quartz/          ← Quartz static site generator (only when publishing)
 ```
+
+The subfolders are conventions, not requirements — vaultkit creates them but won't complain if you ignore some, delete what you don't use, or add new ones:
+
+- **`raw/`** holds material you didn't author: PDFs in `papers/`, saved articles in `articles/`, scanned books in `books/`, audio transcripts in `transcripts/`, images and screenshots in `assets/`. CI's duplicate-check workflow blocks PRs that add a file whose name already exists anywhere under `raw/`.
+- **`wiki/`** holds pages *you* wrote: synthesis notes in `concepts/`, broader subject pages in `topics/`, biographies in `people/`, per-source pages (one wiki page per `raw/` source) in `sources/`.
+
+If you don't write biographies, leave `wiki/people/` empty or delete it. The structure is for you, not the tool.
 
 And each vault ships with these capabilities:
 
