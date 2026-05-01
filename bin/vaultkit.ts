@@ -3,6 +3,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
+import { isVaultkitError, EXIT_CODES } from '../src/lib/errors.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf8')) as { version: string };
@@ -21,12 +22,13 @@ async function wrap(fn: () => Promise<void>, commandName: string, args: string[]
     await fn();
     auditLog(commandName, args, 0, start);
   } catch (err) {
-    auditLog(commandName, args, 1, start);
+    const exitCode = isVaultkitError(err) ? EXIT_CODES[err.code] : 1;
+    auditLog(commandName, args, exitCode, start);
     const message = (err as { message?: string })?.message;
     if (message) {
       process.stderr.write(`Error: ${message}\n`);
     }
-    process.exit(1);
+    process.exit(exitCode);
   }
 }
 

@@ -4,6 +4,7 @@ import { execa } from 'execa';
 import { getAllVaults } from '../lib/registry.js';
 import { getStatus } from '../lib/git.js';
 import { Vault } from '../lib/vault.js';
+import { VaultkitError } from '../lib/errors.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 export async function run(
@@ -14,7 +15,7 @@ export async function run(
     // Single-vault detailed mode
     const vault = await Vault.tryFromName(name, cfgPath);
     if (!vault) {
-      throw new Error(`Vault "${name}" is not registered.`);
+      throw new VaultkitError('NOT_REGISTERED', `Vault "${name}" is not registered.`);
     }
     if (!vault.hasGitRepo()) {
       throw new Error(`${vault.dir} is not a git repository.`);

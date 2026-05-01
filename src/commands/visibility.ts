@@ -11,6 +11,7 @@ import {
   getVisibility, isAdmin, getUserPlan,
   enablePages, setPagesVisibility, disablePages, pagesExist, getPagesVisibility,
 } from '../lib/github.js';
+import { VaultkitError } from '../lib/errors.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -35,20 +36,20 @@ export async function run(
 ): Promise<void> {
   const validTargets = ['public', 'private', 'auth-gated'];
   if (!validTargets.includes(target)) {
-    throw new Error(`Invalid mode '${target}'. Choose one of: public, private, auth-gated.`);
+    throw new VaultkitError('UNRECOGNIZED_INPUT', `Invalid mode '${target}'. Choose one of: public, private, auth-gated.`);
   }
 
   const vault = await Vault.tryFromName(name, cfgPath);
-  if (!vault) throw new Error(`"${name}" is not a registered vault.`);
+  if (!vault) throw new VaultkitError('NOT_REGISTERED', `"${name}" is not a registered vault.`);
 
   const gh = await findTool('gh');
-  if (!gh) throw new Error('GitHub CLI (gh) is required for vaultkit visibility.');
+  if (!gh) throw new VaultkitError('TOOL_MISSING', 'GitHub CLI (gh) is required for vaultkit visibility.');
 
   const repoSlug = await resolveRepoSlug(vault.dir);
-  if (!repoSlug) throw new Error("Vault has no 'origin' remote — cannot determine GitHub repo.");
+  if (!repoSlug) throw new VaultkitError('NOT_VAULT_LIKE', "Vault has no 'origin' remote — cannot determine GitHub repo.");
 
   const admin = await isAdmin(repoSlug).catch(() => false);
-  if (!admin) throw new Error(`You don't have admin rights on ${repoSlug}.`);
+  if (!admin) throw new VaultkitError('PERMISSION_DENIED', `You don't have admin rights on ${repoSlug}.`);
 
   const currentVis = await getVisibility(repoSlug).catch(() => 'unknown');
   const hasPages = await pagesExist(repoSlug).catch(() => false);

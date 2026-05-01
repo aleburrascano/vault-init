@@ -6,6 +6,7 @@ import { addToRegistry } from '../lib/registry.js';
 import { findTool, vaultsRoot } from '../lib/platform.js';
 import { findOrInstallClaude, runMcpAdd, manualMcpAddCommand } from '../lib/mcp.js';
 import { clone } from '../lib/git.js';
+import { VaultkitError } from '../lib/errors.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 export interface ConnectOptions extends RunOptions {
@@ -26,7 +27,7 @@ export function _normalizeInput(input: string): { repo: string; name: string } {
   if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(input)) {
     return { repo: input, name: basename(input) };
   }
-  throw new Error(`Unrecognized format. Use owner/repo or a GitHub URL.`);
+  throw new VaultkitError('UNRECOGNIZED_INPUT', `Unrecognized format. Use owner/repo or a GitHub URL.`);
 }
 
 export async function run(
@@ -37,7 +38,7 @@ export async function run(
 
   const existing = await Vault.tryFromName(name, cfgPath);
   if (existing) {
-    throw new Error(`An MCP server named '${name}' is already registered.\nRun 'vaultkit status' or 'vaultkit disconnect ${name}' first.`);
+    throw new VaultkitError('ALREADY_REGISTERED', `An MCP server named '${name}' is already registered.\nRun 'vaultkit status' or 'vaultkit disconnect ${name}' first.`);
   }
 
   const root = vaultsRoot();
@@ -45,7 +46,7 @@ export async function run(
   const vaultDir = join(root, name);
 
   if (existsSync(vaultDir)) {
-    throw new Error(`${vaultDir} already exists.`);
+    throw new VaultkitError('ALREADY_REGISTERED', `${vaultDir} already exists.`);
   }
 
   let cloned = false;

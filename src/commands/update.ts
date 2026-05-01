@@ -11,6 +11,7 @@ import {
 import { findTool } from '../lib/platform.js';
 import { runMcpRepin, manualMcpRepinCommands } from '../lib/mcp.js';
 import { add, commit, pushOrPr } from '../lib/git.js';
+import { VaultkitError } from '../lib/errors.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -29,7 +30,7 @@ export async function run(
   { cfgPath, log = console.log, skipConfirm = false }: UpdateOptions = {},
 ): Promise<void> {
   const vault = await Vault.tryFromName(name, cfgPath);
-  if (!vault) throw new Error(`"${name}" is not a registered vault.`);
+  if (!vault) throw new VaultkitError('NOT_REGISTERED', `"${name}" is not a registered vault.`);
 
   if (!vault.hasGitRepo()) {
     throw new Error(`${vault.dir} is not a git repository — aborting.`);

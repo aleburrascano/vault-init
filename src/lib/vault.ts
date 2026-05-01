@@ -2,17 +2,18 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { getVaultDir, getExpectedHash } from './registry.js';
+import { VaultkitError } from './errors.js';
 import type { VaultRecord } from '../types.js';
 
 export function validateName(name: string): void {
   if (name.includes('/')) {
-    throw new Error("provide the vault name only (e.g. 'MyVault'), not owner/repo.");
+    throw new VaultkitError('INVALID_NAME', "provide the vault name only (e.g. 'MyVault'), not owner/repo.");
   }
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-    throw new Error('vault name must contain only letters, numbers, hyphens, and underscores.');
+    throw new VaultkitError('INVALID_NAME', 'vault name must contain only letters, numbers, hyphens, and underscores.');
   }
   if (name.length > 64) {
-    throw new Error('vault name must be 64 characters or less.');
+    throw new VaultkitError('INVALID_NAME', 'vault name must be 64 characters or less.');
   }
 }
 
