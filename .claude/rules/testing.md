@@ -7,6 +7,7 @@ Live (real GitHub API): `npm run test:live` — gated behind `VAULTKIT_LIVE_TEST
 Test files live in `tests/` and mirror the source tree:
 - `tests/lib/` — unit tests for `src/lib/*.ts` modules
 - `tests/commands/` — integration tests for `src/commands/*.ts`. Many commands have both `<name>.test.ts` (real-world integration) and `<name>-mocked.test.ts` (vi.mock-based unit tests).
+- `tests/helpers/` — shared test utilities. Currently `logger.ts` exposes `silent` (no-op `Logger` singleton) and `arrayLogger(lines: string[])` (capture-style `Logger` for assertion checks). Use these instead of inline `log: () => {}` or `log: (m) => arr.push(m)` — those don't satisfy the `Logger` interface added in v2.1.0.
 
 ## Testing discipline
 

@@ -56,8 +56,10 @@ To scaffold a new command: `/add-command`.
 | `platform.ts` | `isWindows`, `claudeJsonPath`, `vaultsRoot`, `findTool`, `npmGlobalBin` |
 | `git.ts` | `init`, `add`, `commit`, `push`, `pull`, `getStatus`, `pushOrPr`, `archiveZip`, `clone` (function form — `GitClient` class evaluated and rejected per Phase 6 stop signal) |
 | `github.ts` | `createRepo`, `deleteRepo`, `repoExists`, `isAdmin`, `getVisibility`, `enablePages`, `setPagesVisibility`, `disablePages`, `pagesExist`, `getPagesVisibility`, `getCurrentUser`, `getUserPlan`, `isAuthenticated`, `ensureDeleteRepoScope` |
+| `errors.ts` | `VaultkitError` class, `VaultkitErrorCode` union (11 categories), `isVaultkitError` guard, `EXIT_CODES` table mapping each code to a process exit code (2-12). Public contract: scripted callers may rely on these codes. |
+| `logger.ts` | `Logger` interface (`info` / `warn` / `error` / `debug`), `ConsoleLogger` (production), `SilentLogger` (test no-op). Replaced the flat `LogFn` type in v2.1.0. |
 
-[src/types.ts](../../src/types.ts) holds shared types: `ClaudeConfig`, `McpServerEntry`, `VaultRecord`, `LogFn`, `RunOptions`, `GitPushResult`, `GitPullResult`, `GitStatus`, `GitPushOrPrResult`, `GhUserResponse`, `GhRepoResponse`, `GhPagesResponse`, `GhRepoInfo`, `Visibility`.
+[src/types.ts](../../src/types.ts) holds shared types: `ClaudeConfig`, `McpServerEntry`, `VaultRecord`, `RunOptions`, `CommandModule`, `GitPushResult`, `GitPullResult`, `GitStatus`, `GitPushOrPrResult`, `GhUserResponse`, `GhRepoResponse`, `GhPagesResponse`, `GhRepoInfo`, `Visibility`.
 
 ## Templates — `lib/`
 

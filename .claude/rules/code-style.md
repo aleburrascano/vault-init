@@ -12,12 +12,21 @@ paths:
 - ESM only — `import`/`export`, no `require()`.
 - Imports use `.js` extensions even when the target is `.ts` (NodeNext resolution requirement). `tsc` rewrites at compile time.
 - Use `execa` (not `child_process`) for external process calls.
-- Command modules export a single `async function run(params, options?: <Name>Options): Promise<...>`. Per-command options interfaces extend `RunOptions` from `src/types.ts`.
+- Command modules export a single `async function run(params, options?: <Name>Options): Promise<...>`. Per-command options interfaces extend `RunOptions` from `src/types.ts`. Each command file ends with a `const _module: CommandModule<...> = { run }; void _module;` sentinel that type-checks the contract — keep it and update the type parameters when a new command's signature shape differs (1-arg, 0-arg, 2-arg).
 - Validate vault names via `validateName` from `src/lib/vault.ts` before any operation. Or use `Vault.tryFromName(name, cfgPath)` which validates internally.
 - Resolve vault directories via `Vault.tryFromName` or `getVaultDir` from `src/lib/registry.ts` — never from raw user input.
 - Use `findTool` from `src/lib/platform.ts` — never assume `gh` or `claude` are on PATH.
+- For MCP registration, always go through `runMcpAdd` / `runMcpRepin` from `src/lib/mcp.ts` — they are the single source of truth for the `--expected-sha256=<hash>` security invariant. Never call `claude mcp add` via raw `execa` from a command file.
 - Throw on errors (the `wrap()` in `bin/vaultkit.ts` catches and exits non-zero).
+- For known-category errors, throw `VaultkitError` (from `src/lib/errors.js`) with a `VaultkitErrorCode` so `wrap()` can map to a distinct exit code. Plain `Error` is fine for genuinely unexpected failures.
 - No silent catch-and-continue — if you catch, either re-throw or log + throw.
+
+## Logging
+
+- Commands receive a `Logger` (from `src/lib/logger.js`) via `RunOptions.log`. Default to `new ConsoleLogger()` in the destructure.
+- Call `log.info(...)` for normal output (was: every `log(...)` call before v2.1.0). Use `log.warn(...)` for recoverable conditions; `log.error(...)` for fatal-but-handled. `log.debug(...)` is verbose-only.
+- Don't prefix info messages with `Warning:` and route them through `log.info` — use `log.warn(...)` and drop the prefix; the level conveys it.
+- Tests use `silent` (no-op singleton) or `arrayLogger(lines)` from `tests/helpers/logger.ts`. Don't pass inline `log: () => {}` or `log: (m) => arr.push(m)` — those don't satisfy the `Logger` interface.
 
 ## Type discipline
 
