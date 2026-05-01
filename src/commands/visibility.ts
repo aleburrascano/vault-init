@@ -13,6 +13,7 @@ import {
 } from '../lib/github.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError, DEFAULT_MESSAGES } from '../lib/errors.js';
+import { PROMPTS, LABELS } from '../lib/messages.js';
 import { VAULT_FILES, VAULT_DIRS, WORKFLOW_FILES } from '../lib/constants.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
@@ -96,8 +97,8 @@ export async function run(
   log.info('');
 
   if (!skipConfirm) {
-    const ok = await confirm({ message: 'Proceed?', default: false });
-    if (!ok) { log.info('Aborted.'); return; }
+    const ok = await confirm({ message: PROMPTS.PROCEED, default: false });
+    if (!ok) { log.info(LABELS.ABORTED); return; }
     log.info('');
   }
 

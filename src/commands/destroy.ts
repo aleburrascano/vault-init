@@ -8,6 +8,7 @@ import { getRepoSlug } from '../lib/git.js';
 import { isAdmin, ensureDeleteRepoScope } from '../lib/github.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError, DEFAULT_MESSAGES } from '../lib/errors.js';
+import { PROMPTS, LABELS } from '../lib/messages.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 export interface DestroyOptions extends RunOptions {
@@ -57,8 +58,8 @@ export async function run(
     }
     log.info(`  MCP:    ${name} server registration`);
     log.info('');
-    const typed = confirmName ?? await input({ message: 'Type the vault name to confirm deletion:' });
-    if (typed !== name) { log.info('Aborted.'); return; }
+    const typed = confirmName ?? await input({ message: PROMPTS.TYPE_NAME_TO_CONFIRM_DELETION });
+    if (typed !== name) { log.info(LABELS.ABORTED); return; }
     log.info('');
   }
 

@@ -6,6 +6,7 @@ import { removeFromRegistry } from '../lib/registry.js';
 import { findTool } from '../lib/platform.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError, DEFAULT_MESSAGES } from '../lib/errors.js';
+import { PROMPTS, LABELS } from '../lib/messages.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 export interface DisconnectOptions extends RunOptions {
@@ -35,9 +36,9 @@ export async function run(
     log.info('');
     log.info('The GitHub repo will NOT be deleted.');
     log.info('');
-    const typed = confirmName ?? await input({ message: 'Type the vault name to confirm:' });
+    const typed = confirmName ?? await input({ message: PROMPTS.TYPE_NAME_TO_CONFIRM });
     if (typed !== name) {
-      log.info('Aborted.');
+      log.info(LABELS.ABORTED);
       return;
     }
     log.info('');

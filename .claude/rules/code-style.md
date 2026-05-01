@@ -21,6 +21,12 @@ paths:
 - For known-category errors, throw `VaultkitError` (from `src/lib/errors.js`) with a `VaultkitErrorCode` so `wrap()` can map to a distinct exit code. Plain `Error` is fine for genuinely unexpected failures.
 - No silent catch-and-continue — if you catch, either re-throw or log + throw.
 
+## User-facing strings
+
+- Prompts that appear in 2+ command files belong in `src/lib/messages.ts` (`PROMPTS`, `LABELS`). One-shot prompts stay inline at the call site — extracting them forces meaningless names like `INSTALL_GH_WINGET` for a single use.
+- Error message text follows the same rule: canonical phrasings in `DEFAULT_MESSAGES` (`src/lib/errors.ts`); command-specific hints stay inline. Pattern: `\`"${name}" ${DEFAULT_MESSAGES.NOT_REGISTERED}\nRun 'vaultkit status' to see what's registered.\``.
+- Filenames and directory names that recur across files (`'.mcp-start.js'`, `'CLAUDE.md'`, etc.) belong in `src/lib/constants.ts` (`VAULT_FILES`, `VAULT_DIRS`, `WORKFLOW_FILES`). Don't extract Git refs (`'main'`, `'origin'`) — those are Git spec terms and inline reads honestly.
+
 ## Logging
 
 - Commands receive a `Logger` (from `src/lib/logger.js`) via `RunOptions.log`. Default to `new ConsoleLogger()` in the destructure.

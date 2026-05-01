@@ -5,6 +5,7 @@ import { findTool } from '../lib/platform.js';
 import { runMcpRepin, manualMcpRepinCommands } from '../lib/mcp.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError, DEFAULT_MESSAGES } from '../lib/errors.js';
+import { LABELS } from '../lib/messages.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 export interface VerifyOptions extends RunOptions {
@@ -67,7 +68,7 @@ export async function run(
     log.info('  2. Re-pin the new SHA-256 in your MCP registration');
     log.info('');
     const ok = yes || await confirm({ message: 'Pull upstream and re-pin?', default: false });
-    if (!ok) { log.info('Aborted.'); return; }
+    if (!ok) { log.info(LABELS.ABORTED); return; }
     const pullResult = await execa('git', ['-C', vault.dir, 'pull', '--ff-only', '--quiet'], { reject: false });
     if (pullResult.exitCode !== 0) {
       throw new Error(`git pull failed. Resolve manually and re-run vaultkit verify ${name}.`);
@@ -80,7 +81,7 @@ export async function run(
     log.info(`  cat "${vault.launcherPath}"`);
     log.info('');
     const ok = yes || await confirm({ message: `Re-pin the on-disk SHA-256 (${onDisk})?`, default: false });
-    if (!ok) { log.info('Aborted.'); return; }
+    if (!ok) { log.info(LABELS.ABORTED); return; }
   }
 
   const claudePath = await findTool('claude');

@@ -10,6 +10,7 @@ import { findTool, vaultsRoot, isWindows } from '../lib/platform.js';
 import { findOrInstallClaude, runMcpAdd, manualMcpAddCommand } from '../lib/mcp.js';
 import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { VAULT_FILES, VAULT_DIRS, WORKFLOW_FILES } from '../lib/constants.js';
+import { PROMPTS } from '../lib/messages.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -182,7 +183,7 @@ async function registerMcpForVault(vaultDir: string, name: string, skipInstallCh
     log,
     promptInstall: () => skipInstallCheck
       ? Promise.resolve(true)
-      : confirm({ message: 'Claude Code CLI not found. Install it now?', default: false }),
+      : confirm({ message: PROMPTS.INSTALL_CLAUDE, default: false }),
   });
 
   if (claudePath) {

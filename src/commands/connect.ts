@@ -9,6 +9,7 @@ import { clone } from '../lib/git.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
 import { VAULT_FILES } from '../lib/constants.js';
+import { PROMPTS } from '../lib/messages.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 export interface ConnectOptions extends RunOptions {
@@ -92,7 +93,7 @@ export async function run(
       return;
     }
 
-    const confirmed = await confirm({ message: 'Register as MCP server?', default: false });
+    const confirmed = await confirm({ message: PROMPTS.REGISTER_AS_MCP, default: false });
     if (!confirmed) {
       log.info('');
       log.info(`MCP registration skipped. Vault cloned to: ${vaultDir}`);
@@ -104,7 +105,7 @@ export async function run(
     log.info('');
     const claudePath = await findOrInstallClaude({
       log,
-      promptInstall: () => confirm({ message: 'Claude Code CLI not found. Install it now?', default: false }),
+      promptInstall: () => confirm({ message: PROMPTS.INSTALL_CLAUDE, default: false }),
     });
 
     if (claudePath) {
