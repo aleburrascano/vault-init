@@ -13,6 +13,7 @@ import {
 } from '../lib/github.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
+import { VAULT_FILES, VAULT_DIRS, WORKFLOW_FILES } from '../lib/constants.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -60,7 +61,7 @@ export async function run(
     }
   }
 
-  const hasDeploy = existsSync(join(vault.dir, '.github', 'workflows', 'deploy.yml'));
+  const hasDeploy = existsSync(join(vault.dir, VAULT_DIRS.GITHUB_WORKFLOWS, WORKFLOW_FILES.DEPLOY));
   const needDeploy = (target === 'public' || target === 'auth-gated') && !hasDeploy;
 
   // Build action plan
@@ -104,12 +105,12 @@ export async function run(
 
   if (needDeploy) {
     log.info('Adding deploy workflow...');
-    const wfDir = join(vault.dir, '.github', 'workflows');
+    const wfDir = join(vault.dir, VAULT_DIRS.GITHUB_WORKFLOWS);
     mkdirSync(wfDir, { recursive: true });
-    copyFileSync(DEPLOY_TMPL, join(wfDir, 'deploy.yml'));
+    copyFileSync(DEPLOY_TMPL, join(wfDir, WORKFLOW_FILES.DEPLOY));
 
     const [owner = '', repo = ''] = repoSlug.split('/');
-    writeFileSync(join(vault.dir, '_vault.json'), renderVaultJson(owner, repo));
+    writeFileSync(join(vault.dir, VAULT_FILES.VAULT_JSON), renderVaultJson(owner, repo));
     workflowAdded = true;
   }
 
@@ -155,7 +156,7 @@ export async function run(
   }
 
   if (workflowAdded) {
-    const filesToStage = ['.github/workflows/deploy.yml', '_vault.json'];
+    const filesToStage = [`${VAULT_DIRS.GITHUB_WORKFLOWS}/${WORKFLOW_FILES.DEPLOY}`, VAULT_FILES.VAULT_JSON];
     await add(vault.dir, filesToStage);
     await commit(vault.dir, 'chore: add Pages deploy workflow');
     const pushResult = await pushOrPr(vault.dir, {

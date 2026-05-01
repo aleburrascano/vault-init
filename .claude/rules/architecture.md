@@ -52,6 +52,7 @@ To scaffold a new command: `/add-command`.
 | `registry.ts` | `getAllVaults`, `getVaultDir`, `getExpectedHash`, `addToRegistry`, `removeFromRegistry` — reads/writes `~/.claude.json` |
 | `vault.ts` | `Vault` class (`tryFromName`, `fromRecord`, `launcherPath`, `existsOnDisk`, `isVaultLike`, `hasGitRepo`, `hasLauncher`, `sha256OfLauncher`); `validateName`, `isVaultLike`, `sha256` |
 | `vault-templates.ts` | Static-content builders for new vault scaffolding: `renderClaudeMd`, `renderReadme`, `renderDuplicateCheckYaml`, `renderVaultJson`, `renderGitignore`, `renderGitattributes`, `renderIndexMd`, `renderLogMd`. Used by `init.ts`, `update.ts`, and `visibility.ts`. |
+| `constants.ts` | Domain-meaningful literal constants: `VAULT_FILES` (LAUNCHER, CLAUDE_MD, README, INDEX, LOG, GITIGNORE, GITATTRIBUTES, VAULT_JSON, OBSIDIAN_DIR), `VAULT_DIRS` (RAW, WIKI, GITHUB_WORKFLOWS), `WORKFLOW_FILES` (DEPLOY, DUPLICATE_CHECK), `VAULT_CONSTRAINTS` (NAME_MAX_LENGTH, NAME_PATTERN). Migrate inline `'.mcp-start.js'`/`'CLAUDE.md'`/etc. to these as you touch the call sites. |
 | `mcp.ts` | `claude mcp` CLI helpers: `runMcpAdd` (single source of truth for the `--expected-sha256=<hash>` invariant), `runMcpRepin`, `manualMcpAddCommand`, `manualMcpRepinCommands`, `findOrInstallClaude`. |
 | `platform.ts` | `isWindows`, `claudeJsonPath`, `vaultsRoot`, `findTool`, `npmGlobalBin` |
 | `git.ts` | `init`, `add`, `commit`, `push`, `pull`, `getStatus`, `pushOrPr`, `archiveZip`, `clone`, `getRepoSlug` (function form — `GitClient` class evaluated and rejected per Phase 6 stop signal) |

@@ -8,6 +8,7 @@ import { findOrInstallClaude, runMcpAdd, manualMcpAddCommand } from '../lib/mcp.
 import { clone } from '../lib/git.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
+import { VAULT_FILES } from '../lib/constants.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 export interface ConnectOptions extends RunOptions {
@@ -56,7 +57,7 @@ export async function run(
     await clone(repo, vaultDir, { useGh: !!(await findTool('gh')) });
     cloned = true;
 
-    const launcherPath = join(vaultDir, '.mcp-start.js');
+    const launcherPath = join(vaultDir, VAULT_FILES.LAUNCHER);
     if (!existsSync(launcherPath)) {
       log.info('');
       log.info(`Warning: ${name} is missing .mcp-start.js — it may have been created with an older version.`);
@@ -83,7 +84,7 @@ export async function run(
     log.info('');
 
     if (skipMcp) {
-      await addToRegistry(name, join(vaultDir, '.mcp-start.js'), hash, cfgPath);
+      await addToRegistry(name, join(vaultDir, VAULT_FILES.LAUNCHER), hash, cfgPath);
       cloned = false;
       log.info('');
       log.info(`Done. ${name} registered (MCP CLI skipped).`);

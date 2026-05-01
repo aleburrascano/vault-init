@@ -3,17 +3,18 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { getVaultDir, getExpectedHash } from './registry.js';
 import { VaultkitError } from './errors.js';
+import { VAULT_FILES, VAULT_DIRS, VAULT_CONSTRAINTS } from './constants.js';
 import type { VaultRecord } from '../types.js';
 
 export function validateName(name: string): void {
   if (name.includes('/')) {
     throw new VaultkitError('INVALID_NAME', "provide the vault name only (e.g. 'MyVault'), not owner/repo.");
   }
-  if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+  if (!VAULT_CONSTRAINTS.NAME_PATTERN.test(name)) {
     throw new VaultkitError('INVALID_NAME', 'vault name must contain only letters, numbers, hyphens, and underscores.');
   }
-  if (name.length > 64) {
-    throw new VaultkitError('INVALID_NAME', 'vault name must be 64 characters or less.');
+  if (name.length > VAULT_CONSTRAINTS.NAME_MAX_LENGTH) {
+    throw new VaultkitError('INVALID_NAME', `vault name must be ${VAULT_CONSTRAINTS.NAME_MAX_LENGTH} characters or less.`);
   }
 }
 
@@ -27,8 +28,8 @@ function isFile(p: string): boolean {
 
 export function isVaultLike(dir: string): boolean {
   if (!isDir(dir)) return false;
-  if (isDir(join(dir, '.obsidian'))) return true;
-  return isFile(join(dir, 'CLAUDE.md')) && isDir(join(dir, 'raw')) && isDir(join(dir, 'wiki'));
+  if (isDir(join(dir, VAULT_FILES.OBSIDIAN_DIR))) return true;
+  return isFile(join(dir, VAULT_FILES.CLAUDE_MD)) && isDir(join(dir, VAULT_DIRS.RAW)) && isDir(join(dir, VAULT_DIRS.WIKI));
 }
 
 export async function sha256(filePath: string): Promise<string> {
@@ -70,7 +71,7 @@ export class Vault {
   }
 
   get launcherPath(): string {
-    return join(this.dir, '.mcp-start.js');
+    return join(this.dir, VAULT_FILES.LAUNCHER);
   }
 
   existsOnDisk(): boolean {
