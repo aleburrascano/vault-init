@@ -48,6 +48,17 @@ program.hook('preAction', () => {
 });
 
 program
+  .command('setup')
+  .description('One-time prerequisite check + install (run once after `npm i -g`)')
+  .action(async () => {
+    await wrap(async () => {
+      const { run } = await import('../src/commands/setup.js');
+      const issues = await run();
+      if (issues > 0) process.exit(1);
+    }, 'setup', []);
+  });
+
+program
   .command('init <name>')
   .description('Create a new vault from scratch')
   .action(async (name: string) => {

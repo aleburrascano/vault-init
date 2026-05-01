@@ -1,11 +1,12 @@
 import { existsSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { confirm, input, select } from '@inquirer/prompts';
+import { confirm, select } from '@inquirer/prompts';
 import { execa } from 'execa';
 import { validateName, sha256 } from '../lib/vault.js';
 import { renderVaultJson } from '../lib/vault-templates.js';
 import { createDirectoryTree, writeLayoutFiles, CANONICAL_LAYOUT_FILES } from '../lib/vault-layout.js';
-import { findTool, vaultsRoot, installGhForPlatform, getLauncherTemplate, getDeployTemplate } from '../lib/platform.js';
+import { findTool, vaultsRoot, getLauncherTemplate, getDeployTemplate } from '../lib/platform.js';
+import { checkNode, ensureGh, ensureGhAuth, ensureGitConfig } from '../lib/prereqs.js';
 import { findOrInstallClaude, runMcpAdd, runMcpRemove, manualMcpAddCommand } from '../lib/mcp.js';
 import { setDefaultBranch, addRemote } from '../lib/git.js';
 import {
@@ -27,27 +28,6 @@ export interface InitOptions extends RunOptions {
 }
 
 // ─── Phase helpers — keep init's run() readable as a sequence ─────────────
-
-async function ensureGhAuth(ghPath: string, log: Logger): Promise<void> {
-  const result = await execa(ghPath, ['auth', 'status'], { reject: false });
-  if (result.exitCode !== 0) {
-    log.info('  GitHub authentication required — a browser window will open...');
-    await execa(ghPath, ['auth', 'login'], { stdio: 'inherit' });
-  }
-}
-
-async function ensureGitConfig(gitNameOpt: string | undefined, gitEmailOpt: string | undefined): Promise<void> {
-  const nameResult = await execa('git', ['config', 'user.name'], { reject: false });
-  const emailResult = await execa('git', ['config', 'user.email'], { reject: false });
-  if (!String(nameResult.stdout ?? '').trim()) {
-    const n = gitNameOpt ?? await input({ message: 'Enter your name for git commits:' });
-    await execa('git', ['config', '--global', 'user.name', n]);
-  }
-  if (!String(emailResult.stdout ?? '').trim()) {
-    const e = gitEmailOpt ?? await input({ message: 'Enter your email for git commits:' });
-    await execa('git', ['config', '--global', 'user.email', e]);
-  }
-}
 
 interface PublishConfig {
   publishMode: PublishMode;
@@ -181,25 +161,20 @@ export async function run(
   const root = vaultsRoot();
   const vaultDir = join(root, name);
 
-  // [1/6] Prerequisites
+  // [1/6] Prerequisites — delegates to src/lib/prereqs.ts so `vaultkit setup`
+  // and init's preflight cannot drift.
   log.info('[1/6] Checking prerequisites...');
 
-  const nodeMajor = parseInt(process.versions.node.split('.')[0] ?? '0', 10);
-  if (nodeMajor < 22) {
-    throw new VaultkitError('TOOL_MISSING', `Node.js 22+ required (found v${process.versions.node}).\n  Update at: https://nodejs.org`);
+  const node = checkNode();
+  if (!node.ok) {
+    throw new VaultkitError('TOOL_MISSING', `${node.message}\n  Update at: https://nodejs.org`);
   }
-
-  let ghPath = await findTool('gh');
-  if (!ghPath) {
-    await installGhForPlatform({ log, skipInstallCheck });
-    ghPath = await findTool('gh');
-    if (!ghPath) {
-      throw new VaultkitError('TOOL_MISSING', 'gh was installed but could not be found. Open a new terminal and re-run vaultkit init.');
-    }
-  }
-
-  await ensureGhAuth(ghPath, log);
-  await ensureGitConfig(gitNameOpt, gitEmailOpt);
+  const ghPath = await ensureGh({ log, skipInstallCheck });
+  await ensureGhAuth({ ghPath, log });
+  await ensureGitConfig({
+    ...(gitNameOpt !== undefined && { nameOpt: gitNameOpt }),
+    ...(gitEmailOpt !== undefined && { emailOpt: gitEmailOpt }),
+  });
 
   log.info('');
   const { publishMode, repoVisibility, enablePages: doEnablePages, pagesPrivate, writeDeploy } =
