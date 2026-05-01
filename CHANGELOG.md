@@ -5,7 +5,7 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 ## [Unreleased]
 
 ### Fixed
-- **Windows CI flake in [tests/lib/launcher-integration.test.ts](tests/lib/launcher-integration.test.ts).** The `afterEach` `rmSync(tmp, { recursive: true, force: true })` raced against spawned child processes still releasing file handles on Windows runners, surfacing as `EBUSY: resource busy or locked, rmdir`. Added `maxRetries: 5, retryDelay: 100` to the cleanup — gives the OS up to 500ms to release handles, invisible on the happy path. Caught by the v2.4.0 Windows CI matrix (PR 6) firing on the first real run; v2.4.0 itself published cleanly via `release.yml` (ubuntu-latest), so the npm package is unaffected.
+- **Windows CI flake in [tests/lib/launcher-integration.test.ts](tests/lib/launcher-integration.test.ts).** The `afterEach` `rmSync(tmp, { recursive: true, force: true })` raced against spawned child processes still releasing file handles on GitHub Windows runners, surfacing as `EBUSY: resource busy or locked, rmdir`. Fix: 2-second retry budget (`maxRetries: 10, retryDelay: 200`) plus a try/catch on the cleanup itself — each test uses its own `mkdtempSync` so a residual leftover dir cannot leak into subsequent tests, and the runner reclaims `TMPDIR` at job end. Caught by the v2.4.0 Windows CI matrix (PR 6) firing on the first real run; v2.4.0 itself published cleanly via `release.yml` (ubuntu-latest), so the npm package is unaffected.
 
 ## [2.4.0] - 2026-05-01
 

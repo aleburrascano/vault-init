@@ -21,11 +21,19 @@ function git(cwd: string, ...args: string[]): void {
 
 let tmp: string;
 beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'vk-launcher-int-')); });
-// Windows: spawned child processes can briefly hold file handles in `tmp`
-// after they exit, causing rmSync to throw EBUSY. maxRetries gives the OS
-// up to 500ms (5 × 100ms) to release them — invisible on the happy path
-// (Linux/macOS or already-free files), required on Windows CI runners.
-afterEach(() => { rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
+// Windows: spawned child processes can keep file handles open in `tmp` for
+// long after they exit (Windows Defender, antivirus, file-system cache).
+// Empirically 500ms of retries wasn't enough on GitHub Windows runners —
+// budget 2s with maxRetries, then swallow any residual EBUSY since the
+// runner reclaims TMPDIR at job end and each test uses its own mkdtempSync
+// so leftover dirs cannot leak into subsequent tests.
+afterEach(() => {
+  try {
+    rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  } catch {
+    // Best-effort cleanup; see comment above.
+  }
+});
 
 // ── Step 1: SHA-256 self-verification ────────────────────────────────────────
 
