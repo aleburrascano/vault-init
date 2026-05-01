@@ -4,6 +4,25 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-04-30
+
+### Added
+- **`VaultkitError` with categorized exit codes** ([src/lib/errors.ts](src/lib/errors.ts)). Eleven error codes (`INVALID_NAME`, `NOT_REGISTERED`, `ALREADY_REGISTERED`, `NOT_VAULT_LIKE`, `HASH_MISMATCH`, `AUTH_REQUIRED`, `PERMISSION_DENIED`, `TOOL_MISSING`, `NETWORK_TIMEOUT`, `UNRECOGNIZED_INPUT`, `PARTIAL_FAILURE`) map to distinct process exit codes (2-12) via the new `EXIT_CODES` table. Shell scripts can now branch on category (`vaultkit init || handle "$?"`) without parsing message strings. Plain `Error` continues to exit 1 for unexpected failures.
+- **`Logger` interface** ([src/lib/logger.ts](src/lib/logger.ts)) replacing the flat `LogFn` type. Four levels (`info` / `warn` / `error` / `debug`) plus two implementations: `ConsoleLogger` (stdout/stderr-aware, debug gated by verbose) and `SilentLogger` (no-op for tests). All command `log(...)` call sites converted to `log.info(...)` — no end-user behavior change today, but the level distinction unblocks structured CI output and future telemetry.
+- **`CommandModule<TParams, TOptions, TResult>` interface** ([src/types.ts](src/types.ts)) codifying the lifecycle every command's `run` function shares. Each `src/commands/<name>.ts` ends with a `_module: CommandModule<...> = { run }` sentinel that fails the type check if a command's signature drifts from the contract. Tuple-rest types (`[...TParams, opts?: TOptions]`) handle the three positional-arg shapes (1-arg, 0-arg, 2-arg).
+- **`tests/lib/github-mocked.test.ts`** — closes the largest test blind spot. github.ts had 14 exported functions but only 4 (the JSON parsers) had direct lib-level coverage; the rest were exercised only indirectly through command-level mocks. Now every gh-CLI wrapper has argv-shape tests parallel to what `tests/lib/mcp.test.ts` does for `runMcpAdd`. Adds 32 tests.
+- **`tests/lib/errors.test.ts`** — locks in the EXIT_CODES contract: every documented error code has a mapping, codes are unique, and reserved values (0 = success, 1 = unknown) are not reused. Adds 10 tests.
+- **`tests/helpers/logger.ts`** — `silent` singleton and `arrayLogger(lines)` factory bridge the pre-Logger test pattern of `log: (m) => lines.push(...)`.
+
+### Changed
+- **`src/commands/connect.ts`** uses `Vault.tryFromName` to detect existing registrations instead of calling `validateName` + `getVaultDir` directly. Behavior identical; consistency with the rest of the codebase.
+- **High-leverage throw sites converted to `VaultkitError`**: `validateName` → `INVALID_NAME`; `connect.ts` `already-registered` → `ALREADY_REGISTERED`; all `if (!vault)` checks across commands → `NOT_REGISTERED`; vault-like checks → `NOT_VAULT_LIKE`; `verify.ts` Claude-not-found → `TOOL_MISSING`; `visibility.ts` non-admin → `PERMISSION_DENIED`. Plain `Error` remains the default for unexpected failures.
+- **`tests/`**: bare `.rejects.toThrow()` assertions tightened to message-matcher regexes where the error category is known.
+
+### Internal
+- Test count: 250 → 260 passing (10 new in errors.test.ts; 32 new in github-mocked.test.ts already counted from 2.0.4 base).
+- No user-facing CLI behavior change. All new exports are additive.
+
 ## [2.0.4] - 2026-04-30
 
 ### Changed
