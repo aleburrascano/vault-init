@@ -295,6 +295,16 @@ If it looks legitimate (e.g., they ran `vaultkit update` against a new vaultkit 
 
 You're a collaborator, not the owner. Only the GitHub repo's owner can delete it. The local clone and MCP registration are still removed — effectively a `disconnect`. To remove yourself from the repo's collaborators, do that manually on GitHub.
 
+### `vaultkit destroy` opens a browser tab the first time you run it
+
+vaultkit doesn't request the `delete_repo` GitHub scope at setup time — that's a deliberate choice so you're never asked up front to authorize a destructive permission you may never use. The trade-off is that your first `destroy` runs `gh auth refresh -s delete_repo` interactively, which opens a device-code browser flow. To pre-grant the scope (useful in CI or before scripted runs):
+
+```bash
+gh auth refresh -h github.com -s delete_repo
+```
+
+Subsequent `destroy` runs reuse the token and don't prompt. If you're authenticated via `GH_TOKEN` (a PAT, e.g. in CI), vaultkit skips the refresh — make sure the PAT was created with `delete_repo` already in its scopes.
+
 ### `vaultkit update` fails to push to `main`
 
 Branch protection on `main` is rejecting the direct push. vaultkit automatically falls back to creating a feature branch and opening a pull request. Merge the PR (or have a maintainer merge it) and the launcher update will take effect.
