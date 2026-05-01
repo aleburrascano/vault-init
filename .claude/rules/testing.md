@@ -2,7 +2,12 @@
 
 Test runner: `npm test` (runs vitest in single-pass mode against the TypeScript source directly — no build needed for tests).
 Watch mode: `npm run test:watch`
-Live (real GitHub API): `npm run test:live` — gated behind `VAULTKIT_LIVE_TEST=1`, runs sequentially to avoid `~/.claude.json` write races.
+
+**Tests are always live.** As of v2.5.0 there is no `VAULTKIT_LIVE_TEST` env-gate — every `npm test` run hits the real GitHub API and creates ephemeral `vk-live-*` repos against the authenticated `gh` account. Files are run sequentially (`fileParallelism: false` in `vitest.config.ts`) to avoid `~/.claude.json` write races. CI runs the same suite using a dedicated PAT (`VAULTKIT_TEST_GH_TOKEN`) — see `.github/workflows/ci.yml`.
+
+Local prerequisites for `npm test` to pass:
+- `gh auth status` works (run `gh auth login` if not).
+- `gh` has `delete_repo` scope, otherwise the destroy live test will throw `AUTH_REQUIRED`. One-time fix: `gh auth refresh -h github.com -s delete_repo`.
 
 Test files live in `tests/` and mirror the source tree:
 - `tests/lib/` — unit tests for `src/lib/*.ts` modules

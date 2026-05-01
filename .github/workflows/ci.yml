@@ -6,13 +6,25 @@ on:
   pull_request:
     branches: [main]
 
+# Live tests create real `vk-live-*` repos against the GitHub account that
+# owns VAULTKIT_TEST_GH_TOKEN. Concurrency: only one CI run touches that
+# account at a time, so name collisions and orphan races stay contained.
+concurrency:
+  group: vaultkit-live-tests
+  cancel-in-progress: false
+
 jobs:
   test-and-check:
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # Classic PAT (delete_repo + repo + workflow scopes) on a dedicated
+      # test GitHub account. Add via repo Settings → Secrets → Actions.
+      GH_TOKEN: ${{ secrets.VAULTKIT_TEST_GH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -29,8 +41,42 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Authenticate gh CLI
+        shell: bash
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "VAULTKIT_TEST_GH_TOKEN secret is missing — live tests will fail."
+            exit 1
+          fi
+          # GH_TOKEN env is auto-detected by gh; no `gh auth login` needed.
+          gh auth status
+
+      - name: Pre-test cleanup of orphaned live-test repos
+        if: always()
+        shell: bash
+        run: |
+          USER=$(gh api user --jq .login)
+          gh repo list "$USER" --limit 200 --json name --jq '.[].name' \
+            | grep -E '^vk-live-' \
+            | while read -r repo; do
+                echo "Deleting orphan: $USER/$repo"
+                gh repo delete "$USER/$repo" --yes || true
+              done
+
       - name: Run tests
         run: npm test
+
+      - name: Post-test cleanup of any remaining live-test repos
+        if: always()
+        shell: bash
+        run: |
+          USER=$(gh api user --jq .login)
+          gh repo list "$USER" --limit 200 --json name --jq '.[].name' \
+            | grep -E '^vk-live-' \
+            | while read -r repo; do
+                echo "Cleaning up: $USER/$repo"
+                gh repo delete "$USER/$repo" --yes || true
+              done
 
       - name: npm publish dry-run (verify package contents)
         run: npm publish --dry-run --access public

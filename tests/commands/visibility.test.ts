@@ -319,10 +319,9 @@ describe('VI-13: deploy added, pushed via PR', () => {
 
 // ── LIVE: visibility toggles real GitHub repo ─────────────────────────────────
 
-const LIVE = !!process.env.VAULTKIT_LIVE_TEST;
 const LIVE_VAULT = `vk-live-visibility-${Date.now()}`;
 
-describe.skipIf(!LIVE)('live: visibility toggles real GitHub repo', { timeout: 60_000 }, () => {
+describe('live: visibility toggles real GitHub repo', { timeout: 60_000 }, () => {
   async function restoreReal() {
     const { execa: realExeca } = await vi.importActual<typeof import('execa')>('execa');
     vi.mocked(execa).mockImplementation(realExeca as never);

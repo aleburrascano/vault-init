@@ -58,10 +58,9 @@ describe('disconnect command', () => {
 
 // ── LIVE: disconnect removes local dir but keeps GitHub repo ──────────────────
 
-const LIVE = !!process.env.VAULTKIT_LIVE_TEST;
 const LIVE_VAULT = `vk-live-disconnect-${Date.now()}`;
 
-describe.skipIf(!LIVE)('live: disconnect removes local dir, keeps GitHub repo', { timeout: 60_000 }, () => {
+describe('live: disconnect removes local dir, keeps GitHub repo', { timeout: 60_000 }, () => {
   beforeAll(async () => {
     const { run } = await import('../../src/commands/init.js');
     await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: silent });

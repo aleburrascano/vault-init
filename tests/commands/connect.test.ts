@@ -207,10 +207,9 @@ describe('TR-5: successful connect', () => {
 
 // ── LIVE: connect clones a real GitHub repo ───────────────────────────────────
 
-const LIVE = !!process.env.VAULTKIT_LIVE_TEST;
 const LIVE_VAULT = `vk-live-connect-${Date.now()}`;
 
-describe.skipIf(!LIVE)('live: connect clones real GitHub repo', { timeout: 90_000 }, () => {
+describe('live: connect clones real GitHub repo', { timeout: 90_000 }, () => {
   let repoSlug = '';
 
   async function restoreReal() {

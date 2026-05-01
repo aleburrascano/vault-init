@@ -221,10 +221,9 @@ describe('V-8: no pinned hash', () => {
 
 // ── LIVE: verify checks real launcher hash ────────────────────────────────────
 
-const LIVE = !!process.env.VAULTKIT_LIVE_TEST;
 const LIVE_VAULT = `vk-live-verify-${Date.now()}`;
 
-describe.skipIf(!LIVE)('live: verify checks real launcher hash', { timeout: 60_000 }, () => {
+describe('live: verify checks real launcher hash', { timeout: 60_000 }, () => {
   async function restoreReal() {
     const { execa: realExeca } = await vi.importActual<typeof import('execa')>('execa');
     vi.mocked(execa).mockImplementation(realExeca as never);

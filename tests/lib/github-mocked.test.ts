@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { execa } from 'execa';
 
 vi.mock('execa', () => ({
@@ -277,6 +277,17 @@ describe('isAuthenticated', () => {
 });
 
 describe('ensureDeleteRepoScope', () => {
+  // ensureDeleteRepoScope early-returns when GH_TOKEN is set (PAT auth, eg CI).
+  // Clear it so these tests exercise the interactive-refresh path they assert on.
+  let savedGhToken: string | undefined;
+  beforeEach(() => {
+    savedGhToken = process.env.GH_TOKEN;
+    delete process.env.GH_TOKEN;
+  });
+  afterEach(() => {
+    if (savedGhToken !== undefined) process.env.GH_TOKEN = savedGhToken;
+  });
+
   it('runs gh auth refresh with delete_repo scope (interactive, no timeout)', async () => {
     await ensureDeleteRepoScope();
     const lastCall = vi.mocked(execa).mock.calls[vi.mocked(execa).mock.calls.length - 1];

@@ -202,6 +202,13 @@ export async function getPagesVisibility(slug: string): Promise<Visibility | nul
 export async function ensureDeleteRepoScope(log?: Logger): Promise<void> {
   const ghPath = await findTool('gh');
   if (!ghPath) throw new VaultkitError('TOOL_MISSING', 'gh CLI not found. Install from https://cli.github.com');
+
+  // PAT-based auth (GH_TOKEN env var, used by CI) does not support
+  // `gh auth refresh` — PAT scopes are fixed at creation time. Trust the
+  // token; if it lacks delete_repo, the subsequent `gh repo delete` will
+  // surface a clear 403 via deleteRepoCapturing's stderr.
+  if (process.env.GH_TOKEN) return;
+
   log?.info('Granting delete_repo scope (browser will open if not already granted)…');
   const result = await execa(ghPath, ['auth', 'refresh', '-h', 'github.com', '-s', 'delete_repo'],
     { stdio: 'inherit', reject: false });

@@ -270,10 +270,9 @@ describe('S-12: single-vault detail mode — real git repo', () => {
 
 // ── LIVE: status reports real vault state ─────────────────────────────────────
 
-const LIVE = !!process.env.VAULTKIT_LIVE_TEST;
 const LIVE_VAULT = `vk-live-status-${Date.now()}`;
 
-describe.skipIf(!LIVE)('live: status reports real vault state', { timeout: 60_000 }, () => {
+describe('live: status reports real vault state', { timeout: 60_000 }, () => {
   async function restoreReal() {
     const realGit = await vi.importActual<typeof import('../../src/lib/git.js')>('../../src/lib/git.js');
     vi.mocked(getStatus).mockImplementation(realGit.getStatus);

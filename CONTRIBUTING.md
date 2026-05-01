@@ -81,13 +81,15 @@ npm test                     # vitest run (unit + integration)
 npm publish --dry-run        # verify dist/ contains the published files
 ```
 
-For the live test suite (real GitHub API + ~/.claude.json mutations), gated behind an env var:
+**`npm test` is always live as of v2.5.0** — no env-var gate. Every run hits the real GitHub API and creates ephemeral `vk-live-*` repos against your authenticated `gh` account. Tests run sequentially to avoid `~/.claude.json` races and clean up after themselves in `afterAll` hooks.
+
+One-time prerequisite: `gh` must hold the `delete_repo` scope, otherwise the destroy live test fails. Fix with:
 
 ```bash
-npm run test:live            # cross-env VAULTKIT_LIVE_TEST=1 vitest run
+gh auth refresh -h github.com -s delete_repo
 ```
 
-Live tests run sequentially to avoid `~/.claude.json` write races and create ephemeral test repos that they clean up.
+CI runs the same suite using a dedicated PAT secret (`VAULTKIT_TEST_GH_TOKEN`) — see `.github/workflows/ci.yml`.
 
 ## Pull requests
 

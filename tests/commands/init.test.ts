@@ -295,10 +295,9 @@ describe('I-11: claude not found', () => {
 
 // ── LIVE: init creates real GitHub repo ───────────────────────────────────────
 
-const LIVE = !!process.env.VAULTKIT_LIVE_TEST;
 const LIVE_VAULT = `vk-live-init-${Date.now()}`;
 
-describe.skipIf(!LIVE)('live: init creates real GitHub repo', { timeout: 60_000 }, () => {
+describe('live: init creates real GitHub repo', { timeout: 60_000 }, () => {
   async function restoreReal() {
     const { execa: realExeca } = await vi.importActual<typeof import('execa')>('execa');
     vi.mocked(execa).mockImplementation(realExeca as never);

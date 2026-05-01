@@ -47,10 +47,9 @@ describe('destroy command', () => {
 
 // ── LIVE: destroy removes real GitHub repo ────────────────────────────────────
 
-const LIVE = !!process.env.VAULTKIT_LIVE_TEST;
 const LIVE_VAULT = `vk-live-destroy-${Date.now()}`;
 
-describe.skipIf(!LIVE)('live: destroy removes real GitHub repo', { timeout: 60_000 }, () => {
+describe('live: destroy removes real GitHub repo', { timeout: 60_000 }, () => {
   beforeAll(async () => {
     const { run } = await import('../../src/commands/init.js');
     await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: silent });
