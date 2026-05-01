@@ -51,6 +51,22 @@ jobs:
           # GH_TOKEN env is auto-detected by gh; no `gh auth login` needed.
           gh auth status
 
+      - name: Configure git for live tests
+        shell: bash
+        run: |
+          # init's preflight needs git user.name/user.email set, otherwise
+          # it tries to prompt via @inquirer/prompts.input — which isn't
+          # mocked in every live test file. Pre-setting them here makes the
+          # prompt branch never fire.
+          git config --global user.name "vaultkit-ci"
+          git config --global user.email "ci@vaultkit.test"
+          # `git push https://github.com/...` uses git's credential helper
+          # (not gh's GH_TOKEN env). Wire a credential.helper that points
+          # at the PAT so push works without interactive prompting.
+          git config --global credential.helper store
+          printf 'https://x-access-token:%s@github.com\n' "$GH_TOKEN" > "$HOME/.git-credentials"
+          chmod 600 "$HOME/.git-credentials"
+
       - name: Pre-test cleanup of orphaned live-test repos
         if: always()
         shell: bash
