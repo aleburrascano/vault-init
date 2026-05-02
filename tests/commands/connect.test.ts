@@ -206,6 +206,77 @@ describe('TR-5: successful connect', () => {
   });
 });
 
+// ── TR-6: runMcpAdd full canonical argv shape (security invariant) ────────────
+
+describe('TR-6: runMcpAdd argv shape', () => {
+  it('passes the full canonical argv including --expected-sha256=<hash>', async () => {
+    const vaultDir = join(tmp, 'ArgvVault');
+    vi.mocked(clone).mockImplementation(async () => {
+      mkdirSync(vaultDir, { recursive: true });
+      writeFileSync(join(vaultDir, '.mcp-start.js'), '// launcher');
+      writeFileSync(join(vaultDir, 'CLAUDE.md'), '');
+      mkdirSync(join(vaultDir, 'raw'), { recursive: true });
+      mkdirSync(join(vaultDir, 'wiki'), { recursive: true });
+    });
+    vi.mocked(confirm).mockResolvedValueOnce(true);
+
+    const { run } = await import('../../src/commands/connect.js');
+    await run('owner/ArgvVault', { cfgPath: join(tmp, '.claude.json'), log: silent });
+
+    const mcpAddCalls = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args[0] === 'mcp' && args[1] === 'add';
+    });
+    expect(mcpAddCalls.length).toBeGreaterThan(0);
+
+    const args = mcpAddCalls[0]?.[1] as readonly unknown[];
+    expect(args[2]).toBe('--scope');
+    expect(args[3]).toBe('user');
+    expect(args[4]).toBe('ArgvVault');
+    expect(args[5]).toBe('--');
+    expect(args[6]).toBe('node');
+    expect(typeof args[7]).toBe('string');
+    expect(String(args[7])).toMatch(/\.mcp-start\.js$/);
+    expect(typeof args[8]).toBe('string');
+    expect(String(args[8])).toMatch(/^--expected-sha256=[a-f0-9]{64}$/);
+  });
+});
+
+// ── TR-7: runMcpAdd hash value matches on-disk launcher SHA-256 ───────────────
+
+describe('TR-7: runMcpAdd hash value', () => {
+  it('passes the actual on-disk launcher SHA-256 to claude mcp add', async () => {
+    // Clone writes deterministic launcher bytes; we compute the expected
+    // SHA against those exact bytes and assert connect passed that value.
+    // This catches regressions like `--expected-sha256=` (blank) or a
+    // mutation that passes the template hash instead of the on-disk hash.
+    const vaultDir = join(tmp, 'HashVault');
+    const launcherBytes = '// launcher with specific bytes for SHA assertion\n';
+    vi.mocked(clone).mockImplementation(async () => {
+      mkdirSync(vaultDir, { recursive: true });
+      writeFileSync(join(vaultDir, '.mcp-start.js'), launcherBytes);
+      writeFileSync(join(vaultDir, 'CLAUDE.md'), '');
+      mkdirSync(join(vaultDir, 'raw'), { recursive: true });
+      mkdirSync(join(vaultDir, 'wiki'), { recursive: true });
+    });
+    vi.mocked(confirm).mockResolvedValueOnce(true);
+
+    const { run } = await import('../../src/commands/connect.js');
+    await run('owner/HashVault', { cfgPath: join(tmp, '.claude.json'), log: silent });
+
+    const mcpAddCalls = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args[0] === 'mcp' && args[1] === 'add';
+    });
+    const args = mcpAddCalls[0]?.[1] as readonly unknown[];
+    const passedHash = String(args[8]).replace('--expected-sha256=', '');
+
+    const { sha256 } = await import('../../src/lib/vault.js');
+    const actualHash = await sha256(join(vaultDir, '.mcp-start.js'));
+    expect(passedHash).toBe(actualHash);
+  });
+});
+
 // ── LIVE: connect clones a real GitHub repo ───────────────────────────────────
 
 const LIVE_VAULT = `vk-live-connect-${Date.now()}`;
