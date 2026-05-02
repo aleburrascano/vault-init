@@ -103,7 +103,10 @@ async function executeAction(action: VisibilityAction, ctx: ExecuteCtx): Promise
       const wfDir = join(vaultDir, VAULT_DIRS.GITHUB_WORKFLOWS);
       mkdirSync(wfDir, { recursive: true });
       copyFileSync(getDeployTemplate(), join(wfDir, WORKFLOW_FILES.DEPLOY));
-      const [owner = '', repo = ''] = repoSlug.split('/');
+      const [owner, repo, ...rest] = repoSlug.split('/');
+      if (!owner || !repo || rest.length > 0) {
+        throw new VaultkitError('UNRECOGNIZED_INPUT', `Malformed repo slug '${repoSlug}'; expected 'owner/repo'.`);
+      }
       writeFileSync(join(vaultDir, VAULT_FILES.VAULT_JSON), renderVaultJson(owner, repo));
       return;
     }
