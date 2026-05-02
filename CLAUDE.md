@@ -2,7 +2,14 @@
 
 CLI that connects Claude Code to Obsidian vaults via MCP. Public npm package: [@aleburrascano/vaultkit](https://www.npmjs.com/package/@aleburrascano/vaultkit). Node ≥22, ESM, TypeScript strict mode. Source under `bin/`, `src/`, `tests/`; ships compiled `dist/`.
 
-Architecture details, command map, and shared-library reference live in [.claude/rules/architecture.md](.claude/rules/architecture.md) (auto-loads when source files are touched). Security rules for destructive ops live in [.claude/rules/security-invariants.md](.claude/rules/security-invariants.md). Doc-sync rules — what to update in `.claude/rules/*.md` when code changes — live in [.claude/rules/doc-sync.md](.claude/rules/doc-sync.md). Adding a command: `/add-command`.
+Architecture details, command map, and shared-library reference live in [.claude/rules/architecture.md](.claude/rules/architecture.md) (auto-loads when source files are touched). Security rules for destructive ops live in [.claude/rules/security-invariants.md](.claude/rules/security-invariants.md). Doc-sync rules — what to update in `.claude/rules/*.md` when code changes — live in [.claude/rules/doc-sync.md](.claude/rules/doc-sync.md).
+
+Slash commands in [.claude/commands/](.claude/commands/) for project workflows:
+- `/add-command <name>` — scaffold a new vaultkit command (`src/commands/<name>.ts` + `bin/vaultkit.ts` wiring + README/CHANGELOG row + test stub)
+- `/debug-command <name>` — investigate issues in a specific command against the security/Windows/style checklist
+- `/security-audit [name]` — verify the security invariants ([.claude/rules/security-invariants.md](.claude/rules/security-invariants.md)) across all commands or one
+- `/clarify-project [focus]` — fresh-user evaluation; adversarially compares docs against actual CLI behavior to surface drift
+- `/release` — version bump, CHANGELOG rotation, tag, push (triggers `release.yml` → `npm publish`)
 
 ## Commands
 build:      npm run build
