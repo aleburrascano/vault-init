@@ -19,6 +19,7 @@
     "check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:cleanup": "node scripts/test-cleanup.mjs",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
