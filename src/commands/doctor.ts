@@ -4,6 +4,7 @@ import { getAllVaults } from '../lib/registry.js';
 import { Vault } from '../lib/vault.js';
 import { findTool, claudeJsonPath } from '../lib/platform.js';
 import { ConsoleLogger, type Logger } from '../lib/logger.js';
+import { LABELS } from '../lib/messages.js';
 import type { ClaudeConfig, CommandModule, RunOptions } from '../types.js';
 
 async function checkTool(name: string, required: boolean, log: Logger): Promise<boolean> {
@@ -76,7 +77,7 @@ export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {
   // Vault health
   const records = await getAllVaults(cfgPath);
   if (records.length === 0) {
-    log.info('No vaults registered.');
+    log.info(LABELS.NO_VAULTS_REGISTERED);
   } else {
     log.info('Vaults:');
     for (const record of records) {

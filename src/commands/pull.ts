@@ -2,13 +2,14 @@ import { existsSync } from 'node:fs';
 import { getAllVaults } from '../lib/registry.js';
 import { pull } from '../lib/git.js';
 import { ConsoleLogger } from '../lib/logger.js';
+import { LABELS } from '../lib/messages.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {}): Promise<void> {
   const vaults = await getAllVaults(cfgPath);
 
   if (vaults.length === 0) {
-    log.info('No vaults registered.');
+    log.info(LABELS.NO_VAULTS_REGISTERED);
     return;
   }
 

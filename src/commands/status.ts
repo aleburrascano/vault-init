@@ -6,6 +6,8 @@ import { getStatus } from '../lib/git.js';
 import { Vault } from '../lib/vault.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
+import { LABELS } from '../lib/messages.js';
+import { VAULT_FILES } from '../lib/constants.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 export async function run(
@@ -28,7 +30,7 @@ export async function run(
   // Summary mode — all vaults
   const vaults = await getAllVaults(cfgPath);
   if (vaults.length === 0) {
-    log.info('No vaults registered.');
+    log.info(LABELS.NO_VAULTS_REGISTERED);
     return;
   }
 
@@ -41,7 +43,7 @@ export async function run(
       continue;
     }
 
-    if (!existsSync(join(vault.dir, '.git'))) {
+    if (!existsSync(join(vault.dir, VAULT_FILES.GIT_DIR))) {
       log.info('  branch:  [not a git repo]\n');
       continue;
     }

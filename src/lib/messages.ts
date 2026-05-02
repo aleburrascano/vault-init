@@ -29,4 +29,6 @@ export const PROMPTS = {
 export const LABELS = {
   /** Printed when a confirmation prompt declines. */
   ABORTED: 'Aborted.',
+  /** Printed by `pull`/`status`/`doctor` when the registry has no entries. */
+  NO_VAULTS_REGISTERED: 'No vaults registered.',
 } as const;

@@ -32,6 +32,8 @@ export const VAULT_FILES = {
   VAULT_JSON: '_vault.json',
   /** Marker that a directory is an Obsidian vault. */
   OBSIDIAN_DIR: '.obsidian',
+  /** Git repository metadata directory (presence check for `hasGitRepo`). */
+  GIT_DIR: '.git',
   /** Project-scoped Claude Code settings (model + permissions defaults for refresh sessions). */
   CLAUDE_SETTINGS: '.claude/settings.json',
   /** PR description scaffold for collaborator session-config disclosure. */

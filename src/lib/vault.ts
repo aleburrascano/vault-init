@@ -100,7 +100,7 @@ export class Vault {
   }
 
   hasGitRepo(): boolean {
-    return existsSync(join(this.dir, '.git'));
+    return existsSync(join(this.dir, VAULT_FILES.GIT_DIR));
   }
 
   hasLauncher(): boolean {
