@@ -68,6 +68,7 @@ describe('EXIT_CODES', () => {
       'NETWORK_TIMEOUT',
       'UNRECOGNIZED_INPUT',
       'PARTIAL_FAILURE',
+      'RATE_LIMITED',
     ];
     for (const code of expectedCodes) {
       expect(EXIT_CODES[code], `missing exit code for ${code}`).toBeDefined();
@@ -75,10 +76,10 @@ describe('EXIT_CODES', () => {
     }
   });
 
-  it('uses exit codes 2-12 (vaultkit-reserved range)', () => {
+  it('uses exit codes 2-13 (vaultkit-reserved range)', () => {
     for (const code of Object.values(EXIT_CODES)) {
       expect(code).toBeGreaterThanOrEqual(2);
-      expect(code).toBeLessThanOrEqual(12);
+      expect(code).toBeLessThanOrEqual(13);
     }
   });
 });
@@ -89,7 +90,7 @@ describe('DEFAULT_MESSAGES', () => {
       'INVALID_NAME', 'NOT_REGISTERED', 'ALREADY_REGISTERED',
       'NOT_VAULT_LIKE', 'HASH_MISMATCH', 'AUTH_REQUIRED',
       'PERMISSION_DENIED', 'TOOL_MISSING', 'NETWORK_TIMEOUT',
-      'UNRECOGNIZED_INPUT', 'PARTIAL_FAILURE',
+      'UNRECOGNIZED_INPUT', 'PARTIAL_FAILURE', 'RATE_LIMITED',
     ];
     for (const code of expectedCodes) {
       const msg = DEFAULT_MESSAGES[code];

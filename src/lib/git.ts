@@ -1,6 +1,29 @@
 import { execa, type Options } from 'execa';
 import { findTool } from './platform.js';
+import { VaultkitError } from './errors.js';
 import type { GitPushResult, GitPullResult, GitStatus, GitPushOrPrResult } from '../types.js';
+
+/**
+ * Recognize the GitHub "account abuse-flagged" failure mode in git/gh
+ * stderr. When GitHub disables a freshly-created repo (typical aftermath
+ * of secondary-rate-limit / abuse detection on the test PAT account),
+ * the next git push/pull/clone returns 403 with this exact phrasing.
+ *
+ * Mirrors the pattern in `src/lib/github.ts:_classifyGhFailure` so both
+ * paths surface the same actionable error.
+ */
+function isAccountFlaggedStderr(stderr: string): boolean {
+  return /Repository '[^']+' is disabled\.|Please ask the owner to check their account\./i.test(stderr);
+}
+
+function throwAccountFlagged(operation: string): never {
+  throw new VaultkitError(
+    'AUTH_REQUIRED',
+    `GitHub disabled the test repo — the account is likely abuse-flagged.\n` +
+      `  Wait 24-72h for the flag to clear, or rotate VAULTKIT_TEST_GH_TOKEN to a fresh PAT account.\n` +
+      `  (operation: ${operation})`,
+  );
+}
 
 interface GitResult {
   stdout: string;
@@ -76,9 +99,13 @@ export async function pushNewRepo(dir: string, branch: string = 'main'): Promise
   for (let attempt = 0; ; attempt++) {
     const result = await execa('git', args, { reject: false });
     if (result.exitCode === 0) return;
+    const stderr = String(result.stderr ?? '');
+    // Account abuse-flag (freshly-created repo disabled before push could
+    // reach it). Won't recover in seconds — surface immediately as
+    // AUTH_REQUIRED instead of burning the retry budget. See git.ts:isAccountFlaggedStderr.
+    if (isAccountFlaggedStderr(stderr)) throwAccountFlagged(`git push origin/${branch}`);
     if (attempt >= delays.length) {
-      const stderr = String(result.stderr ?? '').trim();
-      throw new Error(`git push to origin/${branch} failed after ${delays.length + 1} attempts: ${stderr || `exit ${result.exitCode}`}`);
+      throw new Error(`git push to origin/${branch} failed after ${delays.length + 1} attempts: ${stderr.trim() || `exit ${result.exitCode}`}`);
     }
     await new Promise<void>(r => setTimeout(r, delays[attempt] ?? 0));
   }
@@ -158,6 +185,11 @@ export interface PushOrPrOptions {
 export async function pushOrPr(dir: string, { branchPrefix, prTitle, prBody }: PushOrPrOptions): Promise<GitPushOrPrResult> {
   const directResult = await push(dir);
   if (directResult.success) return { mode: 'direct' };
+  // `push()` already absorbed exit codes via reject:false. If the direct
+  // push failed because the remote disabled the repo (abuse-flag), bail
+  // out before we burn time creating a PR branch that will fail the same
+  // way.
+  if (isAccountFlaggedStderr(directResult.stderr)) throwAccountFlagged('git push origin/main');
 
   const timestamp = Date.now();
   const branch = `${branchPrefix}-${timestamp}`;
@@ -165,17 +197,34 @@ export async function pushOrPr(dir: string, { branchPrefix, prTitle, prBody }: P
   await execa('git', ['-C', dir, 'branch', branch]);
   await execa('git', ['-C', dir, 'reset', '--hard', '@{u}'], { reject: false });
   await execa('git', ['-C', dir, 'checkout', branch]);
-  await execa('git', ['-C', dir, 'push', '-u', 'origin', branch]);
+
+  // Branch push: small retry budget for transient races (eventual-consistency
+  // RPC failures, ECONN*); fatal-on-first-detection for the abuse-flag case.
+  const pushArgs = ['-C', dir, 'push', '-u', 'origin', branch];
+  const pushDelays = [1000, 2000, 4000];
+  for (let attempt = 0; ; attempt++) {
+    const result = await execa('git', pushArgs, { reject: false });
+    if (result.exitCode === 0) break;
+    const stderr = String(result.stderr ?? '');
+    if (isAccountFlaggedStderr(stderr)) throwAccountFlagged(`git push origin/${branch}`);
+    if (attempt >= pushDelays.length) {
+      throw new Error(`git push to origin/${branch} failed after ${pushDelays.length + 1} attempts: ${stderr.trim() || `exit ${result.exitCode}`}`);
+    }
+    await new Promise<void>(r => setTimeout(r, pushDelays[attempt] ?? 0));
+  }
 
   const gh = await findTool('gh');
   if (gh) {
-    await execa(gh, [
+    const prResult = await execa(gh, [
       'pr', 'create',
       '--title', prTitle,
       '--body', prBody,
       '--base', 'main',
       '--head', branch,
     ], { cwd: dir, reject: false });
+    if (prResult.exitCode !== 0 && isAccountFlaggedStderr(String(prResult.stderr ?? ''))) {
+      throwAccountFlagged(`gh pr create --head ${branch}`);
+    }
   }
 
   return { mode: 'pr', branch };

@@ -4,6 +4,14 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Fixed
+- **CI workflow no longer publishes to npm when any matrix leg is red.** The pre-2.7.1 split — separate `ci.yml` (Ubuntu + Windows matrix, push/PR-only) and `release.yml` (Ubuntu only, tag-triggered, runs `npm publish` after its own tests) — let a green Release ship even when the parallel CI was red on Windows or Ubuntu (e.g. v2.7.0 published despite the Ubuntu CI run hitting a GitHub abuse-flag 403). Replaced both files with a single `.github/workflows/main.yml` that runs the full Ubuntu + Windows matrix on every push/PR/tag, then a `publish` job with `needs: test` + `if: startsWith(github.ref, 'refs/tags/v')` so npm publish requires both matrix legs to be green. Bonus: cuts the per-tag-push GitHub-API burst footprint roughly in half (one matrix run instead of one matrix run + a separate Release run), reducing the chance of tripping GitHub's secondary rate limit / abuse detection on the test PAT account.
+- **`ghJson` now classifies and reacts to the actual GitHub failure mode.** Previous retry logic only matched stderr text patterns (5xx / 429 / ECONN*). Reworked to four-way classification in `_classifyGhFailure(status, body, stderr, headers)`: `transient` (5xx / 429 / `previous visibility change is still in progress` 422 / network reset/timeout — retry 1s/2s/4s), `rate_limited` (`secondary rate limit` / `abuse detection` / HTTP 429 — wait `Retry-After` from response headers or 60s baseline, retry up to 3x more, then throw `VaultkitError('RATE_LIMITED')`), `auth_flagged` (`Repository '<x>' is disabled.` / `Please ask the owner to check their account.` — throw `VaultkitError('AUTH_REQUIRED')` immediately, no retry — won't recover in seconds), `fatal` (everything else — throw immediately). The high-volume operations (`createRepo`, `deleteRepo`, `setRepoVisibility`) migrated from `gh repo` shorthands to `gh api --include` so `_parseGhIncludeOutput` can read `X-RateLimit-*` / `Retry-After` headers and proactively sleep until reset (capped at 60s) when remaining quota drops below 50.
+- **`pushNewRepo` and `pushOrPr` recognize the same abuse-flag stderr** in git push output and short-circuit to `VaultkitError('AUTH_REQUIRED')` instead of burning the retry budget on a 403 that won't clear in seconds. Fixes the v2.7.0 Ubuntu symptom where `gh repo create` succeeded, GitHub disabled the new repo a few seconds later (because the PAT account got abuse-flagged mid-burst), and the next `git push` returned an opaque `ExecaError` with `HTTP 403` for users to decode.
+
+### Added
+- **`VaultkitErrorCode.RATE_LIMITED`** — exit code 13. Surfaces from `ghJson` when the secondary-rate-limit retry budget is exhausted (3 retries with `Retry-After`-or-60s waits between). Distinct from `AUTH_REQUIRED` (which is the irrecoverable abuse-flag case).
+
 ## [2.7.0] - 2026-05-02
 
 ### Added

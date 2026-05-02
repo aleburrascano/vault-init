@@ -18,7 +18,8 @@ export type VaultkitErrorCode =
   | 'TOOL_MISSING'           // gh, claude, git, or Node.js (too old / install failed)
   | 'NETWORK_TIMEOUT'        // git fetch/pull or gh API timed out
   | 'UNRECOGNIZED_INPUT'     // user-supplied input (mode, URL, etc.) couldn't be parsed
-  | 'PARTIAL_FAILURE';       // multi-step flow failed mid-way (e.g. pull-then-repin)
+  | 'PARTIAL_FAILURE'        // multi-step flow failed mid-way (e.g. pull-then-repin)
+  | 'RATE_LIMITED';          // GitHub secondary rate limit; retry budget exhausted
 
 /**
  * Errors thrown intentionally by vaultkit, with a machine-readable code.
@@ -38,7 +39,7 @@ export function isVaultkitError(err: unknown): err is VaultkitError {
 
 /**
  * Maps each error code to the process exit code emitted by `wrap()`.
- * Codes 2–11 are reserved for vaultkit categories; 0 = success, 1 = an
+ * Codes 2–13 are reserved for vaultkit categories; 0 = success, 1 = an
  * unhandled/unknown error. Public contract: scripted callers may rely on
  * these specific codes.
  */
@@ -54,6 +55,7 @@ export const EXIT_CODES: Record<VaultkitErrorCode, number> = {
   NETWORK_TIMEOUT: 10,
   UNRECOGNIZED_INPUT: 11,
   PARTIAL_FAILURE: 12,
+  RATE_LIMITED: 13,
 };
 
 /**
@@ -78,4 +80,5 @@ export const DEFAULT_MESSAGES: Record<VaultkitErrorCode, string> = {
   NETWORK_TIMEOUT: 'timed out waiting for a network operation.',
   UNRECOGNIZED_INPUT: 'is not in a recognized format.',
   PARTIAL_FAILURE: 'partially failed — some operations did not complete.',
+  RATE_LIMITED: 'was rate-limited by GitHub after exhausting the retry budget.',
 };

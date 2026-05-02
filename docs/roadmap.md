@@ -27,13 +27,15 @@ opens a small example wiki in Claude Code so you can see search_notes /
 get_note in action against real content before creating your own.
 ```
 
-## Live-test CI: stop tripping GitHub's abuse heuristics
+## Live-test CI: residual mitigations
 
-On 2026-05-02 the `fluids2` test PAT's account was abuse-flagged after a burst of `vk-live-*` create/delete cycles across four Release attempts plus parallel CI runs. The test repos surfaced as `Repository ... is disabled` (HTTP 403) and the account stayed flagged for ~24–72h. Pre-existing mitigations (matrix `max-parallel: 1`, the `vaultkit-live-tests` concurrency group, pre/post-test orphan cleanup) help within a single workflow but don't help when many workflows fire in close succession.
+The 2026-05-02 abuse-flag incident (PAT `fluids2` flagged for ~24-72h after v2.7.0's tag-push burst) was addressed in 2.7.1 by:
+- Merging `ci.yml` + `release.yml` into a single `main.yml` that gates `npm publish` on the full Ubuntu+Windows matrix, halving the per-tag-push GitHub-API burst.
+- Header-aware retry in `ghJson`: parses `X-RateLimit-*` / `Retry-After` from `gh api --include` responses, classifies failures into transient / rate-limited / auth-flagged / fatal, and reacts appropriately. `Repository ... is disabled` short-circuits to `VaultkitError('AUTH_REQUIRED')` instead of burning the retry budget.
+- Same disabled-repo recognition in `pushNewRepo` and `pushOrPr` (git-push path).
 
-**Source of truth for the fix surface:** [`gh api` reference](https://cli.github.com/manual/gh_api). The fix likely involves replacing the `gh repo create` / `gh repo delete` wrappers in [src/lib/github.ts](../src/lib/github.ts) with direct `gh api` calls so we can:
-- Read `X-RateLimit-Remaining` / `X-RateLimit-Reset` response headers and back off proactively before GitHub flags us.
-- Use the secondary rate-limit retry pattern (`Retry-After` + 60s baseline) per GitHub's documented abuse-rate-limit guidance.
-- Reduce the per-test create/delete count — e.g., one shared sandbox repo per CI run that all tests reuse, instead of N timestamp-suffixed repos.
+Residual mitigations to consider if flake recurs:
+- **Reduce per-CI-run repo count.** Today each live test creates + deletes its own `vk-live-${COMMAND}-${Date.now()}` repo. Tests that only need a remote to push to (visibility / status / verify / refresh) could share a single `vk-live-shared-${runId}` repo. Cuts create count from ~7 to ~4 per matrix slot.
+- **Rotate the test PAT account periodically.** GitHub may keep heuristic memory of an account that has previously been flagged; a fresh PAT roughly every 6 months is cheap insurance.
 
-Symptom to watch for: any `gh` command output containing `Repository ... is disabled`, `secondary rate limit`, or unexplained 403 on a freshly-created repo. When the next burst-failure pattern surfaces, this is the work to do.
+Symptom to watch for: `Repository ... is disabled` in CI logs even after waiting through a flag-clear window — that would suggest the account has accumulated heuristic weight and is worth rotating.

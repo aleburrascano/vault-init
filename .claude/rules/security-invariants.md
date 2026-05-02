@@ -14,6 +14,6 @@ paths:
 - **Vault names** must match `^[a-zA-Z0-9_-]+$`, max 64 chars. Use `validateName` from [src/lib/vault.ts](../../src/lib/vault.ts) (also enforced by `Vault.tryFromName`).
 - **Vault paths** for destructive ops must come from the MCP registry (`getVaultDir` from [src/lib/registry.ts](../../src/lib/registry.ts), or `Vault.tryFromName` which calls it), never raw user input or filesystem fallbacks. `connect`/`init` are the only commands allowed to create new entries.
 - **MCP registration** must include `--expected-sha256=<hash>` so the launcher can self-verify on every Claude Code session.
-- **`gh repo delete`** must be preceded by an explicit ownership check (`isAdmin` from [src/lib/github.ts](../../src/lib/github.ts)) and a typed-name confirmation.
+- **Repo deletion** (whether via `gh repo delete` shorthand or `gh api --method DELETE /repos/<slug>`) must be preceded by an explicit ownership check (`isAdmin` from [src/lib/github.ts](../../src/lib/github.ts)) and a typed-name confirmation. The argv shape changed in 2.7.1 (migrated to `gh api` for header-aware retry); the precondition is unchanged. `deleteRepo` is the single source of truth for the call shape.
 - **`isVaultLike`** (or `Vault.isVaultLike()`) must be checked before any directory deletion.
 - **`delete_repo` scope** must be requested only when actually about to delete (skip for collaborators who can't delete anyway).

@@ -132,9 +132,12 @@ describe('DE-3: admin user confirms deletion', () => {
     const lines: string[] = [];
     await run('DeleteVault', { cfgPath, skipMcp: true, log: arrayLogger(lines) });
 
+    // deleteRepo migrated to `gh api --method DELETE /repos/<slug>`
+    // for header-aware retry. Filter by the HTTP method instead of the
+    // old `delete --yes` shorthand.
     const deleteCalls = vi.mocked(execa).mock.calls.filter(c => {
       const args = c[1] as unknown;
-      return Array.isArray(args) && args.includes('delete') && args.includes('--yes');
+      return Array.isArray(args) && args.includes('api') && args.includes('DELETE');
     });
     expect(deleteCalls.length).toBeGreaterThan(0);
     expect(existsSync(vaultDir)).toBe(false);
@@ -160,7 +163,8 @@ describe('DE-4: GitHub deletion fails', () => {
       if (args?.[2] === 'remote' && args?.[3] === 'get-url') {
         return { exitCode: 0, stdout: 'https://github.com/me/PartialVault.git', stderr: '' };
       }
-      if (args?.includes('delete')) {
+      // deleteRepo migrated to `gh api --method DELETE /repos/<slug>`.
+      if (args?.includes('api') && args?.includes('DELETE')) {
         return { exitCode: 1, stdout: '', stderr: 'permission denied' };
       }
       return { exitCode: 0, stdout: '', stderr: '' };
@@ -236,7 +240,8 @@ describe('DE-8: gh repo delete failure surfaces stderr', () => {
       if (args?.[2] === 'remote' && args?.[3] === 'get-url') {
         return { exitCode: 0, stdout: 'https://github.com/me/StderrVault.git', stderr: '' };
       }
-      if (args?.includes('delete')) {
+      // deleteRepo migrated to `gh api --method DELETE /repos/<slug>`.
+      if (args?.includes('api') && args?.includes('DELETE')) {
         return { exitCode: 1, stdout: '', stderr: 'HTTP 403: Resource not accessible by integration' };
       }
       return { exitCode: 0, stdout: '', stderr: '' };

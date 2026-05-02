@@ -47,26 +47,43 @@ function lastArgs(): string[] {
 }
 
 describe('createRepo', () => {
-  it('passes --private by default', async () => {
+  // Migrated to `gh api --include POST /user/repos` so the retry layer
+  // can read X-RateLimit-* / Retry-After headers. Argv shape changed;
+  // the security invariant (validated vault name → POST body) is preserved.
+  it('passes private=true by default via gh api', async () => {
     await createRepo('myrepo');
-    expect(lastArgs()).toEqual(['repo', 'create', 'myrepo', '--private', '--confirm']);
+    expect(lastArgs()).toEqual([
+      'api', '--include', '--method', 'POST', '/user/repos',
+      '-f', 'name=myrepo',
+      '-F', 'private=true',
+    ]);
   });
 
-  it('passes --public when visibility=public', async () => {
+  it('passes private=false when visibility=public', async () => {
     await createRepo('myrepo', { visibility: 'public' });
-    expect(lastArgs()).toEqual(['repo', 'create', 'myrepo', '--public', '--confirm']);
+    expect(lastArgs()).toEqual([
+      'api', '--include', '--method', 'POST', '/user/repos',
+      '-f', 'name=myrepo',
+      '-F', 'private=false',
+    ]);
   });
 
-  it('throws if gh exits non-zero', async () => {
+  it('throws if gh exits non-zero with a fatal stderr', async () => {
     vi.mocked(execa).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'name taken' } as never);
     await expect(createRepo('myrepo')).rejects.toThrow(/name taken/);
   });
 });
 
 describe('deleteRepo', () => {
-  it('passes the slug and --yes', async () => {
+  // Migrated to `gh api --include DELETE /repos/<slug>` for header-aware
+  // retry. Argv shape changed; the isAdmin + typed-name confirmation
+  // precondition (security invariant) is the caller's responsibility and
+  // unchanged.
+  it('issues DELETE /repos/<slug> via gh api', async () => {
     await deleteRepo('owner/repo');
-    expect(lastArgs()).toEqual(['repo', 'delete', 'owner/repo', '--yes']);
+    expect(lastArgs()).toEqual([
+      'api', '--include', '--method', 'DELETE', '/repos/owner/repo',
+    ]);
   });
 
   it('throws on non-zero exit', async () => {
@@ -130,21 +147,27 @@ describe('getVisibility', () => {
 });
 
 describe('setRepoVisibility', () => {
-  it('issues gh repo edit --visibility with the consequences flag', async () => {
+  // Migrated to `gh api --include PATCH /repos/<slug> -f visibility=<v>`.
+  // The "previous visibility change is still in progress" 422 race is
+  // still classified as transient inside _classifyGhFailure, so callers
+  // get the same effective semantics.
+  it('issues PATCH /repos/<slug> via gh api with visibility field', async () => {
     await setRepoVisibility('owner/repo', 'public');
     expect(lastArgs()).toEqual([
-      'repo', 'edit', 'owner/repo',
-      '--visibility', 'public',
-      '--accept-visibility-change-consequences',
+      'api', '--include', '--method', 'PATCH', '/repos/owner/repo',
+      '-f', 'visibility=public',
     ]);
   });
 
   it('passes private when target is private', async () => {
     await setRepoVisibility('owner/repo', 'private');
-    expect(lastArgs()).toContain('private');
+    expect(lastArgs()).toContain('visibility=private');
   });
 
-  it('throws on non-zero gh exit', async () => {
+  it('throws on a fatal non-zero gh exit', async () => {
+    // "rate limit" plain text without any of the recognized phrases
+    // (secondary/abuse/HTTP 429) falls through to fatal — same behavior
+    // as before for unclassified failures.
     vi.mocked(execa).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'rate limit' } as never);
     await expect(setRepoVisibility('owner/repo', 'public')).rejects.toThrow(/rate limit/);
   });
