@@ -14,6 +14,7 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 
 ### Docs (continued)
 - **FAQ and Troubleshooting moved out of the README** into [docs/faq.md](docs/faq.md) and [docs/troubleshooting.md](docs/troubleshooting.md). Each retains its content verbatim plus a backlink to the README; the README keeps a 2-line summary pointing at each. The README shrinks by ~85 lines without losing any topical depth -- npm visitors still see a complete picture (lede, install, quick start, command reference, anatomy, security, configuration, FAQ pointer, troubleshooting pointer), while users who want the deep reference content reach it directly via `docs/`. Pure-content move; the only delta is the README pointers.
+- **`docs/roadmap.md`** -- new lightweight append-only file for known-but-not-done work. First entry is the public sample vault (`aleburrascano/vaultkit-demo`) -- the demo experience that fresh users would benefit from but that requires editorial choices and a separate public repo.
 
 ### Changed
 - **`vaultkit --version` includes runtime info.** Output goes from `2.5.0` to `2.5.0 (node v22.x.x, <platform> <arch>)`, matching the README's existing promise of "version + runtime info". One-line bug-report-friendly format that also surfaces node-version mismatches when troubleshooting.
