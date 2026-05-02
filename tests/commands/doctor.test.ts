@@ -350,3 +350,156 @@ describe('D-14: non-vaultkit MCP servers listed', () => {
     expect(lines.some(l => /other MCP servers|myOtherServer/i.test(l))).toBe(true);
   });
 });
+
+// ── D-15: multi-vault aggregation across mixed states ────────────────────────
+
+describe('D-15: multi-vault aggregation', () => {
+  it('reports each of N vaults independently and sums the issue count', async () => {
+    const { createHash } = await import('node:crypto');
+
+    // Vault A: healthy
+    const dirA = join(tmp, 'VaultA');
+    mkdirSync(join(dirA, '.obsidian'), { recursive: true });
+    const contentA = '// A launcher';
+    const hashA = createHash('sha256').update(contentA).digest('hex');
+    writeFileSync(join(dirA, '.mcp-start.js'), contentA, 'utf8');
+
+    // Vault B: launcher missing (warn — does NOT count as issue)
+    const dirB = join(tmp, 'VaultB');
+    mkdirSync(dirB, { recursive: true });
+
+    // Vault C: hash mismatch (fail — counts as issue)
+    const dirC = join(tmp, 'VaultC');
+    mkdirSync(dirC, { recursive: true });
+    writeFileSync(join(dirC, '.mcp-start.js'), '// C content', 'utf8');
+
+    // Vault D: directory missing (fail — counts as issue)
+    const dirD = join(tmp, 'NeverExistedD');
+
+    const cfgPath = join(tmp, '.claude.json');
+    writeCfg(cfgPath, {
+      VaultA: { dir: dirA, hash: hashA },
+      VaultB: { dir: dirB, hash: 'b'.repeat(64) },
+      VaultC: { dir: dirC, hash: 'c'.repeat(64) }, // wrong hash
+      VaultD: { dir: dirD, hash: 'd'.repeat(64) },
+    });
+    mockAllToolsFound();
+    mockGhAuth(true);
+
+    const { issues, lines } = await runDoctor(cfgPath);
+
+    // Each vault appears in output independently
+    expect(lines.some(l => /VaultA/.test(l) && /\+ ok/.test(l))).toBe(true);
+    expect(lines.some(l => /VaultB/.test(l) && /\.mcp-start\.js.*missing|missing/i.test(l))).toBe(true);
+    expect(lines.some(l => /VaultC/.test(l) && /hash mismatch/i.test(l))).toBe(true);
+    expect(lines.some(l => /VaultD/.test(l) && /directory missing|missing/i.test(l))).toBe(true);
+    // Two failures (C and D); B is a warn (does not count)
+    expect(issues).toBe(2);
+  });
+});
+
+// ── D-16: everything missing — issue cascade ──────────────────────────────────
+
+describe('D-16: everything missing', () => {
+  it('produces a coherent report when git, gh, claude all absent + git config empty', async () => {
+    const cfgPath = join(tmp, '.claude.json');
+    writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
+    vi.mocked(findTool).mockResolvedValue(null);
+    // git config returns empty for both name and email
+    vi.mocked(execa).mockImplementation((async () => ({ exitCode: 0, stdout: '', stderr: '' })) as never);
+
+    const { issues, lines } = await runDoctor(cfgPath);
+
+    // git is required → fail
+    expect(lines.some(l => /git.*not found/i.test(l))).toBe(true);
+    // gh is recommended → warn
+    expect(lines.some(l => /gh.*not found/i.test(l))).toBe(true);
+    // claude is recommended → warn
+    expect(lines.some(l => /claude.*not found/i.test(l))).toBe(true);
+    // git config user.name / user.email → fail
+    expect(lines.some(l => /git config.*not set/i.test(l))).toBe(true);
+    // No vaults → 'no vaults' message (not part of issue count)
+    expect(lines.some(l => /no vaults/i.test(l))).toBe(true);
+
+    // 2 hard failures: git (required) + git config (required). gh and claude are warnings.
+    expect(issues).toBe(2);
+    expect(lines.some(l => new RegExp(`${issues} issue\\(s\\) found`).test(l))).toBe(true);
+  });
+});
+
+// ── D-17: issue count return value matches summary line ───────────────────────
+
+describe('D-17: issue count return value', () => {
+  it('returns exactly the number of failures shown in the summary line', async () => {
+    const cfgPath = join(tmp, '.claude.json');
+    // 1 hard fail: vault dir missing. gh/claude/git all ok.
+    writeCfg(cfgPath, { GhostA: { dir: join(tmp, 'no-such-dir-a'), hash: null } });
+    mockAllToolsFound();
+    mockGhAuth(true);
+
+    const { issues, lines } = await runDoctor(cfgPath);
+
+    expect(issues).toBe(1);
+    expect(lines.some(l => /1 issue\(s\) found/.test(l))).toBe(true);
+  });
+
+  it('returns 0 and prints "everything looks good" when nothing is wrong', async () => {
+    const cfgPath = join(tmp, '.claude.json');
+    writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
+    mockAllToolsFound();
+    mockGhAuth(true);
+
+    const { issues, lines } = await runDoctor(cfgPath);
+
+    expect(issues).toBe(0);
+    expect(lines.some(l => /everything looks good/i.test(l))).toBe(true);
+  });
+});
+
+// ── D-18: gh auth status stderr variance — generic unauthenticated handling ───
+
+describe('D-18: gh auth status non-zero exit produces warn regardless of stderr', () => {
+  it('classifies any non-zero exit as not authenticated (no stderr-aware classification)', async () => {
+    // Doctor uses exitCode === 0 as the only signal for authenticated state.
+    // This test pins that simple binary so a future "stderr-aware
+    // classification" change surfaces explicitly.
+    const cfgPath = join(tmp, '.claude.json');
+    writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
+    mockAllToolsFound();
+    vi.mocked(execa).mockImplementation((async (cmd: string, args?: readonly string[]) => {
+      if (args?.[0] === 'auth' && args?.[1] === 'status') {
+        return { exitCode: 1, stdout: '', stderr: 'token has expired or been revoked' };
+      }
+      if (args?.includes('user.name')) return { exitCode: 0, stdout: 'Test', stderr: '' };
+      if (args?.includes('user.email')) return { exitCode: 0, stdout: 'a@b.c', stderr: '' };
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }) as never);
+
+    const { lines } = await runDoctor(cfgPath);
+
+    expect(lines.some(l => /not authenticated/i.test(l))).toBe(true);
+    expect(lines.some(l => /gh auth login/i.test(l))).toBe(true);
+  });
+});
+
+// ── D-19: gitLine format assertion (tightens D-3's toBeDefined) ───────────────
+
+describe('D-19: git line format', () => {
+  it('formats the git not-found line with the canonical "x fail" prefix', async () => {
+    const cfgPath = join(tmp, '.claude.json');
+    writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
+    vi.mocked(findTool).mockImplementation(async (name: string) => {
+      if (name === 'git') return null;
+      return `/usr/bin/${name}`;
+    });
+    mockGitConfig();
+
+    const { lines } = await runDoctor(cfgPath);
+
+    // The git not-found output should follow the doctor format:
+    //   "  x fail  git: not found"
+    // (two leading spaces, "x fail" marker, two trailing spaces, name+message)
+    const gitLine = lines.find(l => /git/i.test(l) && /not found/i.test(l));
+    expect(gitLine).toMatch(/^\s+x fail\s+git:\s*not found$/);
+  });
+});
