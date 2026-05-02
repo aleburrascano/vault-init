@@ -59,6 +59,45 @@ describe('_parseGhIncludeOutput', () => {
     expect(headers).toEqual({});
     expect(body).toBe('');
   });
+
+  it('returns raw blob when the status line is malformed (no HTTP/ prefix)', () => {
+    const raw = 'HTTPx 200 OK\r\n\r\nbody';
+    const { status, headers, body } = _parseGhIncludeOutput(raw);
+    expect(status).toBeUndefined();
+    expect(headers).toEqual({});
+    expect(body).toBe(raw);
+  });
+
+  it('returns raw blob when the status line has a non-numeric status code', () => {
+    const raw = 'HTTP/1.1 abc OK\r\n\r\nbody';
+    const { status, headers, body } = _parseGhIncludeOutput(raw);
+    expect(status).toBeUndefined();
+    expect(headers).toEqual({});
+    expect(body).toBe(raw);
+  });
+
+  it('preserves embedded colons in header values', () => {
+    const raw = 'HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{}';
+    const { headers } = _parseGhIncludeOutput(raw);
+    expect(headers['content-type']).toBe('application/json; charset=utf-8');
+  });
+
+  it('skips header lines without a colon instead of throwing', () => {
+    const raw = 'HTTP/1.1 200 OK\r\nNoColonHere\r\nGood-Header: yes\r\n\r\n{}';
+    const { status, headers, body } = _parseGhIncludeOutput(raw);
+    expect(status).toBe(200);
+    expect(headers['good-header']).toBe('yes');
+    expect(body).toBe('{}');
+  });
+
+  it('handles mixed \\r\\n and \\n line endings within the same response', () => {
+    const raw = 'HTTP/1.1 200 OK\r\nA: 1\nB: 2\r\n\r\nbody';
+    const { status, headers, body } = _parseGhIncludeOutput(raw);
+    expect(status).toBe(200);
+    expect(headers['a']).toBe('1');
+    expect(headers['b']).toBe('2');
+    expect(body).toBe('body');
+  });
 });
 
 describe('_classifyGhFailure', () => {
@@ -163,5 +202,31 @@ describe('_classifyGhFailure', () => {
     const cls = _classifyGhFailure(429, '', '', { 'retry-after': '999999' });
     expect(cls.kind).toBe('rate_limited');
     expect(cls.backoffMs).toBe(60_000);
+  });
+
+  it('falls back to 60s default when Retry-After is zero, negative, or non-numeric', () => {
+    const body = JSON.stringify({ message: 'You have exceeded a secondary rate limit.' });
+    expect(_classifyGhFailure(403, body, '', { 'retry-after': '0' }).backoffMs).toBe(60_000);
+    expect(_classifyGhFailure(403, body, '', { 'retry-after': '-5' }).backoffMs).toBe(60_000);
+    expect(_classifyGhFailure(403, body, '', { 'retry-after': 'garbage' }).backoffMs).toBe(60_000);
+    expect(_classifyGhFailure(403, body, '', {}).backoffMs).toBe(60_000);
+  });
+
+  it('classifies status 499 as fatal (just below the 5xx range)', () => {
+    const cls = _classifyGhFailure(499, '', 'something', {});
+    expect(cls.kind).toBe('fatal');
+  });
+
+  it('classifies status 600 as fatal (just above the 5xx range)', () => {
+    const cls = _classifyGhFailure(600, '', 'something', {});
+    expect(cls.kind).toBe('fatal');
+  });
+
+  it('detects auth-flagged text in body even when status is undefined', () => {
+    // Older `gh` versions may not surface a parsed status; the regex
+    // matches against the body+stderr blob regardless.
+    const body = JSON.stringify({ message: "Repository 'owner/repo' is disabled." });
+    const cls = _classifyGhFailure(undefined, body, '', {});
+    expect(cls.kind).toBe('auth_flagged');
   });
 });
