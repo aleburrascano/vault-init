@@ -10,6 +10,7 @@ Slash commands in [.claude/commands/](.claude/commands/) for project workflows:
 - `/security-audit [name]` — verify the security invariants ([.claude/rules/security-invariants.md](.claude/rules/security-invariants.md)) across all commands or one
 - `/clarify-project [focus]` — fresh-user evaluation; adversarially compares docs against actual CLI behavior to surface drift
 - `/test [target]` — testing-expert persona; dispatches six parallel sub-reviewers (unit / mocked-integration / e2e / edge cases / security / cross-platform) and produces a priority-ranked coverage report. Auto-triggers on prompts like "what edge cases am I missing in X" — no need to type `/test` explicitly.
+- `/architecture [target]` — design-review persona; dispatches six parallel sub-reviewers (boundaries / coupling / naming / dependency-direction / abstraction-level / cross-cutting) and produces a priority-ranked findings report with refactoring recommendations. Auto-triggers on prompts about file separation, design patterns, single-responsibility, "is this in the right place?".
 - `/release` — version bump, CHANGELOG rotation, tag, push (triggers `main.yml` → matrix-gated `npm publish`)
 
 ## Commands
