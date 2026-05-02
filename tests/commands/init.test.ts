@@ -294,6 +294,109 @@ describe('I-11: claude not found', () => {
   });
 });
 
+// ── I-12: runMcpAdd full argv shape (security invariant) ─────────────────────
+
+describe('I-12: runMcpAdd argv shape', () => {
+  it('passes the full canonical argv including --expected-sha256=<hash>', async () => {
+    const { run } = await import('../../src/commands/init.js');
+    await run('ArgvVault', { cfgPath: join(tmp, '.claude.json'), log: silent }).catch(() => {});
+
+    // The canonical argv from src/lib/mcp.ts:runMcpAdd is:
+    //   ['mcp', 'add', '--scope', 'user', name, '--', 'node', launcherPath, `--expected-sha256=${hash}`]
+    const mcpAddCalls = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args[0] === 'mcp' && args[1] === 'add';
+    });
+    expect(mcpAddCalls.length).toBeGreaterThan(0);
+
+    const args = mcpAddCalls[0]?.[1] as readonly unknown[];
+    expect(args[2]).toBe('--scope');
+    expect(args[3]).toBe('user');
+    expect(args[4]).toBe('ArgvVault');
+    expect(args[5]).toBe('--');
+    expect(args[6]).toBe('node');
+    expect(typeof args[7]).toBe('string'); // launcher path
+    expect(String(args[7])).toMatch(/\.mcp-start\.js$/);
+    expect(typeof args[8]).toBe('string');
+    expect(String(args[8])).toMatch(/^--expected-sha256=[a-f0-9]{64}$/);
+  });
+
+  it('passes the actual on-disk launcher SHA-256 (not zero, not template-default)', async () => {
+    const { run } = await import('../../src/commands/init.js');
+    await run('HashVault', { cfgPath: join(tmp, '.claude.json'), log: silent }).catch(() => {});
+
+    const mcpAddCalls = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args[0] === 'mcp' && args[1] === 'add';
+    });
+    const args = mcpAddCalls[0]?.[1] as readonly unknown[];
+    const hashFlag = String(args[8]);
+    const passedHash = hashFlag.replace('--expected-sha256=', '');
+
+    // Compute the SHA of the on-disk launcher init wrote.
+    const { sha256 } = await import('../../src/lib/vault.js');
+    const launcherPath = join(tmp, 'HashVault', '.mcp-start.js');
+    const actualHash = await sha256(launcherPath);
+    expect(passedHash).toBe(actualHash);
+  });
+});
+
+// ── I-13: rollback invokes deleteRepo via gh api DELETE ───────────────────────
+
+describe('I-13: rollback deleteRepo argv', () => {
+  it('invokes gh api --method DELETE /repos/<slug> when push fails', async () => {
+    vi.mocked(execa).mockImplementation((async (cmd: string, args?: readonly string[]) => {
+      if (args?.[0] === 'auth' && args?.[1] === 'status') return { exitCode: 0, stdout: '', stderr: '' };
+      if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.name') return { exitCode: 0, stdout: 'User', stderr: '' };
+      if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.email') return { exitCode: 0, stdout: 'u@e.com', stderr: '' };
+      if (args?.[0] === 'api' && args?.[1] === 'user') {
+        return { exitCode: 0, stdout: JSON.stringify({ login: 'testuser', plan: { name: 'pro' } }), stderr: '' };
+      }
+      if (cmd === 'git' && args?.includes('push')) {
+        throw Object.assign(new Error('git push failed: Permission denied'), { exitCode: 1 });
+      }
+      // deleteRepo via gh api DELETE — happy path so rollback can complete.
+      if (args?.[0] === 'api' && args?.includes('--method') && args?.includes('DELETE')) {
+        return { exitCode: 0, stdout: 'HTTP/2 204\r\n\r\n', stderr: '' };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }) as never);
+
+    const { run } = await import('../../src/commands/init.js');
+    await expect(run('DeleteRepoVault', { cfgPath: join(tmp, '.claude.json'), log: silent }))
+      .rejects.toThrow();
+
+    const deleteCalls = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      if (!Array.isArray(args)) return false;
+      return args.includes('api') && args.includes('--method') && args.includes('DELETE')
+        && args.some(a => String(a).includes('repos/testuser/DeleteRepoVault'));
+    });
+    expect(deleteCalls.length).toBeGreaterThan(0);
+  });
+});
+
+// ── I-14: init NEVER requests delete_repo scope (security invariant) ──────────
+
+describe('I-14: ensureGhAuth scope', () => {
+  it('does not request the delete_repo scope at any point during init', async () => {
+    const { run } = await import('../../src/commands/init.js');
+    await run('ScopeVault', { cfgPath: join(tmp, '.claude.json'), log: silent }).catch(() => {});
+
+    // delete_repo is reserved for `destroy` (granted on-demand via
+    // ensureDeleteRepoScope in github.ts). init must never request it,
+    // either via gh auth login -s or gh auth refresh -s. This is a
+    // structural check across every gh execa call init made.
+    const deleteRepoScope = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      if (!Array.isArray(args)) return false;
+      const flat = args.map(String).join(' ');
+      return flat.includes('delete_repo');
+    });
+    expect(deleteRepoScope.length).toBe(0);
+  });
+});
+
 // ── LIVE: init creates real GitHub repo ───────────────────────────────────────
 
 const LIVE_VAULT = `vk-live-init-${Date.now()}`;
