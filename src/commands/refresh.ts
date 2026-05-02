@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join, posix } from 'node:path';
-import { Vault } from '../lib/vault.js';
+import { join, posix, resolve } from 'node:path';
+import { Vault, isVaultLike } from '../lib/vault.js';
 import { VAULT_DIRS } from '../lib/constants.js';
+import { VaultkitError } from '../lib/errors.js';
 import { compareSource } from '../lib/text-compare.js';
 import { findTool } from '../lib/platform.js';
 import { ghJson } from '../lib/gh-retry.js';
@@ -245,7 +246,17 @@ export async function run(
   const log = options.log ?? new ConsoleLogger();
   let vaultDir: string;
   if (options.vaultDir) {
-    vaultDir = options.vaultDir;
+    // --vault-dir is direct user input. Resolve to absolute and require
+    // a vault-like layout so refresh refuses to walk arbitrary paths
+    // (e.g. `--vault-dir /etc`) or write a freshness report into them.
+    const resolvedDir = resolve(options.vaultDir);
+    if (!isVaultLike(resolvedDir)) {
+      throw new VaultkitError(
+        'NOT_VAULT_LIKE',
+        `--vault-dir ${resolvedDir} is not a vault directory.`,
+      );
+    }
+    vaultDir = resolvedDir;
   } else if (name) {
     const vault = await Vault.requireFromName(name);
     vaultDir = vault.dir;

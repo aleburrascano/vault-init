@@ -4,6 +4,7 @@ paths:
   - "src/commands/disconnect.ts"
   - "src/commands/connect.ts"
   - "src/commands/init.ts"
+  - "src/commands/refresh.ts"
   - "src/lib/registry.ts"
   - "src/lib/vault.ts"
   - "src/lib/github.ts"
@@ -17,3 +18,4 @@ paths:
 - **Repo deletion** (whether via `gh repo delete` shorthand or `gh api --method DELETE /repos/<slug>`) must be preceded by an explicit ownership check (`isAdmin` from [src/lib/github.ts](../../src/lib/github.ts)) and a typed-name confirmation. The argv shape changed in 2.7.1 (migrated to `gh api` for header-aware retry); the precondition is unchanged. `deleteRepo` is the single source of truth for the call shape.
 - **`isVaultLike`** (or `Vault.isVaultLike()`) must be checked before any directory deletion.
 - **`delete_repo` scope** must be requested only when actually about to delete (skip for collaborators who can't delete anyway).
+- **`--vault-dir` (refresh)** is direct user input — must be resolved to absolute and validated via `isVaultLike` before any filesystem read or write. Without this, `vaultkit refresh --vault-dir /etc` would walk arbitrary paths and `mkdirSync(<path>/wiki/_freshness, ...)` into system directories.

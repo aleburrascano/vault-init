@@ -278,3 +278,29 @@ describe('SIMILARITY_THRESHOLD', () => {
     expect(SIMILARITY_THRESHOLD).toBeLessThanOrEqual(1);
   });
 });
+
+describe('run --vault-dir validation', () => {
+  it('rejects --vault-dir pointing at a non-vault directory', async () => {
+    // tmp is a fresh mkdtemp with no CLAUDE.md, no .obsidian/, no raw/wiki —
+    // not a vault. Without validation, refresh would happily walk it and
+    // mkdir <tmp>/wiki/_freshness. With validation, it should refuse before
+    // any file operation.
+    const { run } = await import('../../src/commands/refresh.js');
+    const { silent } = await import('../helpers/logger.js');
+    await expect(
+      run(undefined, { vaultDir: tmp, log: silent }),
+    ).rejects.toThrow(/NOT_VAULT_LIKE|not a vault/);
+  });
+
+  it('accepts --vault-dir pointing at a vault-like directory', async () => {
+    // Minimal vault layout: CLAUDE.md + raw/ + wiki/ satisfies isVaultLike.
+    writeFileSync(join(tmp, 'CLAUDE.md'), '');
+    mkdirSync(join(tmp, 'raw'), { recursive: true });
+    mkdirSync(join(tmp, 'wiki'), { recursive: true });
+    const { run } = await import('../../src/commands/refresh.js');
+    const { silent } = await import('../helpers/logger.js');
+    const result = await run(undefined, { vaultDir: tmp, log: silent });
+    expect(result.sourceCount).toBe(0);
+    expect(result.reportPath).toBeNull();
+  });
+});
