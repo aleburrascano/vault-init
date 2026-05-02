@@ -5,6 +5,8 @@ paths:
   - "tests/**/*.ts"
   - "scripts/**/*"
   - "tsconfig*.json"
+  - "lib/**/*.tmpl"
+  - "package.json"
   - "package.json"
   - "lib/*.tmpl"
 ---

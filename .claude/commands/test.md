@@ -28,6 +28,8 @@ Dispatch **six Explore subagents in parallel** (single message, multiple Agent t
 
 Hand each subagent: the target's source file paths, the existing test file paths, and the relevant rule file (`.claude/rules/testing.md` for all six; `.claude/rules/security-invariants.md` for sub-reviewer 5; `.claude/rules/architecture.md` for sub-reviewer 6).
 
+**Important framing for every sub-reviewer:** the items listed under each concern are **starting points, not a closed checklist**. Use them to ground your thinking, then surface anything else within the concern's scope that the example list didn't anticipate — locale-specific bugs the boundary list missed, race conditions the state list didn't enumerate, security gaps the OWASP-style examples didn't cover, platform-specific failure modes nobody named yet. The examples are intentionally non-exhaustive. If a gap belongs in your concern's territory, surface it even if no example pointed at it. Conversely, don't pad findings with examples that don't actually apply to the target — speculative gaps degrade the report.
+
 The six concerns:
 
 1. **Unit-test gaps** — pure functions, library helpers in `src/lib/`. Branches and return shapes covered? Boundary returns (null, empty, undefined) covered? Async failure paths covered?

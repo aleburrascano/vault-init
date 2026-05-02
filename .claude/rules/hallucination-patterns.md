@@ -1,3 +1,10 @@
+---
+paths:
+  - "src/**/*.ts"
+  - "tests/**/*.ts"
+  - "bin/**/*.ts"
+---
+
 # Hallucination Patterns
 
 [This file captures recurring mistakes so future sessions don't repeat them.]

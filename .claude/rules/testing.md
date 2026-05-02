@@ -1,3 +1,11 @@
+---
+paths:
+  - "tests/**/*.ts"
+  - "src/**/*.ts"
+  - "vitest.config.ts"
+  - "package.json"
+---
+
 # Testing Rules
 
 Test runner: `npm test` (runs vitest in single-pass mode against the TypeScript source directly — no build needed for tests).

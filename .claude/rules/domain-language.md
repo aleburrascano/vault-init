@@ -1,3 +1,11 @@
+---
+paths:
+  - "src/**/*.ts"
+  - "tests/**/*.ts"
+  - "bin/**/*.ts"
+  - ".claude/commands/*.md"
+---
+
 # Domain Language
 
 - **vault** = a local Obsidian directory containing `.obsidian/`, `CLAUDE.md`, `raw/`, and `wiki/` subdirectories, registered in `~/.claude.json` for Claude Code MCP access.
