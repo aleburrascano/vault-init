@@ -3,6 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { getAllVaults, getVaultDir, getExpectedHash } from '../../src/lib/registry.js';
+import { isVaultkitError } from '../../src/lib/errors.js';
 
 let tmp: string;
 beforeEach(() => {
@@ -73,9 +74,12 @@ describe('getAllVaults', () => {
     expect(result.map(v => v.name)).toEqual(['Alpha', 'Mango', 'Zebra']);
   });
 
-  it('returns empty array for malformed JSON', async () => {
-    writeFileSync(join(tmp, '.claude.json'), 'not json', 'utf8');
-    expect(await getAllVaults(join(tmp, '.claude.json'))).toEqual([]);
+  it('throws UNRECOGNIZED_INPUT for malformed JSON (refuses to mask data corruption)', async () => {
+    const cfgPath = join(tmp, '.claude.json');
+    writeFileSync(cfgPath, 'not json', 'utf8');
+    await expect(getAllVaults(cfgPath)).rejects.toSatisfy((err: unknown) =>
+      isVaultkitError(err) && err.code === 'UNRECOGNIZED_INPUT',
+    );
   });
 
   it('ignores non-vault entries mixed with vault entries', async () => {

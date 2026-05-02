@@ -1,13 +1,27 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { claudeJsonPath } from './platform.js';
+import { VaultkitError } from './errors.js';
 import type { ClaudeConfig, McpServerEntry, VaultRecord } from '../types.js';
 
 function parseConfig(cfgPath: string): ClaudeConfig | null {
+  let raw: string;
   try {
-    return JSON.parse(readFileSync(cfgPath, 'utf8')) as ClaudeConfig;
+    raw = readFileSync(cfgPath, 'utf8');
+  } catch (err) {
+    // ENOENT is the legitimate first-run case — no Claude Code config exists yet.
+    // Anything else (permission denied, IO error) we surface rather than mask.
+    const code = (err as { code?: string })?.code;
+    if (code === 'ENOENT') return null;
+    throw err;
+  }
+  try {
+    return JSON.parse(raw) as ClaudeConfig;
   } catch {
-    return null;
+    throw new VaultkitError(
+      'UNRECOGNIZED_INPUT',
+      `${cfgPath} is not valid JSON. Inspect or restore the file before continuing.`,
+    );
   }
 }
 
