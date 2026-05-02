@@ -8,7 +8,7 @@ import { createDirectoryTree, writeLayoutFiles, CANONICAL_LAYOUT_FILES } from '.
 import { findTool, vaultsRoot, getLauncherTemplate, getDeployTemplate } from '../lib/platform.js';
 import { checkNode, ensureGh, ensureGhAuth, ensureGitConfig } from '../lib/prereqs.js';
 import { findOrInstallClaude, runMcpAdd, runMcpRemove, manualMcpAddCommand } from '../lib/mcp.js';
-import { setDefaultBranch, addRemote } from '../lib/git.js';
+import { setDefaultBranch, addRemote, pushNewRepo } from '../lib/git.js';
 import {
   createRepo, deleteRepo, getCurrentUser, requireAuthGatedEligible,
   enablePages, setPagesVisibility,
@@ -224,7 +224,7 @@ export async function run(
     } else {
       log.info('[5/6] Pushing (no Pages — notes-only vault)...');
     }
-    await execa('git', ['-C', vaultDir, 'push', '-u', 'origin', 'main']);
+    await pushNewRepo(vaultDir, 'main');
 
     // [6/6] Branch protection
     log.info('[6/6] Protecting main branch...');

@@ -145,7 +145,21 @@ export async function getVisibility(slug: string): Promise<string> {
 }
 
 export async function setRepoVisibility(slug: string, visibility: Visibility): Promise<void> {
-  await ghJson('repo', 'edit', slug, '--visibility', visibility, '--accept-visibility-change-consequences');
+  // GitHub processes visibility changes asynchronously; back-to-back transitions
+  // (e.g. private→public→private) can race the previous change's propagation
+  // and 422 with "previous visibility change is still in progress." Retry with
+  // exponential backoff so transient queueing isn't a hard failure.
+  const args = ['repo', 'edit', slug, '--visibility', visibility, '--accept-visibility-change-consequences'];
+  const delays = [1000, 2000, 4000];
+  for (let attempt = 0; ; attempt++) {
+    const result = await gh(...args);
+    if (result.exitCode === 0) return;
+    const transient = result.stderr.includes('previous visibility change is still in progress');
+    if (!transient || attempt >= delays.length) {
+      throw new Error(`gh ${args.join(' ')}: ${result.stderr}`);
+    }
+    await new Promise<void>(r => setTimeout(r, delays[attempt] ?? 0));
+  }
 }
 
 export interface EnablePagesOptions {

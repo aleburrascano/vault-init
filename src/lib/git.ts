@@ -59,6 +59,28 @@ export async function push(dir: string): Promise<GitPushResult> {
   return { success: result.exitCode === 0, stderr: result.stderr ?? '' };
 }
 
+/**
+ * Push the local branch to `origin` immediately after the remote was created.
+ * Retries on "Repository not found" with exponential backoff — GitHub has
+ * eventual consistency between `gh repo create` returning and the new repo's
+ * git endpoints accepting pushes. On fast runners the push can hit GitHub
+ * before that propagates. Used by `init` after `[4/6] Creating GitHub repo`.
+ */
+export async function pushNewRepo(dir: string, branch: string = 'main'): Promise<void> {
+  const args = ['-C', dir, 'push', '-u', 'origin', branch];
+  const delays = [1000, 2000, 4000];
+  for (let attempt = 0; ; attempt++) {
+    const result = await execa('git', args, { reject: false });
+    if (result.exitCode === 0) return;
+    const stderr = String(result.stderr ?? '');
+    const transient = stderr.includes('Repository not found');
+    if (!transient || attempt >= delays.length) {
+      throw new Error(`git push to origin/${branch} failed: ${stderr.trim() || `exit ${result.exitCode}`}`);
+    }
+    await new Promise<void>(r => setTimeout(r, delays[attempt] ?? 0));
+  }
+}
+
 export interface PullOptions {
   timeout?: number;
   ffOnly?: boolean;
