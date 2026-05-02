@@ -4,6 +4,15 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-05-02
+
+### Fixed
+- **`setRepoVisibility` retries transient HTTP 422 "previous visibility change is still in progress"** errors with exponential backoff (1s/2s/4s, 4 attempts). Back-to-back transitions like `private→public→private` race GitHub's async propagation; the retry waits for the prior change to settle before failing. Visible to users of `vaultkit visibility` who toggle in quick succession, and to `live: visibility toggles real GitHub repo` on fast CI runners (CI ubuntu run 25254163649 surfaced this as `HTTP 422` on the second transition; windows passed because slower runner timing gave GitHub time to settle).
+- **`vaultkit init` retries the initial `git push` on "Repository not found"** with the same backoff via a new `pushNewRepo` helper in [src/lib/git.ts](src/lib/git.ts). GitHub has eventual consistency between `gh repo create` returning and the new repo's git endpoint accepting pushes; on fast machines, the push hits before propagation completes. The same CI run hit this in `live: connect clones real GitHub repo` (which uses `init` in its `beforeAll`).
+
+### CI
+- **`.github/workflows/release.yml`** now matches `ci.yml`'s setup: job-level `GH_TOKEN` env wired to the `VAULTKIT_TEST_GH_TOKEN` PAT secret, "Authenticate gh CLI" + "Configure git for live tests" preflight steps, pre-test orphan cleanup, post-test cleanup with `if: always()`, and the `vaultkit-live-tests` concurrency group shared with `ci.yml`. Without this, the release workflow's live tests hung on interactive device-code auth on the runner — v2.6.0 had to be re-tagged after the workflow was patched.
+
 ## [2.6.0] - 2026-05-02
 
 ### Added
