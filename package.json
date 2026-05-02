@@ -1,6 +1,6 @@
 {
   "name": "@aleburrascano/vaultkit",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "type": "module",
   "description": "Obsidian wiki management — create, connect, and destroy vaults with GitHub Pages and Claude Code MCP.",
   "author": "Alessandro Burrascano <aleburrascano123@gmail.com>",

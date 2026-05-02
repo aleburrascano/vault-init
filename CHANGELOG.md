@@ -4,6 +4,8 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-05-02
+
 ### Added
 - **Per-command `--help` examples.** Each command (`init`, `connect`, `destroy`, `pull`, etc.) now exposes a usage paragraph and example invocations via commander's `addHelpText('after', ...)`. Closes the gap where the README promised "detailed usage" via `--help` but each command's help printed only the one-line stub. Per-command help is now self-contained — users no longer need to grep the README for a working invocation. Examples include security-relevant context (`destroy` documents the `delete_repo` scope pre-grant; `connect` warns about the launcher's full-user-permission scope).
 - **`vaultkit init --mode <public|private|auth-gated>`** — non-interactive flag that skips the publish-mode prompt. Lets teams script onboarding (`vaultkit init team-wiki --mode private`) without piping an answer through a TTY. The value flows through to `InitOptions.publishMode`, which already had the validation surface (`isPublishMode` in [src/commands/init.ts:41](src/commands/init.ts#L41) throws `UNRECOGNIZED_INPUT` with the valid-modes list); the new flag is a thin CLI binding around plumbing that already existed and is exercised by every `publishMode: 'private'` live test (7 files).
