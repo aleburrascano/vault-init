@@ -79,6 +79,24 @@ export function detectGithubSlug(url: string): string | null {
   return `${m[1]}/${m[2].replace(/\.git$/, '')}`;
 }
 
+/**
+ * Pure classification of a source entry's URL. Decouples the "what kind
+ * of upstream is this" decision from the I/O paths that act on it
+ * (`checkGitSource` for git, `compareSource` for web). Tests can pin the
+ * decision matrix without mocking the network or `gh`.
+ */
+export type SourceClassification =
+  | { kind: 'no-url' }
+  | { kind: 'git'; slug: string; url: string }
+  | { kind: 'web'; url: string };
+
+export function classifySource(entry: SourceEntry): SourceClassification {
+  if (!entry.url) return { kind: 'no-url' };
+  const slug = detectGithubSlug(entry.url);
+  if (slug) return { kind: 'git', slug, url: entry.url };
+  return { kind: 'web', url: entry.url };
+}
+
 function* walkMarkdown(rootDir: string, currentRel: string = ''): Generator<{ rel: string; full: string }> {
   let entries;
   try {
@@ -137,10 +155,10 @@ async function checkGitSource(entry: SourceEntry, slug: string): Promise<GitChec
 }
 
 async function checkSource(entry: SourceEntry, ghAvailable: boolean): Promise<CheckResult> {
-  if (!entry.url) return { kind: 'no-url', entry };
-  const slug = detectGithubSlug(entry.url);
-  if (slug && ghAvailable) return checkGitSource(entry, slug);
-  const result = await compareSource(entry.url, entry.body);
+  const cls = classifySource(entry);
+  if (cls.kind === 'no-url') return { kind: 'no-url', entry };
+  if (cls.kind === 'git' && ghAvailable) return checkGitSource(entry, cls.slug);
+  const result = await compareSource(cls.url, entry.body);
   if (result.kind === 'compared') return { kind: 'compared', entry, similarity: result.similarity };
   return { kind: 'unfetchable', entry, reason: result.reason };
 }

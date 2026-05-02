@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import {
   parseFrontmatter,
   detectGithubSlug,
+  classifySource,
   loadSources,
   formatReport,
   SIMILARITY_THRESHOLD,
@@ -109,6 +110,45 @@ describe('loadSources', () => {
     writeFileSync(join(tmp, 'raw', 'a', 'b', 'deep.md'), '---\nsource: x\n---\nbody');
     const sources = loadSources(tmp);
     expect(sources[0]?.filePath).toBe('raw/a/b/deep.md');
+  });
+});
+
+describe('classifySource — pure URL classifier', () => {
+  const entry = (url: string) => ({ filePath: 'raw/x.md', url, sourceDate: null, body: '' });
+
+  it('returns no-url when entry has no URL', () => {
+    expect(classifySource(entry(''))).toEqual({ kind: 'no-url' });
+  });
+
+  it('classifies a github.com URL as git with the parsed slug', () => {
+    expect(classifySource(entry('https://github.com/owner/repo'))).toEqual({
+      kind: 'git',
+      slug: 'owner/repo',
+      url: 'https://github.com/owner/repo',
+    });
+  });
+
+  it('strips .git suffix when classifying', () => {
+    expect(classifySource(entry('https://github.com/owner/repo.git'))).toEqual({
+      kind: 'git',
+      slug: 'owner/repo',
+      url: 'https://github.com/owner/repo.git',
+    });
+  });
+
+  it('classifies a non-github URL as web', () => {
+    expect(classifySource(entry('https://arxiv.org/abs/1234.5678'))).toEqual({
+      kind: 'web',
+      url: 'https://arxiv.org/abs/1234.5678',
+    });
+  });
+
+  it('classifies a github sub-page (issues / wiki) as git when the slug parses', () => {
+    expect(classifySource(entry('https://github.com/owner/repo/issues/42'))).toEqual({
+      kind: 'git',
+      slug: 'owner/repo',
+      url: 'https://github.com/owner/repo/issues/42',
+    });
   });
 });
 
