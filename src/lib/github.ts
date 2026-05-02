@@ -27,10 +27,31 @@ async function gh(...args: string[]): Promise<GhResult> {
   };
 }
 
+/**
+ * Throwing variant of `gh` that retries on transient GitHub API failures —
+ * 5xx server errors, 429 rate limits, network resets/timeouts, and the
+ * GitHub-specific "previous visibility change is still in progress" 422.
+ * Backoff: 1s / 2s / 4s (4 attempts total). Non-transient errors throw
+ * immediately. Used by every wrapper that expects success (createRepo,
+ * setRepoVisibility, getVisibility, enablePages, etc.) so all gh-API
+ * callers get retry semantics from one place.
+ */
 async function ghJson(...args: string[]): Promise<string> {
-  const result = await gh(...args);
-  if (result.exitCode !== 0) throw new Error(`gh ${args.join(' ')}: ${result.stderr}`);
-  return result.stdout;
+  const delays = [1000, 2000, 4000];
+  for (let attempt = 0; ; attempt++) {
+    const result = await gh(...args);
+    if (result.exitCode === 0) return result.stdout;
+    const stderr = result.stderr;
+    const isTransient =
+      /HTTP 5\d\d/.test(stderr) ||
+      /HTTP 429/.test(stderr) ||
+      stderr.includes('previous visibility change is still in progress') ||
+      /ECONNRESET|ETIMEDOUT|ECONNREFUSED|EHOSTUNREACH/.test(stderr);
+    if (!isTransient || attempt >= delays.length) {
+      throw new Error(`gh ${args.join(' ')}: ${stderr}`);
+    }
+    await new Promise<void>(r => setTimeout(r, delays[attempt] ?? 0));
+  }
 }
 
 // ── Pure JSON parsers (exported for unit tests) ───────────────────────────────
@@ -145,21 +166,9 @@ export async function getVisibility(slug: string): Promise<string> {
 }
 
 export async function setRepoVisibility(slug: string, visibility: Visibility): Promise<void> {
-  // GitHub processes visibility changes asynchronously; back-to-back transitions
-  // (e.g. private→public→private) can race the previous change's propagation
-  // and 422 with "previous visibility change is still in progress." Retry with
-  // exponential backoff so transient queueing isn't a hard failure.
-  const args = ['repo', 'edit', slug, '--visibility', visibility, '--accept-visibility-change-consequences'];
-  const delays = [1000, 2000, 4000];
-  for (let attempt = 0; ; attempt++) {
-    const result = await gh(...args);
-    if (result.exitCode === 0) return;
-    const transient = result.stderr.includes('previous visibility change is still in progress');
-    if (!transient || attempt >= delays.length) {
-      throw new Error(`gh ${args.join(' ')}: ${result.stderr}`);
-    }
-    await new Promise<void>(r => setTimeout(r, delays[attempt] ?? 0));
-  }
+  // ghJson retries the "previous visibility change is still in progress" 422
+  // automatically, so this is a one-liner.
+  await ghJson('repo', 'edit', slug, '--visibility', visibility, '--accept-visibility-change-consequences');
 }
 
 export interface EnablePagesOptions {
