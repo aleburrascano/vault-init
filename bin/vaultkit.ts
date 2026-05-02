@@ -72,6 +72,7 @@ Commands:
   EVERYDAY USE
     status [name]                     See your vaults + git state (or detailed status for one)
     pull                              Sync all vaults from their upstream
+    refresh [name]                    Check sources for upstream changes and write a freshness report
     backup <name>                     Snapshot a vault to a local zip
 
   WHEN SOMETHING'S WRONG
@@ -224,6 +225,29 @@ vaultkit upgrade or when 'vaultkit verify' reports drift.
       const { run } = await import('../src/commands/update.js');
       await run(name);
     }, 'update', [name]);
+  });
+
+program
+  .command('refresh [name]')
+  .description('Check sources for upstream changes and write a freshness report')
+  .option('--vault-dir <path>', 'operate on this directory instead of a registered vault (CI mode)')
+  .addHelpText('after', `
+Examples:
+  $ vaultkit refresh my-wiki                  # registered vault
+  $ vaultkit refresh --vault-dir .            # current dir (used by CI)
+
+Walks raw/, reads each file's frontmatter URL + clip date, and classifies
+sources: GitHub repos get a commit-since-clip count via 'gh api'; other URLs
+get an HTTP fetch + Mozilla Readability text-only compare against the local
+clip; paywalls / SPAs / 4xx / 5xx route to the report's "manual review"
+section. Output: wiki/_freshness/<YYYY-MM-DD>.md (only written when
+findings exist). Apply the report by following the patch flow in CLAUDE.md.
+`)
+  .action(async (name: string | undefined, opts: { vaultDir?: string }) => {
+    await wrap(async () => {
+      const { run } = await import('../src/commands/refresh.js');
+      await run(name, opts.vaultDir ? { vaultDir: opts.vaultDir } : {});
+    }, 'refresh', [name ?? '', opts.vaultDir ?? '']);
   });
 
 program
