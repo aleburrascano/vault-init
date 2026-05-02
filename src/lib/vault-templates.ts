@@ -1,5 +1,63 @@
+import { readFileSync } from 'node:fs';
+import { renderManagedSection } from './claude-md-merge.js';
+import { getFreshnessTemplate, getPrTemplate, getClaudeSettingsTemplate } from './platform.js';
+
+export const WIKI_STYLE_SECTION_ID = 'wiki-style';
+export const WIKI_STYLE_HEADING = 'Wiki Style & Refresh Policy';
+
+/**
+ * Body content (no markers) of the vaultkit-managed "Wiki Style & Refresh
+ * Policy" section in CLAUDE.md. Exported so `update.ts` can pass it to
+ * `mergeManagedSection` when reconciling existing vaults' CLAUDE.md.
+ */
+export function renderWikiStyleSection(): string {
+  return `## ${WIKI_STYLE_HEADING}
+
+### Voice and structure
+<describe the wiki's voice, tone, page templates, what lives in concepts/ vs topics/, naming conventions, etc.>
+
+### Refresh constraints (patch flow)
+- When applying a freshness report, edit existing wiki pages surgically. Never regenerate a wiki page from sources.
+- Scope edits to pages listed under "Wiki pages that cite this source" in the report.
+- For sources in the "text-only compare" or "manual review" sections: use WebFetch to retrieve and compare against the corresponding raw/<file>.md. Patch only on meaningful semantic difference; ignore formatting noise.
+
+### Workflow
+For refresh sessions, cd into this vault directory and run \`claude\` there. The vault's \`.claude/settings.json\` will set recommended defaults (model, permissions). Don't rely on the MCP connection from another cwd for refresh work.
+
+### Recommended Claude Code settings for refresh sessions
+Model: <e.g. Sonnet 4.6 or higher>
+Thinking: <enabled / disabled>
+Effort: <low / medium / high>`;
+}
+
+/**
+ * Read the freshness GitHub Action template from `lib/freshness.yml.tmpl`.
+ * Returns the template's bytes verbatim — the workflow takes no per-vault
+ * substitutions. Resolves to `<repo>/lib/...` in dev, `<install>/dist/lib/...`
+ * after build.
+ */
+export function renderFreshnessYml(): string {
+  return readFileSync(getFreshnessTemplate(), 'utf8');
+}
+
+/**
+ * Read the PR description scaffold from `lib/pr-template.md.tmpl`.
+ * Static — no substitutions. Lands at `.github/pull_request_template.md`.
+ */
+export function renderPrTemplate(): string {
+  return readFileSync(getPrTemplate(), 'utf8');
+}
+
+/**
+ * Read the project-scoped Claude Code settings template from
+ * `lib/claude-settings.json.tmpl`. Static. Lands at `.claude/settings.json`.
+ */
+export function renderClaudeSettings(): string {
+  return readFileSync(getClaudeSettingsTemplate(), 'utf8');
+}
+
 export function renderClaudeMd(vaultName: string): string {
-  return `# CLAUDE.md — ${vaultName}
+  const baseContent = `# CLAUDE.md — ${vaultName}
 
 You maintain this personal knowledge wiki. Read this at session start, then search-first — see Session start below.
 
@@ -40,6 +98,7 @@ Find: orphans, contradictions, missing cross-refs, index drift. Discuss before b
 - Fabricate sources or citations.
 - Skip the log.
 `;
+  return `${baseContent}\n${renderManagedSection(WIKI_STYLE_SECTION_ID, renderWikiStyleSection())}\n`;
 }
 
 export function renderReadme(vaultName: string, siteUrl: string = ''): string {

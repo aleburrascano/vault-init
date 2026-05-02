@@ -9,6 +9,9 @@ import {
   renderGitignore,
   renderGitattributes,
   renderDuplicateCheckYaml,
+  renderFreshnessYml,
+  renderPrTemplate,
+  renderClaudeSettings,
 } from './vault-templates.js';
 
 /**
@@ -24,6 +27,9 @@ export interface LayoutContext {
 
 /** Sub-path of the duplicate-check workflow, used both as a file path and a switch-case key. */
 export const DUPLICATE_CHECK_WORKFLOW_PATH = `${VAULT_DIRS.GITHUB_WORKFLOWS}/${WORKFLOW_FILES.DUPLICATE_CHECK}`;
+
+/** Sub-path of the freshness workflow (Topic 2). Same dual-use as DUPLICATE_CHECK_WORKFLOW_PATH. */
+export const FRESHNESS_WORKFLOW_PATH = `${VAULT_DIRS.GITHUB_WORKFLOWS}/${WORKFLOW_FILES.FRESHNESS}`;
 
 /** Marker files that ensure `raw/` and `wiki/` are tracked even when empty. */
 export const RAW_GITKEEP = `${VAULT_DIRS.RAW}/.gitkeep`;
@@ -41,7 +47,10 @@ export const CANONICAL_LAYOUT_FILES: readonly string[] = [
   VAULT_FILES.LOG,
   VAULT_FILES.GITIGNORE,
   VAULT_FILES.GITATTRIBUTES,
+  VAULT_FILES.CLAUDE_SETTINGS,
+  VAULT_FILES.PR_TEMPLATE,
   DUPLICATE_CHECK_WORKFLOW_PATH,
+  FRESHNESS_WORKFLOW_PATH,
   RAW_GITKEEP,
   WIKI_GITKEEP,
 ];
@@ -55,7 +64,10 @@ export function renderLayoutFile(path: string, ctx: LayoutContext): string {
     case VAULT_FILES.LOG:                 return renderLogMd();
     case VAULT_FILES.GITIGNORE:           return renderGitignore();
     case VAULT_FILES.GITATTRIBUTES:       return renderGitattributes();
+    case VAULT_FILES.CLAUDE_SETTINGS:     return renderClaudeSettings();
+    case VAULT_FILES.PR_TEMPLATE:         return renderPrTemplate();
     case DUPLICATE_CHECK_WORKFLOW_PATH:   return renderDuplicateCheckYaml();
+    case FRESHNESS_WORKFLOW_PATH:         return renderFreshnessYml();
     case RAW_GITKEEP:                     return '';
     case WIKI_GITKEEP:                    return '';
     default: throw new Error(`renderLayoutFile: unknown layout path "${path}"`);
