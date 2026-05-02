@@ -75,8 +75,11 @@ To scaffold a new command: `/add-command`.
 |---|---|
 | [lib/mcp-start.js.tmpl](../../lib/mcp-start.js.tmpl) | Single source of truth for `.mcp-start.js`. SHA-256 self-verification on every Claude Code session. **Byte-immutable for backward compatibility.** Copied into `dist/lib/` by [scripts/post-build.mjs](../../scripts/post-build.mjs). |
 | [lib/deploy.yml.tmpl](../../lib/deploy.yml.tmpl) | GitHub Actions workflow for Quartz/GitHub Pages deployment. |
+| [lib/freshness.yml.tmpl](../../lib/freshness.yml.tmpl) | GitHub Actions workflow for the scheduled `vaultkit refresh` (Topic 2). Weekly cron + `workflow_dispatch`. Runs `npx -y @aleburrascano/vaultkit refresh --vault-dir .`, commits the new report under `wiki/_freshness/`, opens a PR. Uses default `GITHUB_TOKEN`; no Anthropic secrets. |
+| [lib/pr-template.md.tmpl](../../lib/pr-template.md.tmpl) | PR description scaffold installed at `.github/pull_request_template.md` in scaffolded vaults. Asks contributors to declare their Claude Code session config (model, thinking, effort) and which sources from the freshness report they incorporated. Visibility, not enforcement. |
+| [lib/claude-settings.json.tmpl](../../lib/claude-settings.json.tmpl) | Project-scoped `.claude/settings.json` with `model: "sonnet"` and a `permissions.additionalDirectories: ["raw", "wiki"]` default. Applies when collaborators `cd` into the vault and run `claude` there for a refresh session. |
 
-Both ship inside `dist/lib/` after the post-build copy. Source `lib/` exists for in-repo dev (`src/commands/init.ts`'s `'../../lib/<tmpl>'` path resolves to `<repo>/lib/<tmpl>` from raw source and to `<install-root>/dist/lib/<tmpl>` from compiled output, because the post-build copy keeps the relative offset constant).
+All ship inside `dist/lib/` after the post-build copy. Source `lib/` exists for in-repo dev (`src/commands/init.ts`'s `'../../lib/<tmpl>'` path resolves to `<repo>/lib/<tmpl>` from raw source and to `<install-root>/dist/lib/<tmpl>` from compiled output, because the post-build copy keeps the relative offset constant).
 
 ## Adding a New Command
 

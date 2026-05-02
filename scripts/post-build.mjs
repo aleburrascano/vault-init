@@ -7,7 +7,13 @@
 import { copyFileSync, mkdirSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 
-const TEMPLATES = ['mcp-start.js.tmpl', 'deploy.yml.tmpl'];
+const TEMPLATES = [
+  'mcp-start.js.tmpl',
+  'deploy.yml.tmpl',
+  'freshness.yml.tmpl',
+  'pr-template.md.tmpl',
+  'claude-settings.json.tmpl',
+];
 const SRC_DIR = 'lib';
 const DEST_DIR = join('dist', 'lib');
 
