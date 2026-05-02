@@ -13,9 +13,9 @@ You'll get an acknowledgment within 7 days. Coordinated disclosure is appreciate
 
 ## Trust model
 
-vaultkit is a thin wrapper around `git`, `gh`, and `claude`. It does not run a server, does not phone home, and has no third-party npm dependencies. The trust surface is:
+vaultkit is a thin wrapper around `git`, `gh`, `claude`, and three permissive npm dependencies (`commander`, `execa`, `@inquirer/prompts`). It does not run a server and does not phone home. The trust surface is:
 
-1. **The `vaultkit` package itself.** When you `npm install -g @aleburrascano/vaultkit`, you trust the published package contents to behave as the source on GitHub does. The `files` allowlist in `package.json` is restrictive — only the bash scripts, `lib/`, the dispatcher, and `install.sh` ship.
+1. **The `vaultkit` package itself.** When you `npm install -g @aleburrascano/vaultkit`, you trust the published package contents to behave as the source on GitHub does. The `files` allowlist in `package.json` is restrictive — only `dist/` ships, which contains the TypeScript-compiled CLI plus the byte-immutable launcher template ([`lib/mcp-start.js.tmpl`](./lib/mcp-start.js.tmpl), copied to `dist/lib/` at build time).
 2. **Vaults you connect to.** `vaultkit connect` clones a vault from GitHub and registers `.mcp-start.js` as a Claude Code MCP server. **That script runs with your full user permissions on every Claude Code session start.** This is equivalent to adding the vault author to your system PATH. The same rule as `npm install` applies: only connect vaults from authors you trust.
 
 ## Supply-chain protections
