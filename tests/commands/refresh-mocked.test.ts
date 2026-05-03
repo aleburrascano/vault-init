@@ -174,3 +174,107 @@ describe('run() orchestration — ghAvailable=false routes git sources through c
     expect(result.findingCount).toBe(1); // 0.4 < SIMILARITY_THRESHOLD → drifted
   });
 });
+
+describe('run() orchestration — ghJson failures surface as manual-review entries', () => {
+  it('catches RATE_LIMITED from ghJson and routes the source to manual-review', async () => {
+    const vaultDir = makeMinimalVault();
+    writeFileSync(
+      join(vaultDir, 'raw', 'paper.md'),
+      '---\nsource: https://github.com/octocat/Hello-World\n---\nbody',
+    );
+    vi.mocked(findTool).mockResolvedValue('/usr/bin/gh');
+    // checkGitSource at refresh.ts:152-155 catches gh errors (incl.
+    // VaultkitError('RATE_LIMITED')) and surfaces them as
+    // `{kind:'git', error: msg}`. Without this catch, run() crashes
+    // mid-Promise.all when one source rate-limits — losing all in-flight
+    // results from sibling sources.
+    const { VaultkitError } = await import('../../src/lib/errors.js');
+    vi.mocked(ghJson).mockRejectedValue(
+      new VaultkitError('RATE_LIMITED', 'GitHub secondary rate limit exhausted'),
+    );
+
+    const { run } = await import('../../src/commands/refresh.js');
+    const result = await run(undefined, { vaultDir, log: silent });
+
+    expect(result.findingCount).toBe(1); // routed to manual-review, NOT crashed
+    expect(result.reportPath).not.toBeNull();
+    const report = readFileSync(result.reportPath as string, 'utf8');
+    expect(report).toContain("couldn't auto-check");
+    expect(report).toContain('rate limit');
+  });
+
+  it('does NOT cascade one source failure to siblings (Promise.all behavior)', async () => {
+    const vaultDir = makeMinimalVault();
+    writeFileSync(
+      join(vaultDir, 'raw', 'a.md'),
+      '---\nsource: https://github.com/octocat/Hello-World\n---\nbody-a',
+    );
+    writeFileSync(
+      join(vaultDir, 'raw', 'b.md'),
+      '---\nsource: https://github.com/octocat/Spoon-Knife\n---\nbody-b',
+    );
+    vi.mocked(findTool).mockResolvedValue('/usr/bin/gh');
+    // First call succeeds, second errors. Both are awaited via Promise.all.
+    const { VaultkitError } = await import('../../src/lib/errors.js');
+    vi.mocked(ghJson)
+      .mockResolvedValueOnce(JSON.stringify([{ commit: { message: 'recent change' } }]))
+      .mockRejectedValueOnce(new VaultkitError('RATE_LIMITED', 'rate limited'));
+
+    const { run } = await import('../../src/commands/refresh.js');
+    const result = await run(undefined, { vaultDir, log: silent });
+
+    expect(result.sourceCount).toBe(2);
+    expect(result.findingCount).toBe(2); // 1 git change + 1 errored-git in manual-review
+    const report = readFileSync(result.reportPath as string, 'utf8');
+    expect(report).toContain('## Sources auto-checked (git)');
+    expect(report).toContain("couldn't auto-check");
+  });
+});
+
+describe('run() orchestration — log message pluralization', () => {
+  it('uses singular forms when N=1 ("1 source", "1 finding")', async () => {
+    const vaultDir = makeMinimalVault();
+    writeFileSync(
+      join(vaultDir, 'raw', 'paper.md'),
+      '---\nsource: https://github.com/octocat/Hello-World\n---\nbody',
+    );
+    vi.mocked(findTool).mockResolvedValue('/usr/bin/gh');
+    vi.mocked(ghJson).mockResolvedValue(JSON.stringify([{ commit: { message: 'change' } }]));
+
+    const lines: string[] = [];
+    const log = {
+      info: (m: string) => lines.push(m),
+      warn: (m: string) => lines.push(m),
+      error: (m: string) => lines.push(m),
+      debug: (_m: string) => { /* drop */ },
+    };
+    const { run } = await import('../../src/commands/refresh.js');
+    await run(undefined, { vaultDir, log });
+
+    expect(lines.some(l => /Found 1 source under raw\//.test(l))).toBe(true);
+    expect(lines.some(l => /\(1 finding\)/.test(l))).toBe(true);
+  });
+
+  it('uses plural forms when N>1 ("2 sources", "2 findings")', async () => {
+    const vaultDir = makeMinimalVault();
+    writeFileSync(join(vaultDir, 'raw', 'a.md'),
+      '---\nsource: https://github.com/octocat/Hello-World\n---\na');
+    writeFileSync(join(vaultDir, 'raw', 'b.md'),
+      '---\nsource: https://github.com/octocat/Spoon-Knife\n---\nb');
+    vi.mocked(findTool).mockResolvedValue('/usr/bin/gh');
+    vi.mocked(ghJson).mockResolvedValue(JSON.stringify([{ commit: { message: 'c' } }]));
+
+    const lines: string[] = [];
+    const log = {
+      info: (m: string) => lines.push(m),
+      warn: (m: string) => lines.push(m),
+      error: (m: string) => lines.push(m),
+      debug: (_m: string) => { /* drop */ },
+    };
+    const { run } = await import('../../src/commands/refresh.js');
+    await run(undefined, { vaultDir, log });
+
+    expect(lines.some(l => /Found 2 sources under raw\//.test(l))).toBe(true);
+    expect(lines.some(l => /\(2 findings\)/.test(l))).toBe(true);
+  });
+});
