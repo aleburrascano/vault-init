@@ -75,6 +75,11 @@ export async function run(
       log.info('  Connecting anyway — ask the owner to run \'vaultkit update\' so layout-aware features work.');
     }
 
+    // We hash the on-disk launcher and pin THAT value — we do NOT compare
+    // against the canonical template SHA. See `.claude/rules/security-invariants.md`
+    // "Threat model" entry on malicious upstream vaults for why. The user is
+    // the one making the trust call; vaultkit surfaces the SHA + path so they
+    // can `cat` the launcher before confirming.
     const hash = await sha256(launcherPath);
 
     log.info('');

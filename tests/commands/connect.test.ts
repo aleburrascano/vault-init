@@ -345,6 +345,53 @@ describe('TR-9: pre-clone collision (dir on disk)', () => {
   });
 });
 
+// ── TR-10: SECURITY MODEL — connect registers any launcher (no template check) ─
+
+describe('TR-10: connect intentionally does NOT compare launcher to canonical template', () => {
+  // This test pins a deliberate threat-model decision documented in
+  // `.claude/rules/security-invariants.md`. If you are tempted to "fix"
+  // this by adding a `sha256(template) === sha256(onDisk)` check, read the
+  // "Threat model" section first — the runtime self-verification is
+  // registry-based, so template comparison adds little real security and
+  // breaks legitimate cross-version vaults. The user makes the trust call.
+  //
+  // Concretely: connecting a vault whose .mcp-start.js bytes differ from
+  // the current vaultkit's lib/mcp-start.js.tmpl SHOULD succeed; we only
+  // refuse if the vault is already registered or the dir already exists.
+  it('registers a launcher whose bytes differ from the canonical template', async () => {
+    const vaultDir = join(tmp, 'NonCanonicalVault');
+    // Deliberately non-template bytes — would fail a template-comparison check.
+    const nonCanonicalBytes = '// THIS IS NOT THE CANONICAL VAULTKIT LAUNCHER\n';
+    vi.mocked(clone).mockImplementation(async () => {
+      mkdirSync(vaultDir, { recursive: true });
+      writeFileSync(join(vaultDir, '.mcp-start.js'), nonCanonicalBytes);
+      writeFileSync(join(vaultDir, 'CLAUDE.md'), '');
+      mkdirSync(join(vaultDir, 'raw'), { recursive: true });
+      mkdirSync(join(vaultDir, 'wiki'), { recursive: true });
+    });
+    vi.mocked(confirm).mockResolvedValueOnce(true);
+
+    const { run } = await import('../../src/commands/connect.js');
+    await run('owner/NonCanonicalVault', { cfgPath: join(tmp, '.claude.json'), log: silent });
+
+    // Confirm the registration happened with the non-canonical bytes' SHA.
+    const mcpAddCalls = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args[0] === 'mcp' && args[1] === 'add';
+    });
+    expect(mcpAddCalls.length).toBe(1);
+
+    const args = mcpAddCalls[0]?.[1] as readonly unknown[];
+    const passedHash = String(args[8]).replace('--expected-sha256=', '');
+    const { sha256 } = await import('../../src/lib/vault.js');
+    const nonCanonicalHash = await sha256(join(vaultDir, '.mcp-start.js'));
+    expect(passedHash).toBe(nonCanonicalHash);
+
+    // And the vault dir is intact (not rolled back).
+    expect(existsSync(vaultDir)).toBe(true);
+  });
+});
+
 // ── LIVE: connect clones a real GitHub repo ───────────────────────────────────
 
 const LIVE_VAULT = `vk-live-connect-${Date.now()}`;

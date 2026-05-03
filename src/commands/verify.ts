@@ -54,6 +54,10 @@ export async function run(
     }
   }
 
+  // Comparison is on-disk hash vs registered (pinned) hash, NOT vs the
+  // canonical template hash. See `.claude/rules/security-invariants.md`
+  // "Threat model — what vaultkit DOES NOT protect against" for why.
+  // tl;dr: registry tampering is out-of-scope; trust boundary is $HOME.
   if (pinned && pinned === onDisk && !upstreamDrift) {
     log.info('Verified — pinned hash matches on-disk and upstream.');
     return;
