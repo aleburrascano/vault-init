@@ -4,6 +4,10 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Changed (CI)
+- **CI now rotates between two GitHub PAT accounts round-robin per run.** `.github/workflows/main.yml` adds a "Select test PAT" step at the top of the `test` job that picks `VAULTKIT_TEST_GH_TOKEN_A` or `_B` via `GITHUB_RUN_NUMBER % 2` and exports it to `$GITHUB_ENV` as `GH_TOKEN`. Fail-closed if the chosen secret is missing — silent fallback to the other PAT would mask config drift. Pre- and post-test orphan-cleanup steps now sweep BOTH accounts (the previous run used the other PAT, so its orphans live on a different account than this run's). The chosen PAT label (`A` / `B`) is logged via `VAULTKIT_TEST_PAT_LABEL` so it's visible in the Actions UI without exposing the token. Halves per-account abuse-heuristic load — addresses the recurring 24-72h flag-out cycle described in `docs/roadmap.md` "Live-test CI". Operator note: re-runs of the same `run_number` reuse the same PAT; push a new commit to flip to the other account.
+- **Dropped legacy `VAULTKIT_TEST_GH_TOKEN` secret.** No fallback. Repo Settings → Secrets must now define both `VAULTKIT_TEST_GH_TOKEN_A` and `VAULTKIT_TEST_GH_TOKEN_B`.
+
 ## [2.7.2] - 2026-05-02
 
 ### Fixed

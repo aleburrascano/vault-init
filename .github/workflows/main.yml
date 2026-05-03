@@ -15,9 +15,11 @@ on:
   pull_request:
     branches: [main]
 
-# Live tests create real `vk-live-*` repos against the GitHub account that
-# owns VAULTKIT_TEST_GH_TOKEN. Concurrency: only one Main run touches that
-# account at a time, so name collisions and orphan races stay contained.
+# Live tests create real `vk-live-*` repos. Two test PATs (A and B) are
+# rotated round-robin via `GITHUB_RUN_NUMBER % 2` so per-account abuse
+# heuristics see roughly half the load each. Concurrency: only one Main
+# run touches either account at a time, so name collisions and orphan
+# races stay contained regardless of which PAT was selected.
 concurrency:
   group: vaultkit-live-tests
   cancel-in-progress: false
@@ -34,12 +36,40 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      # Classic PAT (delete_repo + repo + workflow scopes) on a dedicated
-      # test GitHub account. Add via repo Settings → Secrets → Actions.
-      GH_TOKEN: ${{ secrets.VAULTKIT_TEST_GH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Select test PAT (round-robin A/B)
+        shell: bash
+        env:
+          # Classic PATs (delete_repo + repo + workflow scopes) on TWO
+          # dedicated test GitHub accounts. Add both via repo Settings →
+          # Secrets → Actions. Round-robin spreads abuse-heuristic load.
+          PAT_A: ${{ secrets.VAULTKIT_TEST_GH_TOKEN_A }}
+          PAT_B: ${{ secrets.VAULTKIT_TEST_GH_TOKEN_B }}
+        run: |
+          # GITHUB_RUN_NUMBER is auto-set by the runner. Re-runs of the
+          # same run reuse the same number (so they pick the same PAT,
+          # which is the desired retry semantics — operator must push a
+          # new commit to flip to the other account).
+          INDEX=$(( GITHUB_RUN_NUMBER % 2 ))
+          if [ "$INDEX" -eq 0 ]; then
+            LABEL=A
+            CHOSEN="$PAT_A"
+          else
+            LABEL=B
+            CHOSEN="$PAT_B"
+          fi
+          # Fail-closed if the chosen secret is missing — silent fallback
+          # to the other PAT would mask config drift (someone forgetting
+          # to add the second secret would see green CI on alternate runs).
+          if [ -z "$CHOSEN" ]; then
+            echo "VAULTKIT_TEST_GH_TOKEN_${LABEL} secret is missing — add both _A and _B." >&2
+            exit 1
+          fi
+          echo "GH_TOKEN=$CHOSEN" >> "$GITHUB_ENV"
+          echo "VAULTKIT_TEST_PAT_LABEL=$LABEL" >> "$GITHUB_ENV"
+          echo "Selected PAT: $LABEL (run_number=$GITHUB_RUN_NUMBER)"
 
       - uses: actions/setup-node@v4
         with:
@@ -58,7 +88,7 @@ jobs:
         shell: bash
         run: |
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "VAULTKIT_TEST_GH_TOKEN secret is missing — live tests will fail."
+            echo "GH_TOKEN not exported by Select test PAT step." >&2
             exit 1
           fi
           # GH_TOKEN env is auto-detected by gh; no `gh auth login` needed.
@@ -83,17 +113,38 @@ jobs:
       - name: Pre-test cleanup of orphaned live-test repos
         if: always()
         shell: bash
+        env:
+          # Sweep both accounts — the previous run used the *other* PAT,
+          # so its orphans live on a different account than this run's.
+          PAT_A: ${{ secrets.VAULTKIT_TEST_GH_TOKEN_A }}
+          PAT_B: ${{ secrets.VAULTKIT_TEST_GH_TOKEN_B }}
         run: |
-          USER=$(gh api user --jq .login)
-          # Filter inside jq so an empty result is an empty stream (exit 0),
-          # not `grep`'s no-match exit 1 — bash -e -o pipefail treats the
-          # latter as fatal and kills the workflow.
-          gh repo list "$USER" --limit 200 --json name \
-            --jq '.[] | select(.name | startswith("vk-live-")) | .name' \
-            | while read -r repo; do
-                echo "Deleting orphan: $USER/$repo"
-                gh repo delete "$USER/$repo" --yes || true
-              done
+          sweep_orphans() {
+            local label="$1"
+            local token="$2"
+            if [ -z "$token" ]; then
+              echo "Skipping cleanup for PAT $label — secret not set."
+              return 0
+            fi
+            (
+              # Sub-shell so the temp GH_TOKEN override doesn't leak to the
+              # surrounding step (which still needs the run's chosen PAT).
+              export GH_TOKEN="$token"
+              local user
+              user=$(gh api user --jq .login)
+              # Filter inside jq so an empty result is an empty stream
+              # (exit 0), not `grep`'s no-match exit 1 — bash -e -o pipefail
+              # treats the latter as fatal and kills the workflow.
+              gh repo list "$user" --limit 200 --json name \
+                --jq '.[] | select(.name | startswith("vk-live-")) | .name' \
+                | while read -r repo; do
+                    echo "[$label] Deleting orphan: $user/$repo"
+                    gh repo delete "$user/$repo" --yes || true
+                  done
+            )
+          }
+          sweep_orphans A "$PAT_A"
+          sweep_orphans B "$PAT_B"
 
       - name: Run tests
         run: npm test
@@ -101,14 +152,31 @@ jobs:
       - name: Post-test cleanup of any remaining live-test repos
         if: always()
         shell: bash
+        env:
+          PAT_A: ${{ secrets.VAULTKIT_TEST_GH_TOKEN_A }}
+          PAT_B: ${{ secrets.VAULTKIT_TEST_GH_TOKEN_B }}
         run: |
-          USER=$(gh api user --jq .login)
-          gh repo list "$USER" --limit 200 --json name \
-            --jq '.[] | select(.name | startswith("vk-live-")) | .name' \
-            | while read -r repo; do
-                echo "Cleaning up: $USER/$repo"
-                gh repo delete "$USER/$repo" --yes || true
-              done
+          sweep_orphans() {
+            local label="$1"
+            local token="$2"
+            if [ -z "$token" ]; then
+              echo "Skipping cleanup for PAT $label — secret not set."
+              return 0
+            fi
+            (
+              export GH_TOKEN="$token"
+              local user
+              user=$(gh api user --jq .login)
+              gh repo list "$user" --limit 200 --json name \
+                --jq '.[] | select(.name | startswith("vk-live-")) | .name' \
+                | while read -r repo; do
+                    echo "[$label] Cleaning up: $user/$repo"
+                    gh repo delete "$user/$repo" --yes || true
+                  done
+            )
+          }
+          sweep_orphans A "$PAT_A"
+          sweep_orphans B "$PAT_B"
 
       - name: npm publish dry-run (verify package contents)
         run: npm publish --dry-run --access public

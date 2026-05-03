@@ -13,13 +13,14 @@ Watch mode: `npm run test:watch`
 
 For coverage audits and finding missing tests across this codebase, invoke [`/test [target]`](../commands/test.md) — the testing-expert command/skill that dispatches six parallel sub-reviewers (unit / mocked-integration / e2e / edge cases / security / cross-platform) and produces a priority-ranked coverage report. It auto-triggers on prompts about edge cases, coverage gaps, or test types, so most of the time you don't need to invoke it explicitly.
 
-**Tests are always live.** As of v2.5.0 there is no `VAULTKIT_LIVE_TEST` env-gate — every `npm test` run hits the real GitHub API and creates ephemeral `vk-live-*` repos against the authenticated `gh` account. Files are run sequentially (`fileParallelism: false` in `vitest.config.ts`) to avoid `~/.claude.json` write races. CI uses a dedicated PAT (`VAULTKIT_TEST_GH_TOKEN`) — see `.github/workflows/main.yml`. The `vaultkit-live-tests` concurrency group ensures only one CI run touches that account at a time.
+**Tests are always live.** As of v2.5.0 there is no `VAULTKIT_LIVE_TEST` env-gate — every `npm test` run hits the real GitHub API and creates ephemeral `vk-live-*` repos against the authenticated `gh` account. Files are run sequentially (`fileParallelism: false` in `vitest.config.ts`) to avoid `~/.claude.json` write races. CI rotates between two dedicated PATs (`VAULTKIT_TEST_GH_TOKEN_A` / `_B`) round-robin via `GITHUB_RUN_NUMBER % 2` — see `.github/workflows/main.yml`'s "Select test PAT" step. The `vaultkit-live-tests` concurrency group ensures only one CI run touches either account at a time.
 
-**Burst-rate hardening (2.7.1).** GitHub's secondary rate limit (~80 content-creating requests/minute) is the hard ceiling for live-test throughput. Two structural defenses keep us under it:
+**Burst-rate hardening.** GitHub's secondary rate limit (~80 content-creating requests/minute) is the hard ceiling for live-test throughput. Three structural defenses keep us under it:
 - **Live tests skip on Windows** via `liveDescribe` (from `tests/helpers/live-describe.ts`). The 5 GitHub-touching live blocks (`init`, `destroy`, `connect`, `disconnect`, `visibility`) run only on the Ubuntu CI leg — Windows still gets the full mocked + check + build coverage.
 - **`status` and `verify` live tests are local-only** via `makeLocalVault` (from `tests/helpers/local-vault.ts`). They scaffold a vaultkit-shaped vault in a tmp dir + (for `status`) a local bare git repo as `origin` — no GitHub round-trip. Removed ~20 GH-API calls per CI run.
+- **Two-PAT round-robin in CI (2.7.3).** `.github/workflows/main.yml` picks `VAULTKIT_TEST_GH_TOKEN_A` or `_B` per run via `GITHUB_RUN_NUMBER % 2`, fail-closed if the chosen secret is missing. Pre- and post-test orphan-cleanup steps sweep BOTH accounts (the previous run used the other PAT, so its orphans live on the other account). The `VAULTKIT_TEST_PAT_LABEL` env var is logged so the chosen PAT is visible in the Actions UI without exposing the token. Operator note: re-runs of a failed run reuse the same `run_number` and therefore the same PAT — push a new commit to flip to the other account.
 
-Net per CI run: ~5 `vk-live-*` GitHub repo creates (down from 7 across both matrix legs in 2.7.0).
+Net per CI run: ~5 `vk-live-*` GitHub repo creates split across two PATs (~2.5 per account averaged), down from 7 across both matrix legs in 2.7.0 all on one PAT.
 
 Local prerequisites for `npm test` to pass:
 - `gh auth status` works (run `gh auth login` if not).
@@ -54,7 +55,7 @@ The `vk-live-*` prefix in `~/.claude.json#mcpServers` and on GitHub repos is the
 
 3. **`npm run test:cleanup` (tertiary, manual).** [scripts/test-cleanup.mjs](../../scripts/test-cleanup.mjs) runs the same sweep standalone. Use when the test process gets `SIGKILL`'d before vitest can fire its globalTeardown, or after a CI run leaks artifacts to a developer's local registry.
 
-GitHub repo orphans are handled by the workflow files (`pre-test cleanup of orphaned live-test repos` in both `ci.yml` and `release.yml`) plus per-test `afterAll` `gh repo delete --yes` with `reject: false`. The local equivalent is `gh repo list <user> --json name --jq '.[] | select(.name | startswith("vk-live-")) | .name' | xargs -I{} gh repo delete <user>/{} --yes`.
+GitHub repo orphans are handled by `main.yml`'s pre- and post-test cleanup steps (which sweep both PAT accounts) plus per-test `afterAll` `gh repo delete --yes` with `reject: false`. The local equivalent is `gh repo list <user> --json name --jq '.[] | select(.name | startswith("vk-live-")) | .name' | xargs -I{} gh repo delete <user>/{} --yes`.
 
 ## Sacred tests rule
 

@@ -36,8 +36,11 @@ The 2026-05-02 abuse-flag incidents (PAT `fluids2` flagged for ~24-72h after v2.
 3. Same disabled-repo recognition in `pushNewRepo` and `pushOrPr` (git-push path).
 4. **Burst reduction:** live tests skip on Windows via `liveDescribe` (5 GitHub-touching blocks run only on Ubuntu); `status` and `verify` converted to local-only via `makeLocalVault` (local bare git repo as `origin` for `status`, no remote for `verify`). Net: from ~14 live-test repo creates per tag push (7 × 2 matrix legs) down to ~5, all on Ubuntu only.
 
-Residual mitigations to consider if flake recurs:
-- **Rotate the test PAT account periodically.** GitHub may keep heuristic memory of an account that has previously been flagged; a fresh PAT roughly every 6 months is cheap insurance.
-- **Further reduce remaining live ops.** Lifecycle tests (`init`/`destroy`/`connect`/`disconnect`) genuinely need their own GitHub repo because the test IS about the lifecycle. `visibility` could share a single `vk-live-shared-${runId}` repo with itself across runs (currently creates one fresh per run). Saves 1 create per CI run; ~20% reduction.
+Done in 2.7.3:
+- **Two-PAT round-robin in CI.** `main.yml` selects `VAULTKIT_TEST_GH_TOKEN_A` / `_B` per run via `GITHUB_RUN_NUMBER % 2`, fail-closed if the chosen secret is missing. Pre- and post-test orphan cleanup sweeps both accounts. The legacy `VAULTKIT_TEST_GH_TOKEN` secret was dropped (no fallback — silent fallback would mask config drift). Operator note: re-runs of a failed run reuse the same `run_number` and therefore the same PAT; push a new commit to flip to the other account.
 
-Symptom to watch for: `Repository ... is disabled` in CI logs after a clean PAT account has had only one Ubuntu run — that would suggest the per-leg burst is still too aggressive and the lifecycle tests need further rate-limit aware spacing.
+Residual mitigations to consider if flake recurs:
+- **Share a fixture repo across `connect`/`disconnect`/`visibility` live tests.** Today each of these creates and destroys its own `vk-live-*` repo even though the tests only need *some* GitHub-backed vault to operate on (not a fresh one each time). A vitest `globalSetup` could create one `vk-live-shared-*` per CI run, with per-test `beforeEach` baseline-resets, dropping creates/destroys from ~5 to ~3 per run. `init`/`destroy` cannot share — the test IS the create/delete path.
+- **Stop running live tests on every push.** If rotation + fixture-sharing still aren't enough, gate live tests to tag-pushes and PRs that touch `src/lib/github.ts` or `src/commands/{init,destroy,connect,disconnect,visibility}.ts`. Big drop in throughput, modest signal loss.
+
+Symptom to watch for: `Repository ... is disabled` in CI logs even after rotation lands — that would suggest GitHub's heuristic is keying on the runner-pool IP range or org-level history, not just per-account, and the per-push gating above is the right next move.
