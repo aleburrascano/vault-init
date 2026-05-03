@@ -144,7 +144,15 @@ export async function gh(...args: string[]): Promise<GhResult> {
 
 const RATE_LIMIT_PROACTIVE_THRESHOLD = 50;
 const RATE_LIMIT_RETRY_BUDGET = 3;
-const TRANSIENT_DELAYS = [1000, 2000, 4000];
+// Transient retry schedule. The first three slots cover network hiccups,
+// 5xx server errors, and the original "previous visibility change is in
+// progress" 422 race, all of which clear in seconds. The longer slots
+// were added to cover GitHub's Pages-auth visibility-propagation cache
+// (the "current plan does not support GitHub Pages" 422 surfaced on
+// `enablePages` after a private→public flip): empirically observed at
+// >7s on Free-tier accounts in CI, so the previous [1000, 2000, 4000]
+// schedule (7s total) was insufficient. Total wait now ~31s.
+const TRANSIENT_DELAYS = [1000, 2000, 4000, 8000, 16000];
 const PROACTIVE_SLEEP_CAP_MS = 60_000;
 const RATE_LIMIT_BACKOFF_CAP_MS = 60_000;
 

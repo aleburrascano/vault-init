@@ -133,10 +133,12 @@ describe('ghJson retry budget exhaustion', () => {
     expect(vi.mocked(execa)).toHaveBeenCalledTimes(4);
   });
 
-  it('throws plain Error after transient budget exhausted (4 attempts)', async () => {
+  it('throws plain Error after transient budget exhausted (6 attempts: initial + 5 retries)', async () => {
     vi.useFakeTimers();
-    // Stage 4 transient responses (5xx).
-    for (let i = 0; i < 4; i++) {
+    // Stage 6 transient responses (5xx). The schedule was extended to
+    // [1s, 2s, 4s, 8s, 16s] in 2.7.4 to cover GitHub's Pages-auth
+    // visibility-propagation cache (>7s on Free-tier). Total wait ~31s.
+    for (let i = 0; i < 6; i++) {
       vi.mocked(execa).mockResolvedValueOnce({
         exitCode: 1, stdout: '', stderr: 'gh: HTTP 503 Service Unavailable',
       } as never);
@@ -145,17 +147,18 @@ describe('ghJson retry budget exhaustion', () => {
     const promise = ghJson('api', 'user');
     let caught: unknown;
     const settled = promise.catch(e => { caught = e; });
-    // Transient delays are 1s, 2s, 4s.
     await vi.advanceTimersByTimeAsync(1000);
     await vi.advanceTimersByTimeAsync(2000);
     await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(8000);
+    await vi.advanceTimersByTimeAsync(16000);
     await settled;
 
     expect(caught).toBeInstanceOf(Error);
     // Plain Error, not VaultkitError
     expect(isVaultkitError(caught)).toBe(false);
     expect(String((caught as Error).message)).toMatch(/exhausted retry budget|HTTP 503/);
-    expect(vi.mocked(execa)).toHaveBeenCalledTimes(4);
+    expect(vi.mocked(execa)).toHaveBeenCalledTimes(6);
   });
 });
 
@@ -202,12 +205,14 @@ describe('ghJson succeeds after retries', () => {
 
   it('does not reset the transient counter when a rate-limit error appears mid-sequence', async () => {
     vi.useFakeTimers();
-    // 3 transients (counter at 3, one more triggers exhaustion) + 1 rate-limit + 1 transient.
-    // The rate-limit uses its own counter. After the rate-limit retry, the next
-    // transient should EXHAUST the transient budget (counter is still 3).
-    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'HTTP 503' } as never);
-    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'HTTP 503' } as never);
-    vi.mocked(execa).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'HTTP 503' } as never);
+    // Transient schedule is [1, 2, 4, 8, 16]s = 5 retry slots. Stage 5
+    // transients (consuming all 5 slots, counter=5) + 1 rate-limit + 1
+    // transient. The rate-limit uses its own counter. After the
+    // rate-limit retry, the next transient should EXHAUST the transient
+    // budget (counter is still 5, no more slots). Total: 7 execa calls.
+    for (let i = 0; i < 5; i++) {
+      vi.mocked(execa).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'HTTP 503' } as never);
+    }
     vi.mocked(execa).mockResolvedValueOnce({
       exitCode: 1,
       stdout: JSON.stringify({ message: 'You have exceeded a secondary rate limit.' }),
@@ -221,11 +226,13 @@ describe('ghJson succeeds after retries', () => {
     await vi.advanceTimersByTimeAsync(1000);
     await vi.advanceTimersByTimeAsync(2000);
     await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(8000);
+    await vi.advanceTimersByTimeAsync(16000);
     await vi.advanceTimersByTimeAsync(60_000); // rate-limit retry
     await settled;
 
-    // 5 calls made; 4th transient exhausted budget → plain Error
-    expect(vi.mocked(execa)).toHaveBeenCalledTimes(5);
+    // 7 calls made; 6th transient exhausted budget → plain Error
+    expect(vi.mocked(execa)).toHaveBeenCalledTimes(7);
     expect(isVaultkitError(caught)).toBe(false);
     expect(String((caught as Error).message)).toMatch(/exhausted retry budget/);
   });
