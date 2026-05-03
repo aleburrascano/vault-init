@@ -29,7 +29,7 @@ export interface InitOptions extends RunOptions {
 
 // ─── Phase helpers — keep init's run() readable as a sequence ─────────────
 
-interface PublishConfig {
+export interface PublishConfig {
   publishMode: PublishMode;
   repoVisibility: 'public' | 'private';
   enablePages: boolean;
@@ -37,7 +37,7 @@ interface PublishConfig {
   writeDeploy: boolean;
 }
 
-async function selectPublishMode(publishModeOpt: PublishMode | undefined): Promise<PublishConfig> {
+export async function selectPublishMode(publishModeOpt: PublishMode | undefined): Promise<PublishConfig> {
   if (publishModeOpt !== undefined && !isPublishMode(publishModeOpt)) {
     throw new VaultkitError('UNRECOGNIZED_INPUT', `Invalid publishMode: "${publishModeOpt}". Must be one of: ${PUBLISH_MODES.join(', ')}`);
   }

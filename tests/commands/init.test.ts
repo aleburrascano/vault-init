@@ -61,6 +61,53 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
+// ── I-0: selectPublishMode pure-derivation matrix ────────────────────────────
+
+describe('I-0: selectPublishMode → PublishConfig matrix', () => {
+  // Pins the publishMode-string → 4-tuple translation today only asserted
+  // via integration side effects in I-15 / I-16. The auth-gated three-way
+  // (private repo + Pages on + Pages PRIVATE) is the most error-prone
+  // derivation in the matrix — a future bug like `pagesPrivate: publishMode === 'public'`
+  // would still pass I-15 but break here.
+  it('private: notes-only (no Pages, no deploy.yml)', async () => {
+    const { selectPublishMode } = await import('../../src/commands/init.js');
+    const config = await selectPublishMode('private');
+    expect(config).toEqual({
+      publishMode: 'private',
+      repoVisibility: 'private',
+      enablePages: false,
+      pagesPrivate: false,
+      writeDeploy: false,
+    });
+  });
+
+  it('public: public repo + public Pages + deploy.yml', async () => {
+    const { selectPublishMode } = await import('../../src/commands/init.js');
+    const config = await selectPublishMode('public');
+    expect(config).toEqual({
+      publishMode: 'public',
+      repoVisibility: 'public',
+      enablePages: true,
+      pagesPrivate: false,
+      writeDeploy: true,
+    });
+  });
+
+  it('auth-gated: private repo + private Pages + deploy.yml (on Pro plan)', async () => {
+    // requireAuthGatedEligible runs internally; the default ambient execa
+    // mock returns plan='pro' so the eligibility check passes.
+    const { selectPublishMode } = await import('../../src/commands/init.js');
+    const config = await selectPublishMode('auth-gated');
+    expect(config).toEqual({
+      publishMode: 'auth-gated',
+      repoVisibility: 'private',
+      enablePages: true,
+      pagesPrivate: true,
+      writeDeploy: true,
+    });
+  });
+});
+
 // ── I-1: invalid vault name ───────────────────────────────────────────────────
 
 describe('I-1: invalid vault name', () => {
