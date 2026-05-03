@@ -18,10 +18,19 @@ vi.mock('../../src/lib/platform.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../src/lib/platform.js')>();
   return { ...real, findTool: vi.fn(), vaultsRoot: vi.fn(), npmGlobalBin: vi.fn(), isWindows: vi.fn() };
 });
+vi.mock('../../src/lib/vault-layout.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/lib/vault-layout.js')>();
+  // Spy that delegates to the real implementation by default. Per-test
+  // overrides via mockImplementationOnce inject failures (Phase 2/6
+  // rollback test). Using vi.fn(impl) instead of bare vi.fn() so the
+  // default behavior across the rest of the suite is unchanged.
+  return { ...real, writeLayoutFiles: vi.fn(real.writeLayoutFiles) };
+});
 
 import { confirm, input, select } from '@inquirer/prompts';
 import { execa } from 'execa';
 import { findTool, vaultsRoot, isWindows } from '../../src/lib/platform.js';
+import { writeLayoutFiles } from '../../src/lib/vault-layout.js';
 
 let tmp: string;
 
@@ -436,6 +445,45 @@ describe('I-12: runMcpAdd argv shape', () => {
     const onDiskHash = await sha256(join(tmp, 'TmplVault', '.mcp-start.js'));
     const templateHash = await sha256(getLauncherTemplate());
     expect(onDiskHash).toBe(templateHash);
+  });
+});
+
+// ── I-13c: Phase 2/6 mid-failure rollback (writeLayoutFiles throws) ──────────
+
+describe('I-13c: rollback when Phase 2/6 layout write throws', () => {
+  it('removes the partially-created vault dir when writeLayoutFiles throws', async () => {
+    // After mkdirSync(vaultDir) at init.ts:196, createdDir flips true.
+    // If the next layout step (writeLayoutFiles) throws, rollback should:
+    // - skip MCP cleanup (registeredMcp=false)
+    // - skip deleteRepo (createdRepo=false — repo never created)
+    // - rmSync the vault dir (createdDir=true)
+    // Existing rollback tests (I-9 / I-13) only exercise [4/6]+ failures,
+    // so the mid-Phase-2 cleanup path was uncovered.
+    vi.mocked(writeLayoutFiles).mockImplementationOnce(() => {
+      throw new Error('disk full while writing CLAUDE.md');
+    });
+
+    const { run } = await import('../../src/commands/init.js');
+    await expect(run('LayoutFailVault', { cfgPath: join(tmp, '.claude.json'), log: silent }))
+      .rejects.toThrow(/disk full/);
+
+    // Local dir MUST be cleaned up — even though createRepo / runMcpAdd never ran.
+    expect(existsSync(join(tmp, 'LayoutFailVault'))).toBe(false);
+
+    // No GitHub repo should have been created (would be an orphan)
+    const repoCreate = vi.mocked(execa).mock.calls.find(c => {
+      const args = c[1] as unknown;
+      if (!Array.isArray(args)) return false;
+      return args[0] === 'api' && args.some(a => String(a).includes('/user/repos'));
+    });
+    expect(repoCreate).toBeUndefined();
+
+    // No MCP registration should have been attempted
+    const mcpAdd = vi.mocked(execa).mock.calls.find(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args[0] === 'mcp' && args[1] === 'add';
+    });
+    expect(mcpAdd).toBeUndefined();
   });
 });
 
