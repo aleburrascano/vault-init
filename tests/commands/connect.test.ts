@@ -7,12 +7,13 @@
  * connect.js uses a `cloned` flag + finally block to ensure that
  * if anything fails after the git clone, the cloned directory is removed.
  */
-import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { silent, arrayLogger } from '../helpers/logger.js';
 import { liveDescribe } from '../helpers/live-describe.js';
+import { getFixtureName } from '../helpers/live-fixture.js';
 
 vi.mock('@inquirer/prompts', () => ({ confirm: vi.fn() }));
 vi.mock('execa', async (importOriginal) => {
@@ -394,10 +395,12 @@ describe('TR-10: connect intentionally does NOT compare launcher to canonical te
 
 // ── LIVE: connect clones a real GitHub repo ───────────────────────────────────
 
-const LIVE_VAULT = `vk-live-connect-${Date.now()}`;
-
 liveDescribe('live: connect clones real GitHub repo', { timeout: 90_000 }, () => {
-  let repoSlug = '';
+  // Operates on the shared fixture from `tests/global-fixture.ts`. The
+  // fixture is created by globalSetup as registered + on-disk; `connect`
+  // needs the inverse start state (repo on GitHub, local + registry
+  // absent), so `beforeEach` disconnects to set up. No GitHub WRITE in
+  // beforeEach — disconnect is local-only.
 
   async function restoreReal() {
     const { execa: realExeca } = await vi.importActual<typeof import('execa')>('execa');
@@ -410,51 +413,31 @@ liveDescribe('live: connect clones real GitHub repo', { timeout: 90_000 }, () =>
   }
 
   beforeEach(restoreReal);
-
-  beforeAll(async () => {
-    await restoreReal();
-    // Create a vault (creates the GitHub repo)
-    const { run: initRun } = await import('../../src/commands/init.js');
-    await initRun(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: silent });
-
-    // Get the repo slug for later use
-    const { getCurrentUser } = await import('../../src/lib/github.js');
-    const user = await getCurrentUser();
-    repoSlug = `${user}/${LIVE_VAULT}`;
-
-    // Disconnect locally (remove local dir + registry entry, but keep GitHub repo)
-    const { run: disconnectRun } = await import('../../src/commands/disconnect.js');
-    await disconnectRun(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: silent });
-  }, 60_000);
-
-  afterAll(async () => {
-    try { await restoreReal(); } catch { /* don't let mock-restore failures skip the cleanup below */ }
-    // Remove local clone if test left it
+  beforeEach(async () => {
+    const fixtureName = getFixtureName();
     const { getVaultDir } = await import('../../src/lib/registry.js');
-    const dir = await getVaultDir(LIVE_VAULT).catch(() => null);
-    if (dir) {
+    const stillRegistered = (await getVaultDir(fixtureName)) !== null;
+    if (stillRegistered) {
       const { run: disconnectRun } = await import('../../src/commands/disconnect.js');
-      await disconnectRun(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: silent }).catch(() => {});
+      await disconnectRun(fixtureName, {
+        skipConfirm: true, skipMcp: true, confirmName: fixtureName, log: silent,
+      });
     }
-    // Delete GitHub repo
-    const { repoExists } = await import('../../src/lib/github.js');
-    const { execa: realExeca } = await vi.importActual<typeof import('execa')>('execa');
-    const { findTool: realFindTool } = await vi.importActual<typeof import('../../src/lib/platform.js')>('../../src/lib/platform.js');
-    if (repoSlug && await repoExists(repoSlug).catch(() => false)) {
-      const gh = await realFindTool('gh');
-      if (gh) await realExeca(gh, ['repo', 'delete', repoSlug, '--yes'], { reject: false });
-    }
-  }, 60_000);
+  });
 
   it('clones repo and registers vault', async () => {
+    const fixtureName = getFixtureName();
+    const { getCurrentUser } = await import('../../src/lib/github.js');
+    const user = await getCurrentUser();
+    const repoSlug = `${user}/${fixtureName}`;
+
     const { run: connectRun } = await import('../../src/commands/connect.js');
     await connectRun(repoSlug, { skipMcp: true, log: silent });
 
     const { getVaultDir } = await import('../../src/lib/registry.js');
-    const dir = await getVaultDir(LIVE_VAULT);
+    const dir = await getVaultDir(fixtureName);
     expect(dir).not.toBeNull();
     expect(typeof dir).toBe('string');
-
     expect(existsSync(dir as string)).toBe(true);
   });
 });

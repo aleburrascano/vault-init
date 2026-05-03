@@ -38,9 +38,9 @@ The 2026-05-02 abuse-flag incidents (PAT `fluids2` flagged for ~24-72h after v2.
 
 Done in 2.7.3:
 - **Two-PAT round-robin in CI.** `main.yml` selects `VAULTKIT_TEST_GH_TOKEN_A` / `_B` per run via `GITHUB_RUN_NUMBER % 2`, fail-closed if the chosen secret is missing. Pre- and post-test orphan cleanup sweeps both accounts. The legacy `VAULTKIT_TEST_GH_TOKEN` secret was dropped (no fallback — silent fallback would mask config drift). Operator note: re-runs of a failed run reuse the same `run_number` and therefore the same PAT; push a new commit to flip to the other account.
+- **Shared fixture for `connect`/`disconnect`/`visibility` live tests.** `tests/global-fixture.ts` (vitest globalSetup) creates one `vk-live-shared-*` repo at suite start; the three live blocks reset it to baseline in `beforeEach` and reuse it. Drops per-CI-run creates/destroys from 5 → 3. `init`/`destroy` stay self-contained because the test IS the create/delete path.
 
 Residual mitigations to consider if flake recurs:
-- **Share a fixture repo across `connect`/`disconnect`/`visibility` live tests.** Today each of these creates and destroys its own `vk-live-*` repo even though the tests only need *some* GitHub-backed vault to operate on (not a fresh one each time). A vitest `globalSetup` could create one `vk-live-shared-*` per CI run, with per-test `beforeEach` baseline-resets, dropping creates/destroys from ~5 to ~3 per run. `init`/`destroy` cannot share — the test IS the create/delete path.
 - **Stop running live tests on every push.** If rotation + fixture-sharing still aren't enough, gate live tests to tag-pushes and PRs that touch `src/lib/github.ts` or `src/commands/{init,destroy,connect,disconnect,visibility}.ts`. Big drop in throughput, modest signal loss.
 
-Symptom to watch for: `Repository ... is disabled` in CI logs even after rotation lands — that would suggest GitHub's heuristic is keying on the runner-pool IP range or org-level history, not just per-account, and the per-push gating above is the right next move.
+Symptom to watch for: `Repository ... is disabled` in CI logs even after rotation + fixture-sharing land — that would suggest GitHub's heuristic is keying on the runner-pool IP range or org-level history, not just per-account, and the per-push gating above is the right next move.

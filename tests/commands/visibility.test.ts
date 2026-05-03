@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { silent, arrayLogger } from '../helpers/logger.js';
 import { liveDescribe } from '../helpers/live-describe.js';
+import { getFixtureName } from '../helpers/live-fixture.js';
 
 vi.mock('@inquirer/prompts', () => ({ confirm: vi.fn() }));
 vi.mock('execa', async (importOriginal) => {
@@ -325,9 +326,14 @@ describe('VI-13: deploy added, pushed via PR', () => {
 
 // ── LIVE: visibility toggles real GitHub repo ─────────────────────────────────
 
-const LIVE_VAULT = `vk-live-visibility-${Date.now()}`;
-
 liveDescribe('live: visibility toggles real GitHub repo', { timeout: 60_000 }, () => {
+  // Operates on the shared fixture from `tests/global-fixture.ts`. The
+  // two it() blocks were collapsed into one because vitest's per-it
+  // execution order is implementation-defined within a describe — the
+  // public→private→assert→public→assert sequence is one logical
+  // operation, and splitting it would have doubled the per-run mutation
+  // count without adding coverage.
+
   async function restoreReal() {
     const { execa: realExeca } = await vi.importActual<typeof import('execa')>('execa');
     vi.mocked(execa).mockImplementation(realExeca as never);
@@ -349,34 +355,57 @@ liveDescribe('live: visibility toggles real GitHub repo', { timeout: 60_000 }, (
   }
 
   beforeEach(restoreReal);
+  beforeEach(async () => {
+    const fixtureName = getFixtureName();
+    // Re-register if a previous file's live test (disconnect) left the
+    // fixture unregistered. Then reset visibility to private so the test
+    // body's assertion sequence starts from a known state.
+    const { getVaultDir } = await import('../../src/lib/registry.js');
+    if ((await getVaultDir(fixtureName)) === null) {
+      const { getCurrentUser } = await import('../../src/lib/github.js');
+      const user = await getCurrentUser();
+      const { run: connectRun } = await import('../../src/commands/connect.js');
+      await connectRun(`${user}/${fixtureName}`, { skipMcp: true, log: silent });
+    }
 
-  beforeAll(async () => {
-    await restoreReal();
-    const { run } = await import('../../src/commands/init.js');
-    await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: silent });
-  }, 60_000);
-
-  afterAll(async () => {
-    try { await restoreReal(); } catch { /* don't let mock-restore failures skip the destroy below */ }
-    const { run } = await import('../../src/commands/destroy.js');
-    await run(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: silent }).catch(() => {});
-  }, 60_000);
-
-  it('switches vault to public', async () => {
-    const { run } = await import('../../src/commands/visibility.js');
-    await run(LIVE_VAULT, 'public', { skipConfirm: true, log: silent });
-
-    const { getVisibility, getCurrentUser } = await import('../../src/lib/github.js');
+    const { getVisibility: realGetVisibility, getCurrentUser, setRepoVisibility } =
+      await vi.importActual<typeof import('../../src/lib/github.js')>('../../src/lib/github.js');
     const user = await getCurrentUser();
-    expect(await getVisibility(`${user}/${LIVE_VAULT}`)).toBe('public');
+    const slug = `${user}/${fixtureName}`;
+    if ((await realGetVisibility(slug)) !== 'private') {
+      await setRepoVisibility(slug, 'private');
+    }
   });
 
-  it('switches vault back to private', async () => {
-    const { run } = await import('../../src/commands/visibility.js');
-    await run(LIVE_VAULT, 'private', { skipConfirm: true, log: silent });
+  afterEach(async () => {
+    // Restore baseline so the next file (or re-run) starts from private.
+    // Best-effort — a leak here surfaces in the workflow's post-test
+    // orphan sweep + a subsequent test's beforeEach, which both reset.
+    try {
+      const fixtureName = getFixtureName();
+      const { getVisibility: realGetVisibility, getCurrentUser, setRepoVisibility } =
+        await vi.importActual<typeof import('../../src/lib/github.js')>('../../src/lib/github.js');
+      const user = await getCurrentUser();
+      const slug = `${user}/${fixtureName}`;
+      if ((await realGetVisibility(slug)) !== 'private') {
+        await setRepoVisibility(slug, 'private');
+      }
+    } catch {
+      // Don't let cleanup failure mask the actual test result.
+    }
+  });
 
+  it('toggles private vault to public and back', async () => {
+    const fixtureName = getFixtureName();
+    const { run } = await import('../../src/commands/visibility.js');
     const { getVisibility, getCurrentUser } = await import('../../src/lib/github.js');
     const user = await getCurrentUser();
-    expect(await getVisibility(`${user}/${LIVE_VAULT}`)).toBe('private');
+    const slug = `${user}/${fixtureName}`;
+
+    await run(fixtureName, 'public', { skipConfirm: true, log: silent });
+    expect(await getVisibility(slug)).toBe('public');
+
+    await run(fixtureName, 'private', { skipConfirm: true, log: silent });
+    expect(await getVisibility(slug)).toBe('private');
   });
 });

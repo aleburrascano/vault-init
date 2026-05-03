@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { silent } from '../helpers/logger.js';
 import { writeCfg } from '../helpers/registry.js';
 import { liveDescribe } from '../helpers/live-describe.js';
+import { getFixtureName } from '../helpers/live-fixture.js';
 
 let tmp: string;
 beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'vk-disconnect-test-')); });
@@ -59,49 +60,41 @@ describe('disconnect command', () => {
 
 // ── LIVE: disconnect removes local dir but keeps GitHub repo ──────────────────
 
-const LIVE_VAULT = `vk-live-disconnect-${Date.now()}`;
-
 liveDescribe('live: disconnect removes local dir, keeps GitHub repo', { timeout: 60_000 }, () => {
-  beforeAll(async () => {
-    const { run } = await import('../../src/commands/init.js');
-    await run(LIVE_VAULT, { publishMode: 'private', skipInstallCheck: true, log: silent });
-  });
+  // Operates on the shared fixture from `tests/global-fixture.ts` instead
+  // of creating its own `vk-live-disconnect-*` repo. The `beforeEach`
+  // restores the registered + on-disk baseline (so the test order across
+  // files doesn't matter); the `it` collapses what was 3 ordered
+  // assertions into one — they were really verifying one operation.
 
-  afterAll(async () => {
-    // Cleanup GitHub repo (disconnect only removes local)
-    const { repoExists, getCurrentUser } = await import('../../src/lib/github.js');
-    const { execa } = await import('execa');
-    const { findTool } = await import('../../src/lib/platform.js');
-    const user = await getCurrentUser().catch(() => null);
-    if (user) {
-      const still = await repoExists(`${user}/${LIVE_VAULT}`).catch(() => false);
-      if (still) {
-        const gh = await findTool('gh');
-        if (gh) await execa(gh, ['repo', 'delete', `${user}/${LIVE_VAULT}`, '--yes'], { reject: false });
-      }
+  beforeEach(async () => {
+    const fixtureName = getFixtureName();
+    const { getVaultDir } = await import('../../src/lib/registry.js');
+    const stillRegistered = (await getVaultDir(fixtureName)) !== null;
+    if (!stillRegistered) {
+      // A previous test (e.g. our own disconnect) left the fixture
+      // unregistered. Re-clone from the still-extant GitHub repo to
+      // restore the baseline. No GitHub WRITE — clone is read-only.
+      const { getCurrentUser } = await import('../../src/lib/github.js');
+      const user = await getCurrentUser();
+      const { run: connectRun } = await import('../../src/commands/connect.js');
+      await connectRun(`${user}/${fixtureName}`, { skipMcp: true, log: silent });
     }
   });
 
-  it('removes local vault directory', async () => {
+  it('removes local dir + registry entry while leaving GitHub repo intact', async () => {
+    const fixtureName = getFixtureName();
     const { getVaultDir } = await import('../../src/lib/registry.js');
-    const dir = await getVaultDir(LIVE_VAULT);
+    const dirBefore = await getVaultDir(fixtureName);
 
     const { run } = await import('../../src/commands/disconnect.js');
-    await run(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: silent });
+    await run(fixtureName, { skipConfirm: true, skipMcp: true, confirmName: fixtureName, log: silent });
 
-    const { existsSync } = await import('node:fs');
-    expect(existsSync(dir as string)).toBe(false);
-  });
+    expect(existsSync(dirBefore as string)).toBe(false);
+    expect(await getVaultDir(fixtureName)).toBeNull();
 
-  it('removes vault from registry', async () => {
-    const { getVaultDir } = await import('../../src/lib/registry.js');
-    const dir = await getVaultDir(LIVE_VAULT);
-    expect(dir).toBeNull();
-  });
-
-  it('GitHub repo still exists', async () => {
     const { repoExists, getCurrentUser } = await import('../../src/lib/github.js');
     const user = await getCurrentUser();
-    expect(await repoExists(`${user}/${LIVE_VAULT}`)).toBe(true);
+    expect(await repoExists(`${user}/${fixtureName}`)).toBe(true);
   });
 });
