@@ -114,17 +114,42 @@ async function executeAction(action: VisibilityAction, ctx: ExecuteCtx): Promise
       log.info(`Setting repo to ${action.target}...`);
       await setRepoVisibility(repoSlug, action.target);
       return;
+    // Pages-related actions match init.ts:setupGitHubPages: warn + manual
+    // hint on failure rather than aborting the whole command. The
+    // visibility flip itself is the user's primary intent; Pages is
+    // secondary, and on Free-tier accounts a private→public flip can
+    // surface an "Your current plan does not support GitHub Pages"
+    // 422 from Pages-auth's stale visibility cache (see
+    // gh-retry.ts:_classifyGhFailure for the propagation-race retry).
+    // Failing the whole command would leave the repo correctly flipped
+    // but the user staring at an error — better to log the gap and
+    // give them the manual recovery URL.
     case 'enablePages':
       log.info('Enabling Pages...');
-      await enablePages(repoSlug);
+      try {
+        await enablePages(repoSlug);
+      } catch (err) {
+        log.warn(`  Could not auto-enable GitHub Pages: ${err instanceof Error ? err.message : String(err)}`);
+        log.info(`  Enable manually: ${repoUrl(repoSlug, 'settings/pages')}`);
+      }
       return;
     case 'disablePages':
       log.info('Disabling Pages...');
-      await disablePages(repoSlug);
+      try {
+        await disablePages(repoSlug);
+      } catch (err) {
+        log.warn(`  Could not auto-disable GitHub Pages: ${err instanceof Error ? err.message : String(err)}`);
+        log.info(`  Disable manually: ${repoUrl(repoSlug, 'settings/pages')}`);
+      }
       return;
     case 'setPagesVisibility':
       log.info(`Setting Pages visibility to ${action.target}...`);
-      await setPagesVisibility(repoSlug, action.target);
+      try {
+        await setPagesVisibility(repoSlug, action.target);
+      } catch (err) {
+        log.warn(`  Could not set Pages visibility to ${action.target}: ${err instanceof Error ? err.message : String(err)}`);
+        log.info(`  Set manually: ${repoUrl(repoSlug, 'settings/pages')}`);
+      }
       return;
   }
 }

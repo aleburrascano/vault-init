@@ -275,6 +275,55 @@ describe('VI-11: auth-gated on Pro plan', () => {
   });
 });
 
+// ── VI-11b: Pages-related calls graceful-fail with warn (not throw) ──────────
+
+describe('VI-11b: Pages action failure logs warn instead of aborting', () => {
+  // Matches init.ts:setupGitHubPages's pattern: visibility flip is the
+  // user's primary intent, Pages is secondary. On Free-tier accounts,
+  // private→public can surface a "current plan does not support" 422
+  // from Pages-auth's stale visibility cache for >30s; aborting the
+  // whole command would leave the repo correctly flipped but the user
+  // staring at an error.
+  it('logs warn + manual hint when enablePages throws, does not abort', async () => {
+    const vaultDir = makeVaultDir();
+    const cfgPath = join(tmp, '.claude.json');
+    writeCfg(cfgPath, { MyVault: vaultDir });
+    vi.mocked(getVisibility).mockResolvedValue('private');
+    vi.mocked(pagesExist).mockResolvedValue(false);
+    vi.mocked(enablePages).mockRejectedValue(
+      new Error('gh: Your current plan does not support GitHub Pages for this repository. (HTTP 422)'),
+    );
+    mkdirSync(join(vaultDir, '.github', 'workflows'), { recursive: true });
+    writeFileSync(join(vaultDir, '.github', 'workflows', 'deploy.yml'), '');
+
+    const lines = await runVisibility('MyVault', 'public', { cfgPath, skipConfirm: true });
+
+    // The visibility flip itself succeeded
+    expect(vi.mocked(setRepoVisibility)).toHaveBeenCalledWith('owner/MyVault', 'public');
+    // Pages enable was attempted and failed gracefully
+    expect(vi.mocked(enablePages)).toHaveBeenCalled();
+    expect(lines.some(l => /Could not auto-enable GitHub Pages/i.test(l))).toBe(true);
+    expect(lines.some(l => /Enable manually:.*\/settings\/pages/i.test(l))).toBe(true);
+  });
+
+  it('logs warn + manual hint when disablePages throws, does not abort', async () => {
+    const vaultDir = makeVaultDir();
+    const cfgPath = join(tmp, '.claude.json');
+    writeCfg(cfgPath, { MyVault: vaultDir });
+    vi.mocked(getVisibility).mockResolvedValue('public');
+    vi.mocked(pagesExist).mockResolvedValue(true);
+    vi.mocked(getPagesVisibility).mockResolvedValue('public');
+    vi.mocked(disablePages).mockRejectedValue(new Error('HTTP 422 transient'));
+
+    const lines = await runVisibility('MyVault', 'private', { cfgPath, skipConfirm: true });
+
+    expect(vi.mocked(setRepoVisibility)).toHaveBeenCalledWith('owner/MyVault', 'private');
+    expect(vi.mocked(disablePages)).toHaveBeenCalled();
+    expect(lines.some(l => /Could not auto-disable GitHub Pages/i.test(l))).toBe(true);
+    expect(lines.some(l => /Disable manually:.*\/settings\/pages/i.test(l))).toBe(true);
+  });
+});
+
 // ── VI-12: user declines confirmation → aborts ───────────────────────────────
 
 describe('VI-12: user declines', () => {
