@@ -78,6 +78,15 @@ describe('I-1: invalid vault name', () => {
     const { run } = await import('../../src/commands/init.js');
     await expect(run('A'.repeat(65), { cfgPath: join(tmp, '.claude.json'), log: silent })).rejects.toThrow(/64 characters/i);
   });
+
+  it('does not invoke any external process when name is invalid', async () => {
+    // validateName throws synchronously at init.ts:159, BEFORE any execa call
+    // (prereqs / git / gh). A regression that reorders validation after the
+    // prereqs phase would silently let invalid names reach gh/git.
+    const { run } = await import('../../src/commands/init.js');
+    await expect(run('owner/repo', { cfgPath: join(tmp, '.claude.json'), log: silent })).rejects.toThrow();
+    expect(vi.mocked(execa)).not.toHaveBeenCalled();
+  });
 });
 
 // ── I-2: node version too old ─────────────────────────────────────────────────
@@ -109,6 +118,30 @@ describe('I-3: vault already exists', () => {
     const lines: string[] = [];
     await expect(run('ExistVault', { cfgPath: join(tmp, '.claude.json'), log: arrayLogger(lines) }))
       .rejects.toThrow(/already exists/i);
+  });
+
+  it('does not call createRepo or runMcpAdd when vault dir already exists', async () => {
+    // The collision check at init.ts:184 fires BEFORE createRepo (phase 4/6)
+    // and registerMcpForVault (post-phase 6). A broken collision check could
+    // silently create a second GitHub repo for an existing local dir.
+    const vaultDir = join(tmp, 'ExistGuard');
+    mkdirSync(vaultDir, { recursive: true });
+
+    const { run } = await import('../../src/commands/init.js');
+    await expect(run('ExistGuard', { cfgPath: join(tmp, '.claude.json'), log: silent }))
+      .rejects.toThrow(/already exists/i);
+
+    const repoCreate = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args[0] === 'api' && args.some(a => String(a).includes('/user/repos'));
+    });
+    expect(repoCreate.length).toBe(0);
+
+    const mcpAdd = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args[0] === 'mcp' && args[1] === 'add';
+    });
+    expect(mcpAdd.length).toBe(0);
   });
 });
 
@@ -339,6 +372,24 @@ describe('I-12: runMcpAdd argv shape', () => {
     const actualHash = await sha256(launcherPath);
     expect(passedHash).toBe(actualHash);
   });
+
+  it('on-disk launcher byte-matches lib/mcp-start.js.tmpl (no copy corruption)', async () => {
+    // The launcher template is byte-immutable per
+    // .claude/rules/security-invariants.md. The previous it() pins
+    // passedHash == sha256(launcherOnDisk), but if some bug corrupted bytes
+    // BEFORE both reads, both sides would see the bad bytes and still match.
+    // This test pins the SECOND anchor: on-disk == canonical template SHA.
+    const { run } = await import('../../src/commands/init.js');
+    await run('TmplVault', { cfgPath: join(tmp, '.claude.json'), log: silent }).catch(() => {});
+
+    const { sha256 } = await import('../../src/lib/vault.js');
+    // getLauncherTemplate is NOT in the platform mock list (line 19) — it
+    // resolves to the real <repo>/lib/mcp-start.js.tmpl path.
+    const { getLauncherTemplate } = await import('../../src/lib/platform.js');
+    const onDiskHash = await sha256(join(tmp, 'TmplVault', '.mcp-start.js'));
+    const templateHash = await sha256(getLauncherTemplate());
+    expect(onDiskHash).toBe(templateHash);
+  });
 });
 
 // ── I-13: rollback invokes deleteRepo via gh api DELETE ───────────────────────
@@ -371,6 +422,56 @@ describe('I-13: rollback deleteRepo argv', () => {
       if (!Array.isArray(args)) return false;
       return args.includes('api') && args.includes('--method') && args.includes('DELETE')
         && args.some(a => String(a).includes('repos/testuser/DeleteRepoVault'));
+    });
+    expect(deleteCalls.length).toBeGreaterThan(0);
+  });
+});
+
+// ── I-13b: rollback when addRemote fails AFTER createRepo succeeded ──────────
+
+describe('I-13b: rollback when addRemote fails mid-phase-4', () => {
+  it('cleans up the GitHub repo when addRemote throws after createRepo succeeded', async () => {
+    // init.ts:217-218 calls `await createRemoteRepo(...)` then `createdRepo = true`.
+    // createRemoteRepo (helper at init.ts:74-77) does createRepo then addRemote.
+    // If addRemote throws AFTER createRepo succeeded, the await never resolves,
+    // so createdRepo stays false, so rollback at init.ts:249 skips deleteRepo.
+    // → GitHub orphan repo. This test pins the EXPECTED behavior (deleteRepo
+    // MUST run) and will fail until the flag-tracking is fixed.
+    vi.mocked(execa).mockImplementation((async (cmd: string, args?: readonly string[]) => {
+      if (args?.[0] === 'auth' && args?.[1] === 'status') return { exitCode: 0, stdout: '', stderr: '' };
+      if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.name') return { exitCode: 0, stdout: 'User', stderr: '' };
+      if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.email') return { exitCode: 0, stdout: 'u@e.com', stderr: '' };
+      if (args?.[0] === 'api' && args?.[1] === 'user') {
+        return { exitCode: 0, stdout: JSON.stringify({ login: 'testuser', plan: { name: 'pro' } }), stderr: '' };
+      }
+      // createRepo (POST /user/repos via gh api --include) succeeds
+      if (args?.[0] === 'api' && args?.includes('--method') && args?.includes('POST')
+          && args.some(a => String(a).includes('/user/repos'))) {
+        return { exitCode: 0, stdout: 'HTTP/2 201\r\n\r\n{"name":"name","private":false}', stderr: '' };
+      }
+      // git remote add throws AFTER createRepo
+      if (cmd === 'git' && args?.[0] === '-C' && args?.[2] === 'remote' && args?.[3] === 'add') {
+        throw Object.assign(new Error('git remote add failed: existing remote'), { exitCode: 128 });
+      }
+      // deleteRepo path responds 204 if it's reached
+      if (args?.[0] === 'api' && args?.includes('--method') && args?.includes('DELETE')) {
+        return { exitCode: 0, stdout: 'HTTP/2 204\r\n\r\n', stderr: '' };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }) as never);
+
+    const { run } = await import('../../src/commands/init.js');
+    await expect(run('OrphanGuard', { cfgPath: join(tmp, '.claude.json'), log: silent }))
+      .rejects.toThrow();
+
+    // The just-created GitHub repo MUST be deleted in rollback. Without this,
+    // a transient `git remote add` failure (e.g. a stale .git/config remote
+    // entry from a half-cleaned previous run) leaks a real GitHub repo.
+    const deleteCalls = vi.mocked(execa).mock.calls.filter(c => {
+      const args = c[1] as unknown;
+      if (!Array.isArray(args)) return false;
+      return args.includes('api') && args.includes('--method') && args.includes('DELETE')
+        && args.some(a => String(a).includes('repos/testuser/OrphanGuard'));
     });
     expect(deleteCalls.length).toBeGreaterThan(0);
   });

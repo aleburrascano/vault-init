@@ -71,11 +71,6 @@ async function getGithubUser(): Promise<string> {
   }
 }
 
-async function createRemoteRepo(vaultDir: string, name: string, githubUser: string, repoVisibility: 'public' | 'private'): Promise<void> {
-  await createRepo(name, { visibility: repoVisibility });
-  await addRemote(vaultDir, 'origin', repoCloneUrl(githubUser, name));
-}
-
 async function setupGitHubPages(githubUser: string, name: string, pagesPrivate: boolean, log: Logger): Promise<void> {
   const slug = `${githubUser}/${name}`;
   try {
@@ -212,10 +207,13 @@ export async function run(
     await execa('git', ['-C', vaultDir, 'add', '.']);
     await execa('git', ['-C', vaultDir, 'commit', '-m', `chore: initialize ${name}`]);
 
-    // [4/6] GitHub repo
+    // [4/6] GitHub repo. Flip createdRepo BEFORE addRemote so a local-side
+    // failure (stale remote, perms) still triggers deleteRepo in rollback —
+    // otherwise the just-created GitHub repo orphans.
     log.info(`[4/6] Creating GitHub repo: ${name} (${repoVisibility})...`);
-    await createRemoteRepo(vaultDir, name, githubUser, repoVisibility);
+    await createRepo(name, { visibility: repoVisibility });
     createdRepo = true;
+    await addRemote(vaultDir, 'origin', repoCloneUrl(githubUser, name));
 
     // [5/6] Pages + push
     if (doEnablePages) {
