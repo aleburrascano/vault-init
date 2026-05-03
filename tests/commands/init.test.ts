@@ -397,6 +397,134 @@ describe('I-14: ensureGhAuth scope', () => {
   });
 });
 
+// ── I-15: --publish=public happy path argv shape ─────────────────────────────
+
+describe('I-15: --publish=public', () => {
+  it('creates a public repo, enables Pages, and writes deploy.yml', async () => {
+    vi.mocked(select).mockResolvedValue('public');
+
+    const { run } = await import('../../src/commands/init.js');
+    await run('PublicVault', { cfgPath: join(tmp, '.claude.json'), log: silent }).catch(() => {});
+
+    // Repo creation: gh api POST /user/repos with `private=false`
+    const repoCreate = vi.mocked(execa).mock.calls.find(c => {
+      const args = c[1] as unknown;
+      if (!Array.isArray(args)) return false;
+      return args[0] === 'api' && args.some(a => String(a).includes('/user/repos'));
+    });
+    expect(repoCreate).toBeDefined();
+    const repoCreateArgs = (repoCreate?.[1] as readonly unknown[])?.map(String) ?? [];
+    expect(repoCreateArgs).toContain('private=false');
+
+    // enablePages uses POST /pages (per github.ts:enablePages)
+    const pagesEnable = vi.mocked(execa).mock.calls.find(c => {
+      const args = c[1] as unknown;
+      if (!Array.isArray(args)) return false;
+      const flat = args.map(String).join(' ');
+      return flat.includes('/pages') && flat.includes('POST');
+    });
+    expect(pagesEnable).toBeDefined();
+
+    // deploy.yml present in the scaffolded vault
+    expect(existsSync(join(tmp, 'PublicVault', '.github', 'workflows', 'deploy.yml'))).toBe(true);
+  });
+});
+
+// ── I-16: --publish=auth-gated happy path on pro plan ────────────────────────
+
+describe('I-16: --publish=auth-gated (pro plan)', () => {
+  it('creates a private repo, enables Pages, and sets Pages visibility to private', async () => {
+    vi.mocked(select).mockResolvedValue('auth-gated');
+
+    const { run } = await import('../../src/commands/init.js');
+    await run('GatedVault', { cfgPath: join(tmp, '.claude.json'), log: silent }).catch(() => {});
+
+    // Repo creation: gh api POST /user/repos with `private=true`
+    const repoCreate = vi.mocked(execa).mock.calls.find(c => {
+      const args = c[1] as unknown;
+      if (!Array.isArray(args)) return false;
+      return args[0] === 'api' && args.some(a => String(a).includes('/user/repos'));
+    });
+    expect(repoCreate).toBeDefined();
+    const repoCreateArgs = (repoCreate?.[1] as readonly unknown[])?.map(String) ?? [];
+    expect(repoCreateArgs).toContain('private=true');
+
+    // enablePages uses POST /pages (per github.ts:enablePages)
+    const pagesEnable = vi.mocked(execa).mock.calls.find(c => {
+      const args = c[1] as unknown;
+      if (!Array.isArray(args)) return false;
+      const flat = args.map(String).join(' ');
+      return flat.includes('/pages') && flat.includes('POST');
+    });
+    expect(pagesEnable).toBeDefined();
+
+    // setPagesVisibility uses PUT /pages with `public=false` (per github.ts:setPagesVisibility)
+    const pagesPrivate = vi.mocked(execa).mock.calls.find(c => {
+      const args = c[1] as unknown;
+      if (!Array.isArray(args)) return false;
+      const flat = args.map(String).join(' ');
+      return flat.includes('/pages') && flat.includes('PUT') && flat.includes('public=false');
+    });
+    expect(pagesPrivate).toBeDefined();
+  });
+});
+
+// ── I-17: invalid --publish value rejected ────────────────────────────────────
+
+describe('I-17: invalid publish mode', () => {
+  it('throws UNRECOGNIZED_INPUT before any side effect when publishMode is unknown', async () => {
+    const { run } = await import('../../src/commands/init.js');
+    // 'pulic' is a typo not in PUBLISH_MODES
+    await expect(
+      run('TypoVault', { cfgPath: join(tmp, '.claude.json'), publishMode: 'pulic' as never, log: silent }),
+    ).rejects.toThrow(/Invalid publishMode|pulic/i);
+
+    // Vault dir was NOT created — rejection happened before any filesystem op
+    expect(existsSync(join(tmp, 'TypoVault'))).toBe(false);
+  });
+});
+
+// ── I-18: vault name at NAME_MAX_LENGTH boundary ─────────────────────────────
+
+describe('I-18: vault name boundary', () => {
+  it('accepts a name of exactly 64 characters (does not fail validation)', async () => {
+    const name = 'a'.repeat(64);
+    const { run } = await import('../../src/commands/init.js');
+    // run may resolve OR reject — what matters is that the rejection (if any)
+    // is NOT a "name too long" message. Catch + assert pattern handles both.
+    let err: unknown = null;
+    try {
+      await run(name, { cfgPath: join(tmp, '.claude.json'), log: silent });
+    } catch (e) {
+      err = e;
+    }
+    if (err) {
+      expect(String((err as Error).message)).not.toMatch(/64 characters/i);
+    }
+  });
+
+  it('rejects a name of exactly 65 characters with the canonical message', async () => {
+    const name = 'a'.repeat(65);
+    const { run } = await import('../../src/commands/init.js');
+    await expect(
+      run(name, { cfgPath: join(tmp, '.claude.json'), log: silent }),
+    ).rejects.toThrow(/64 characters/i);
+  });
+
+  it('accepts a single-character name (lower boundary)', async () => {
+    const { run } = await import('../../src/commands/init.js');
+    let err: unknown = null;
+    try {
+      await run('a', { cfgPath: join(tmp, '.claude.json'), log: silent });
+    } catch (e) {
+      err = e;
+    }
+    if (err) {
+      expect(String((err as Error).message)).not.toMatch(/letters, numbers, hyphens|64 characters|provide the vault name/i);
+    }
+  });
+});
+
 // ── LIVE: init creates real GitHub repo ───────────────────────────────────────
 
 const LIVE_VAULT = `vk-live-init-${Date.now()}`;
