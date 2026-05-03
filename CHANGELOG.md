@@ -4,6 +4,8 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [2.7.4] - 2026-05-03
+
 ### Fixed
 - **`vaultkit visibility <vault> public` no longer races against GitHub's Pages-auth cache.** `setRepoVisibility` returns 200 immediately, but downstream `/pages` endpoints can see the OLD private state for several seconds — surfaced as a 422 "Your current plan does not support GitHub Pages for this repository" when `enablePages` was called next, even on accounts that genuinely have Pages access. (Symptom on the v2.7.3 release-tag CI run that blocked publish: visibility test failing intermittently on the alt PAT account whenever `run_number % 2` landed on it.) Fix is two layers: (1) `setRepoVisibility` and `enablePages` and `setPagesVisibility` each now poll their corresponding read endpoint (`getVisibility` / `pagesExist` / `getPagesVisibility`) post-mutation via the new `src/lib/poll.ts:pollUntil` helper, so the change is observable on the metadata path before the wrapper returns. (2) The Pages-plan 422 message is added to `gh-retry.ts:_classifyGhFailure`'s transient bucket as a backstop, in case Pages-auth lags `getVisibility` by enough that the propagation window is still open when `enablePages` POSTs.
 
