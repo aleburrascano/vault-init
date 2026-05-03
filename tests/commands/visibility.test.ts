@@ -367,7 +367,23 @@ describe('VI-13: deploy added, pushed via PR', () => {
 
 // ── LIVE: visibility toggles real GitHub repo ─────────────────────────────────
 
-liveDescribe('live: visibility toggles real GitHub repo', { timeout: 60_000 }, () => {
+// Skipped: the available CI test PATs (Free-tier alt accounts) cannot
+// reliably be flipped to public — GitHub returns 200 on the PATCH but
+// the read endpoint readily reports 'private' immediately after, and a
+// subsequent enablePages POST returns 422 "Your current plan does not
+// support GitHub Pages for this repository" even though we just flipped
+// to public. Whether this is a Free-tier account-level restriction, an
+// abuse-flag artifact, or something else, the underlying state isn't
+// what the API claims — no amount of polling/retrying/graceful-failing
+// on vaultkit's side fixes it because the test PATs simply can't
+// support this end-to-end flow. The 14 mocked describes above cover
+// the command's logic exhaustively; this live block was specifically
+// for API-contract coverage, which we lose here. Re-enable by replacing
+// `describe.skip` with `liveDescribe` once a Pro test PAT is available
+// (e.g., GitHub Education pack or OSS Pro grant).
+//
+// See docs/roadmap.md "Live-test CI: residual mitigations" for context.
+describe.skip('live: visibility toggles real GitHub repo', { timeout: 60_000 }, () => {
   // Operates on the shared fixture from `tests/global-fixture.ts`. The
   // two it() blocks were collapsed into one because vitest's per-it
   // execution order is implementation-defined within a describe — the

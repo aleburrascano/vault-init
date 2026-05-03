@@ -42,5 +42,6 @@ Done in 2.7.3:
 
 Residual mitigations to consider if flake recurs:
 - **Stop running live tests on every push.** If rotation + fixture-sharing still aren't enough, gate live tests to tag-pushes and PRs that touch `src/lib/github.ts` or `src/commands/{init,destroy,connect,disconnect,visibility}.ts`. Big drop in throughput, modest signal loss.
+- **Add a Pro test PAT to re-enable the live visibility test.** As of 2.7.4 the `live: visibility toggles real GitHub repo` block is `describe.skip` because the Free-tier test PATs (`fluids2`, `aleburrascano-alt`) cannot reliably be flipped to public — PATCH returns 200 but the change doesn't stick, surfacing as Pages-auth 422 rejections downstream. A Pro PAT (GitHub Education pack / OSS Pro grant / paid account) used as a third secret + opt-in would re-enable end-to-end coverage of the public/auth-gated paths. Until then, the 14 mocked describes in `visibility.test.ts` are the only source of truth for that command's logic.
 
 Symptom to watch for: `Repository ... is disabled` in CI logs even after rotation + fixture-sharing land — that would suggest GitHub's heuristic is keying on the runner-pool IP range or org-level history, not just per-account, and the per-push gating above is the right next move.
