@@ -585,6 +585,123 @@ describe('I-17: invalid publish mode', () => {
   });
 });
 
+// ── I-17b: invalid publish-mode edge cases ───────────────────────────────────
+
+describe('I-17b: invalid publish mode edge cases', () => {
+  // I-17 already covers the typo case ('pulic'). These pin the boundary
+  // shapes — empty string, trailing whitespace, case-variant, JS-only null.
+  // All MUST hit UNRECOGNIZED_INPUT, never silently fall through to
+  // interactive `select()` and never create a vault dir.
+  it.each([
+    ['empty string', ''],
+    ['trailing whitespace', 'public '],
+    ['uppercase variant', 'PUBLIC'],
+  ])('rejects %s without creating a vault dir', async (_label, mode) => {
+    const { run } = await import('../../src/commands/init.js');
+    await expect(
+      run('EdgeMode', { cfgPath: join(tmp, '.claude.json'), publishMode: mode as never, log: silent }),
+    ).rejects.toThrow(/Invalid publishMode/i);
+    expect(existsSync(join(tmp, 'EdgeMode'))).toBe(false);
+    expect(vi.mocked(select)).not.toHaveBeenCalled();
+  });
+
+  it('rejects null (JS caller) without falling through to select()', async () => {
+    // TS types say `PublishMode | undefined`, but a JS caller can pass null.
+    // The current `publishModeOpt !== undefined` check at init.ts:41 lets
+    // null through to isPublishMode(null), which returns false → throws.
+    const { run } = await import('../../src/commands/init.js');
+    await expect(
+      run('NullMode', { cfgPath: join(tmp, '.claude.json'), publishMode: null as never, log: silent }),
+    ).rejects.toThrow(/Invalid publishMode/i);
+    expect(vi.mocked(select)).not.toHaveBeenCalled();
+  });
+});
+
+// ── I-19: setupBranchProtection argv shape (Phase 6/6 happy path) ────────────
+
+describe('I-19: branch protection argv', () => {
+  it('PUTs branches/main/protection with required_pull_request_reviews body', async () => {
+    // init.ts:97-112 calls `gh api repos/<u>/<n>/branches/main/protection
+    // --method PUT --input -` with a stdin body declaring the required
+    // PR-review count. Today only the `protection` substring is asserted
+    // implicitly via I-9 / I-13 side effects; the argv shape (--method PUT,
+    // the slug path, the --input - flag) is unpinned.
+    let protectionInput: string | undefined;
+    vi.mocked(execa).mockImplementation((async (cmd: string, args?: readonly string[], opts?: { input?: string }) => {
+      if (args?.[0] === 'auth' && args?.[1] === 'status') return { exitCode: 0, stdout: '', stderr: '' };
+      if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.name') return { exitCode: 0, stdout: 'User', stderr: '' };
+      if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.email') return { exitCode: 0, stdout: 'u@e.com', stderr: '' };
+      if (args?.[0] === 'api' && args?.[1] === 'user') {
+        return { exitCode: 0, stdout: JSON.stringify({ login: 'testuser', plan: { name: 'pro' } }), stderr: '' };
+      }
+      if (args?.[0] === 'api' && args?.includes('--method') && args?.includes('PUT')
+          && args.some(a => String(a).includes('branches/main/protection'))) {
+        protectionInput = opts?.input;
+        return { exitCode: 0, stdout: '', stderr: '' };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }) as never);
+
+    const { run } = await import('../../src/commands/init.js');
+    await run('ProtVault', { cfgPath: join(tmp, '.claude.json'), log: silent }).catch(() => {});
+
+    const protectionCall = vi.mocked(execa).mock.calls.find(c => {
+      const args = c[1] as unknown;
+      if (!Array.isArray(args)) return false;
+      return args[0] === 'api' && args.includes('--method') && args.includes('PUT')
+        && args.some(a => String(a).includes('repos/testuser/ProtVault/branches/main/protection'));
+    });
+    expect(protectionCall).toBeDefined();
+    const argv = (protectionCall?.[1] as readonly unknown[])?.map(String) ?? [];
+    expect(argv).toContain('--method');
+    expect(argv).toContain('PUT');
+    expect(argv).toContain('--input');
+    expect(argv).toContain('-');
+
+    // The body payload sent on stdin must declare required_pull_request_reviews
+    // with required_approving_review_count: 1. A regression that drops the PR
+    // gate (e.g. sets count: 0 or omits the block) silently weakens the repo.
+    expect(protectionInput).toBeDefined();
+    const body = JSON.parse(protectionInput as string);
+    expect(body.required_pull_request_reviews?.required_approving_review_count).toBe(1);
+    expect(body.enforce_admins).toBe(false);
+  });
+
+  it('continues to MCP registration when branch protection PUT exits non-zero (free plan)', async () => {
+    // init.ts:108-111 swallows non-zero PUT (typical on free private repos)
+    // and logs a manual-setup hint. MCP registration MUST still run.
+    vi.mocked(execa).mockImplementation((async (cmd: string, args?: readonly string[]) => {
+      if (args?.[0] === 'auth' && args?.[1] === 'status') return { exitCode: 0, stdout: '', stderr: '' };
+      if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.name') return { exitCode: 0, stdout: 'User', stderr: '' };
+      if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.email') return { exitCode: 0, stdout: 'u@e.com', stderr: '' };
+      if (args?.[0] === 'api' && args?.[1] === 'user') {
+        return { exitCode: 0, stdout: JSON.stringify({ login: 'testuser', plan: { name: 'free' } }), stderr: '' };
+      }
+      if (args?.[0] === 'api' && args?.includes('--method') && args?.includes('PUT')
+          && args.some(a => String(a).includes('branches/main/protection'))) {
+        // Mimic GitHub's free-plan rejection — non-zero exit, no throw
+        // (the exec call uses `reject: false`).
+        return { exitCode: 1, stdout: '', stderr: 'Upgrade to GitHub Pro' };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }) as never);
+
+    const { run } = await import('../../src/commands/init.js');
+    const lines: string[] = [];
+    await run('FreeProtVault', { cfgPath: join(tmp, '.claude.json'), log: arrayLogger(lines) }).catch(() => {});
+
+    // Hint message logged
+    expect(lines.some(l => /branch protection|set up manually/i.test(l))).toBe(true);
+
+    // MCP registration still ran despite the protection failure
+    const mcpAdd = vi.mocked(execa).mock.calls.find(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args[0] === 'mcp' && args[1] === 'add';
+    });
+    expect(mcpAdd).toBeDefined();
+  });
+});
+
 // ── I-18: vault name at NAME_MAX_LENGTH boundary ─────────────────────────────
 
 describe('I-18: vault name boundary', () => {
