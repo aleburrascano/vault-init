@@ -4,6 +4,36 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [2.7.2] - 2026-05-02
+
+### Fixed
+- **`vaultkit init` no longer leaks a GitHub repo when `git remote add` fails after `gh repo create` succeeded.** The previous `createRemoteRepo` helper bundled both calls into one await, and the `createdRepo = true` flag flipped only after the helper returned. A failure on the local-side `addRemote` (stale remote, perms hiccup) escaped while `createdRepo === false`, so rollback skipped `deleteRepo` and the just-created GitHub repo orphaned. The two calls are now inlined so the flag flips immediately after `createRepo` succeeds — any subsequent failure (including `addRemote`) now triggers `deleteRepo` in the catch block. Regression covered by `tests/commands/init.test.ts`'s I-13b describe block.
+- **`compareSource` (text-compare) now rejects internal URLs before any HTTP fetch.** Frontmatter URLs in `raw/<file>.md` are direct attacker-controllable input that drive `vaultkit refresh`'s text-compare path. New `_rejectInternalUrl` blocks non-http(s) protocols, localhost / 0.0.0.0, IPv4 loopback (127.0.0.0/8), link-local (169.254.0.0/16 — covers AWS IMDS), RFC 1918 private (10/8, 172.16-31/12, 192.168/16), and IPv6 loopback / link-local / ULA. Does NOT defend against DNS rebinding (a public hostname resolving to an internal IP) — documented as an explicit non-goal in `.claude/rules/security-invariants.md`.
+- **`vaultkit refresh --vault-dir <path>` now validates the path is vault-like before any filesystem read or write.** Previously a malicious or mistyped path (`--vault-dir /etc`) would walk arbitrary directories and `mkdirSync(<path>/wiki/_freshness)` into them. The path is now `resolve()`'d to absolute and `isVaultLike`-checked at command entry.
+- **`gh-retry`'s rate-limit backoff is now capped at 60s** (was: honor `Retry-After` verbatim). A misbehaving GitHub response with a multi-hour `Retry-After` header could hang `vaultkit init` indefinitely on the secondary-rate-limit retry path; the cap bounds the worst case while still respecting normal rate-limit waits.
+- **`ensureGhAuth` matches scope names as string literals, not regex patterns.** The pre-fix code used `new RegExp(\`'${s}'\`)` which interpreted `.`, `*`, `(`, `|` etc. in scope names as regex meta-chars. Today's scopes are hard-coded literals (`repo`, `workflow`, `gist`, `delete_repo`) so the bug was latent, but a future dynamic scope source containing `.` or `*` would either match too broadly (false-positive scope-present → no refresh) or match nothing (false-negative → unnecessary refresh loop). Now uses `output.includes(\`'${s}'\`)` literal substring match.
+- **`vaultkit status` (and other registry consumers) now throw `UNRECOGNIZED_INPUT` on a corrupt `~/.claude.json` instead of silently proceeding with an empty registry.** Previously a malformed JSON file (e.g. truncated mid-write by a concurrent process) caused `JSON.parse` to throw and registry helpers to swallow the error and return `{}`. Users saw an empty vault list with no explanation. The new behavior surfaces the actual error so the user knows to inspect / restore the file.
+- **`vaultkit visibility <slug>` hard-fails on a malformed repo slug** instead of writing partial state. The previous flow would call `setRepoVisibility` and only validate the slug shape inside `gh api`'s response handler — too late if the gh call returned an unexpected error format. Slug validation now happens at command entry.
+
+### Changed (internal)
+- **Extracted `src/lib/gh-retry.ts` from `src/lib/github.ts`.** The retry / classification layer is now shared by `github.ts`'s wrappers and any other consumer (e.g. `refresh`'s commit-since-clip check) without copying. `gh()`, `ghJson()`, `_parseGhIncludeOutput()`, `_classifyGhFailure()` are exported from the new module; `github.ts` re-imports them. Pure code-organization change — no behavior delta, and existing imports from `github.ts` continue to work.
+- **`src/commands/refresh.ts` now exports `classifySource`** (pure URL → `SourceClassification` decision) so the no-url / git / web matrix can be unit-tested without mocking the network or `gh`.
+- **`src/commands/init.ts` now exports `selectPublishMode`** and the `PublishConfig` interface so the publishMode → 4-tuple derivation matrix (private vs public vs auth-gated) can be unit-tested directly. Additive — the export does not change the public CLI surface.
+- **Centralized `NO_VAULTS_REGISTERED` and `GIT_DIR` constants** to `src/lib/messages.ts` and `src/lib/constants.ts` respectively, replacing the inline strings that had drifted slightly across `status` / `setup` / `doctor`.
+
+### Tests
+- **+150+ new test cases** across init / errors / prereqs / platform / refresh / connect / verify / doctor / update-check / gh-retry, growing the suite from ~430 to ~635 passing tests. Highlights:
+  - Full `vaultkit refresh run()` orchestration (mocked-integration via gh-retry + text-compare mocks, plus a new local-only live test using `makeLocalVault` against a stable public repo — zero `vk-live-*` repo creates).
+  - `installGhForPlatform` branch matrix (winget / brew / apt / dnf / unsupported), `findTool` Windows fallback chain (PROGRAMFILES → LOCALAPPDATA WinGet Links → `probeWinGetGhPath` → `findOnPath`), template-path getter invariants.
+  - `EXIT_CODES` and `DEFAULT_MESSAGES` per-code value pins (public contract — scripted callers depend on these specific integers).
+  - Init Phase 2/6 mid-layout rollback, Phase 5/6 enablePages / setPagesVisibility reject swallowing, Phase 6/6 branch-protection argv shape.
+  - Refresh edge cases: parseFrontmatter BOM / missing-newline / empty frontmatter, similarity-at-threshold boundary, `formatReport` section ordering, walkMarkdown no-symlink-follow safety.
+
+### Slash commands (CLAUDE-internal, not shipped)
+- New `/test` testing-expert command — sweeps the repo for test-debt by default (NO_TEST / THIN_COVERAGE / MARGINAL_TESTS / SKIPPED / UNDER_BRANCHED) and dispatches six parallel sub-reviewers (unit / mocked-integration / e2e / edge cases / security / cross-platform) on user-picked targets.
+- New `/architecture` design-review command covering SOLID, DRY, FP, code-smells, patterns-and-coupling.
+- Rewrote `/test` and tightened `/add-command` and `/debug-command` with explicit RED-GREEN TDD discipline.
+
 ## [2.7.1] - 2026-05-02
 
 ### Fixed
