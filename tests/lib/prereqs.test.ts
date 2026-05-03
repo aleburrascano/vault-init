@@ -184,6 +184,49 @@ describe('ensureGhAuth', () => {
     expect(refreshCall).toContain('a.b');
   });
 
+  // ensureGhAuth concatenates stderr + stdout for the scope haystack
+  // (prereqs.ts:95). Two real-world variants where the scopes line lands
+  // on stdout instead of stderr — older gh, --show-token mode, or
+  // localized output.
+  it('matches scopes from stdout when "Token scopes:" lands there instead of stderr', async () => {
+    vi.mocked(execa).mockImplementation((async (_cmd: string, args?: readonly string[]) => {
+      if (args?.[0] === 'auth' && args?.[1] === 'status') {
+        // Stream-flipped: scope list in stdout, stderr empty.
+        return { exitCode: 0, stdout: "Token scopes: 'gist', 'repo'", stderr: '' };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }) as never);
+
+    await ensureGhAuth({ ghPath: '/usr/bin/gh', log: arrayLogger([]), scopes: ['gist'] });
+
+    // 'gist' is present in stdout-only haystack → NO refresh invoked.
+    const refreshCall = vi.mocked(execa).mock.calls.find(c => {
+      const a = c[1] as unknown;
+      return Array.isArray(a) && a[0] === 'auth' && a[1] === 'refresh';
+    });
+    expect(refreshCall).toBeUndefined();
+  });
+
+  it('matches scopes when the auth status output is split across stderr and stdout', async () => {
+    vi.mocked(execa).mockImplementation((async (_cmd: string, args?: readonly string[]) => {
+      if (args?.[0] === 'auth' && args?.[1] === 'status') {
+        // Some gh versions/modes emit the leader on stderr but break the
+        // scope list mid-line into stdout. Concat must find both.
+        return { exitCode: 0, stdout: "'workflow'", stderr: "Token scopes: 'repo', " };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }) as never);
+
+    await ensureGhAuth({ ghPath: '/usr/bin/gh', log: arrayLogger([]), scopes: ['repo', 'workflow'] });
+
+    // Both scopes appear in stderr+stdout concat → NO refresh invoked.
+    const refreshCall = vi.mocked(execa).mock.calls.find(c => {
+      const a = c[1] as unknown;
+      return Array.isArray(a) && a[0] === 'auth' && a[1] === 'refresh';
+    });
+    expect(refreshCall).toBeUndefined();
+  });
+
   // Item 10: when `gh auth status` succeeds but its stderr lacks the
   // `Token scopes:` block (older gh versions, localized builds, format
   // drift), every requested scope is currently treated as missing →
@@ -286,6 +329,31 @@ describe('ensureGitConfig', () => {
       .map(c => c[1] as readonly string[] | undefined)
       .filter((a): a is readonly string[] => Array.isArray(a) && a[0] === 'config' && a[1] === '--global');
     expect(writes).toEqual([['config', '--global', 'user.name', '']]);
+  });
+
+  // CRLF stdout from `git config` is the Windows default (git emits
+  // platform-native line endings). The .trim() at prereqs.ts:117/121
+  // handles trailing \r\n — pin this with explicit CRLF fixtures so a
+  // regression to a substring check (or a switch from .trim() to
+  // .trimEnd-with-\n-only) surfaces here instead of in production.
+  it('treats CRLF-terminated stdout as a populated value (Windows git default)', async () => {
+    vi.mocked(execa).mockImplementation((async (_cmd: string, args?: readonly string[]) => {
+      if (args?.[0] === 'config' && args?.[1] === 'user.name') {
+        return { exitCode: 0, stdout: 'Existing User\r\n', stderr: '' };
+      }
+      if (args?.[0] === 'config' && args?.[1] === 'user.email') {
+        return { exitCode: 0, stdout: 'existing@example.com\r\n', stderr: '' };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }) as never);
+
+    await ensureGitConfig();
+
+    expect(vi.mocked(input)).not.toHaveBeenCalled();
+    const writes = vi.mocked(execa).mock.calls
+      .map(c => c[1] as readonly string[] | undefined)
+      .filter((a): a is readonly string[] => Array.isArray(a) && a[0] === 'config' && a[1] === '--global');
+    expect(writes).toEqual([]);
   });
 
   // Item 5c: both fields already set in git config → no inquirer, no writes.
