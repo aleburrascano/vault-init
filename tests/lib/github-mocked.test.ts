@@ -46,6 +46,25 @@ function lastArgs(): string[] {
   return calls[calls.length - 1]?.[1] as string[];
 }
 
+function firstArgs(): string[] {
+  const calls = vi.mocked(execa).mock.calls;
+  return calls[0]?.[1] as string[];
+}
+
+/**
+ * Default mock returns `{exitCode: 0, stdout: ''}`. That's fine for
+ * one-shot wrappers (createRepo, deleteRepo) but breaks wrappers that
+ * now poll for confirmation (setRepoVisibility, enablePages) — the
+ * poll's read call gets `stdout: ''` and JSON.parse('') throws. Stages
+ * a sequence: first call (the mutation) + a typed read response (the
+ * poll's first observation, immediately satisfying the predicate).
+ */
+function stageMutationThenReadOk(readJson: object): void {
+  vi.mocked(execa)
+    .mockResolvedValueOnce({ exitCode: 0, stdout: '', stderr: '' } as never)
+    .mockResolvedValueOnce({ exitCode: 0, stdout: JSON.stringify(readJson), stderr: '' } as never);
+}
+
 describe('createRepo', () => {
   // Migrated to `gh api --include POST /user/repos` so the retry layer
   // can read X-RateLimit-* / Retry-After headers. Argv shape changed;
@@ -148,63 +167,82 @@ describe('getVisibility', () => {
 
 describe('setRepoVisibility', () => {
   // Migrated to `gh api --include PATCH /repos/<slug> -f visibility=<v>`.
-  // The "previous visibility change is still in progress" 422 race is
-  // still classified as transient inside _classifyGhFailure, so callers
-  // get the same effective semantics.
-  it('issues PATCH /repos/<slug> via gh api with visibility field', async () => {
+  // Now polls getVisibility post-PATCH to confirm the change has propagated
+  // to the read endpoint before returning — see github.ts comment for why.
+  // The "previous visibility change is still in progress" 422 race on the
+  // PATCH itself is still classified as transient inside _classifyGhFailure.
+  it('issues PATCH /repos/<slug> via gh api with visibility field, then polls until visible', async () => {
+    stageMutationThenReadOk({ visibility: 'public', permissions: { admin: false } });
     await setRepoVisibility('owner/repo', 'public');
-    expect(lastArgs()).toEqual([
+    // First call: the PATCH (the assertion we care about)
+    expect(firstArgs()).toEqual([
       'api', '--include', '--method', 'PATCH', '/repos/owner/repo',
       '-f', 'visibility=public',
     ]);
+    // Second call: the poll's read (sanity check — it ran)
+    expect(lastArgs()).toEqual(['api', 'repos/owner/repo']);
   });
 
   it('passes private when target is private', async () => {
+    stageMutationThenReadOk({ visibility: 'private', permissions: { admin: false } });
     await setRepoVisibility('owner/repo', 'private');
-    expect(lastArgs()).toContain('visibility=private');
+    expect(firstArgs()).toContain('visibility=private');
   });
 
-  it('throws on a fatal non-zero gh exit', async () => {
+  it('throws on a fatal non-zero gh exit before polling', async () => {
     // "rate limit" plain text without any of the recognized phrases
     // (secondary/abuse/HTTP 429) falls through to fatal — same behavior
-    // as before for unclassified failures.
+    // as before for unclassified failures. Poll never runs.
     vi.mocked(execa).mockResolvedValueOnce({ exitCode: 1, stdout: '', stderr: 'rate limit' } as never);
     await expect(setRepoVisibility('owner/repo', 'public')).rejects.toThrow(/rate limit/);
+    expect(vi.mocked(execa).mock.calls).toHaveLength(1); // PATCH only, no poll
   });
 });
 
 describe('enablePages', () => {
-  it('defaults buildType to workflow and sets the source branch and path', async () => {
+  // Now polls pagesExist post-POST to confirm the Pages site is provisioned
+  // before returning, mirroring setRepoVisibility's poll-after-mutate pattern.
+  it('issues POST /pages with build_type=workflow then polls until pagesExist', async () => {
+    // Default mock returns exitCode: 0, which makes pagesExist return true.
+    // So the poll succeeds on its first read.
     await enablePages('owner/repo');
-    expect(lastArgs()).toEqual([
+    // First call: the POST (the assertion we care about)
+    expect(firstArgs()).toEqual([
       'api', 'repos/owner/repo/pages', '--method', 'POST',
       '--field', 'build_type=workflow',
       '--field', 'source[branch]=main',
       '--field', 'source[path]=/',
     ]);
+    // Second call: pagesExist's GET (sanity check — it ran)
+    expect(lastArgs()).toEqual(['api', 'repos/owner/repo/pages']);
   });
 
   it('honors buildType=legacy', async () => {
     await enablePages('owner/repo', { buildType: 'legacy' });
-    const args = lastArgs();
+    const args = firstArgs();
     const idx = args.indexOf('build_type=legacy');
     expect(idx).toBeGreaterThan(-1);
   });
 });
 
 describe('setPagesVisibility', () => {
-  it('passes public=true for public visibility', async () => {
+  // Now polls getPagesVisibility post-PUT to confirm the change has
+  // propagated to the read endpoint, mirroring setRepoVisibility and
+  // enablePages's poll-after-mutate pattern.
+  it('passes public=true for public visibility, then polls until confirmed', async () => {
+    stageMutationThenReadOk({ public: true });
     await setPagesVisibility('owner/repo', 'public');
-    expect(lastArgs()).toEqual([
+    expect(firstArgs()).toEqual([
       'api', 'repos/owner/repo/pages', '--method', 'PUT',
       '--field', 'public=true',
     ]);
+    expect(lastArgs()).toEqual(['api', 'repos/owner/repo/pages']); // poll's GET
   });
 
   it('passes public=false for private visibility', async () => {
+    stageMutationThenReadOk({ public: false });
     await setPagesVisibility('owner/repo', 'private');
-    const args = lastArgs();
-    expect(args).toContain('public=false');
+    expect(firstArgs()).toContain('public=false');
   });
 });
 

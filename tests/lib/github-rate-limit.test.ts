@@ -163,6 +163,26 @@ describe('_classifyGhFailure', () => {
     expect(cls.kind).toBe('transient');
   });
 
+  it('classifies the Pages-plan 422 (private→public propagation race) as transient', () => {
+    // After a private→public visibility flip, GitHub's Pages auth check can
+    // see the OLD private state for several seconds and reject enablePages
+    // with this exact wording. Treating it as transient lets the retry
+    // budget cover the propagation window. See setRepoVisibility's poll
+    // for the primary mitigation.
+    const stderr = 'gh: Your current plan does not support GitHub Pages for this repository. (HTTP 422)';
+    const cls = _classifyGhFailure(422, '', stderr, {});
+    expect(cls.kind).toBe('transient');
+    expect(cls.reason).toContain('Pages-auth');
+  });
+
+  it('matches the Pages-plan 422 case-insensitively (body or stderr)', () => {
+    const body = JSON.stringify({ message: 'YOUR CURRENT PLAN DOES NOT SUPPORT GITHUB PAGES FOR THIS REPOSITORY' });
+    expect(_classifyGhFailure(422, body, '', {}).kind).toBe('transient');
+    expect(
+      _classifyGhFailure(422, '', 'Your Current Plan Does Not Support GitHub Pages', {}).kind,
+    ).toBe('transient');
+  });
+
   it('classifies network resets/timeouts as transient', () => {
     expect(_classifyGhFailure(undefined, '', 'connect ECONNRESET 140.82.114.6:443', {}).kind).toBe('transient');
     expect(_classifyGhFailure(undefined, '', 'request to ... failed, reason: ETIMEDOUT', {}).kind).toBe('transient');

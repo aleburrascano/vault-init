@@ -2,6 +2,7 @@ import { execa } from 'execa';
 import { findTool } from './platform.js';
 import { VaultkitError } from './errors.js';
 import { gh, ghJson } from './gh-retry.js';
+import { pollUntil } from './poll.js';
 import type { Logger } from './logger.js';
 import type {
   GhUserResponse,
@@ -147,15 +148,30 @@ export async function getVisibility(slug: string): Promise<string> {
 }
 
 /**
- * Change repo visibility. Migrated from `gh repo edit --visibility` to
- * `gh api --include` for header-aware retry. The 422 "previous visibility
- * change is still in progress" race is still classified as transient
- * inside `_classifyGhFailure`, so this stays a one-liner.
+ * Change repo visibility, then poll until the change is observable on the
+ * read endpoint before returning. GitHub's PATCH returns 200 immediately,
+ * but downstream endpoints (notably `/pages` auth checks) can see the
+ * OLD visibility for several seconds — surfaces as a 422 in a subsequent
+ * `enablePages` call ("Your current plan does not support GitHub Pages
+ * for this repository") because the Pages service still thinks the repo
+ * is private. Polling `getVisibility` lets it confirm propagation on the
+ * repo metadata path before any caller proceeds. The 422 race on
+ * `enablePages` itself is independently retried in `_classifyGhFailure`
+ * as a backstop in case Pages-auth lags getVisibility.
+ *
+ * The 422 "previous visibility change is still in progress" race on the
+ * PATCH itself is still handled by `gh-retry.ts:_classifyGhFailure`'s
+ * transient bucket, so the retry happens before this poll even starts.
  */
 export async function setRepoVisibility(slug: string, visibility: Visibility): Promise<void> {
   await ghJson(
     'api', '--include', '--method', 'PATCH', `/repos/${slug}`,
     '-f', `visibility=${visibility}`,
+  );
+  await pollUntil(
+    () => getVisibility(slug),
+    (current) => current === visibility,
+    { description: `${slug} visibility=${visibility}` },
   );
 }
 
@@ -163,16 +179,40 @@ export interface EnablePagesOptions {
   buildType?: 'workflow' | 'legacy';
 }
 
+/**
+ * Enable Pages on a repo, then poll until `pagesExist` confirms the site
+ * is provisioned. GitHub's POST returns success when the request is
+ * accepted, but a subsequent `setPagesVisibility` (used by `init`'s
+ * auth-gated path) can see the Pages site as not-yet-existing for a few
+ * seconds — same eventual-consistency pattern as `setRepoVisibility`.
+ */
 export async function enablePages(slug: string, { buildType = 'workflow' }: EnablePagesOptions = {}): Promise<void> {
   await ghJson('api', `repos/${slug}/pages`, '--method', 'POST',
     '--field', `build_type=${buildType}`,
     '--field', 'source[branch]=main',
     '--field', 'source[path]=/');
+  await pollUntil(
+    () => pagesExist(slug),
+    (exists) => exists === true,
+    { description: `Pages site provisioned for ${slug}` },
+  );
 }
 
+/**
+ * Set Pages visibility, then poll until the change is observable on the
+ * Pages read endpoint. Same eventual-consistency motivation as
+ * `setRepoVisibility` and `enablePages` — without the poll, a caller
+ * doing `setPagesVisibility(slug, 'private')` and then reading
+ * `getPagesVisibility(slug)` could see the old value briefly.
+ */
 export async function setPagesVisibility(slug: string, visibility: Visibility): Promise<void> {
   await ghJson('api', `repos/${slug}/pages`, '--method', 'PUT',
     '--field', `public=${visibility === 'public'}`);
+  await pollUntil(
+    () => getPagesVisibility(slug),
+    (current) => current === visibility,
+    { description: `${slug} Pages visibility=${visibility}` },
+  );
 }
 
 export async function disablePages(slug: string): Promise<void> {

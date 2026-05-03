@@ -108,6 +108,19 @@ export function _classifyGhFailure(
   if (/previous visibility change is still in progress/i.test(blob)) {
     return { kind: 'transient', reason: '422 visibility-change race' };
   }
+  // 422 "current plan does not support GitHub Pages" — surfaces on the
+  // /pages endpoint immediately after a private→public visibility flip,
+  // when Pages' auth check has stale state and still sees the repo as
+  // private. Polling getVisibility in setRepoVisibility narrows the
+  // window, but Pages-auth can lag the repo metadata read so this
+  // retry is a backstop. False-positive cost on a genuinely Free-tier
+  // private-repo Pages attempt: 4 retries × 1/2/4s = ~7s extra wait
+  // before the surfaced error. visibility.ts only emits enablePages
+  // when going public/auth-gated, so in practice this only fires on
+  // the propagation race, never on a true permission denial.
+  if (/your current plan does not support github pages/i.test(blob)) {
+    return { kind: 'transient', reason: '422 Pages-auth visibility propagation race' };
+  }
   // Network resets / timeouts — surface from execa stderr.
   if (/ECONNRESET|ETIMEDOUT|ECONNREFUSED|EHOSTUNREACH/.test(stderr)) {
     return { kind: 'transient', reason: 'network reset/timeout' };

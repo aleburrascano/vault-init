@@ -25,6 +25,7 @@ vi.mock('../../src/lib/github.js', async (importOriginal) => {
     ...real,
     isAdmin: vi.fn(),
     getVisibility: vi.fn(),
+    setRepoVisibility: vi.fn(),
     requireAuthGatedEligible: vi.fn(),
     enablePages: vi.fn(),
     setPagesVisibility: vi.fn(),
@@ -39,7 +40,7 @@ import { execa } from 'execa';
 import { add, commit, pushOrPr } from '../../src/lib/git.js';
 import { findTool } from '../../src/lib/platform.js';
 import {
-  isAdmin, getVisibility, requireAuthGatedEligible,
+  isAdmin, getVisibility, setRepoVisibility, requireAuthGatedEligible,
   enablePages, setPagesVisibility, disablePages, pagesExist, getPagesVisibility,
 } from '../../src/lib/github.js';
 import { writeCfg } from '../helpers/registry.js';
@@ -56,6 +57,7 @@ beforeEach(() => {
   vi.mocked(findTool).mockReset();
   vi.mocked(isAdmin).mockReset();
   vi.mocked(getVisibility).mockReset();
+  vi.mocked(setRepoVisibility).mockReset();
   vi.mocked(requireAuthGatedEligible).mockReset();
   vi.mocked(enablePages).mockReset();
   vi.mocked(setPagesVisibility).mockReset();
@@ -208,14 +210,10 @@ describe('VI-8: private → public, enabling Pages', () => {
 
     await runVisibility('MyVault', 'public', { cfgPath, skipConfirm: true });
 
-    // setRepoVisibility migrated to `gh api --method PATCH /repos/<slug>
-    // -f visibility=public` for header-aware retry. Filter by the field
-    // payload instead of the old `edit ... public` shorthand.
-    const repoEditCalls = vi.mocked(execa).mock.calls.filter(c => {
-      const args = c[1] as unknown;
-      return Array.isArray(args) && args.includes('PATCH') && args.includes('visibility=public');
-    });
-    expect(repoEditCalls.length).toBeGreaterThan(0);
+    // setRepoVisibility is mocked at the module boundary (now wraps a
+    // post-PATCH poll on getVisibility, which is also mocked); assert on
+    // the wrapper-level call rather than the raw execa argv.
+    expect(vi.mocked(setRepoVisibility)).toHaveBeenCalledWith('owner/MyVault', 'public');
     expect(vi.mocked(enablePages)).toHaveBeenCalled();
   });
 });
@@ -233,13 +231,7 @@ describe('VI-9: public → private, disables Pages', () => {
 
     await runVisibility('MyVault', 'private', { cfgPath, skipConfirm: true });
 
-    // setRepoVisibility migrated to `gh api --method PATCH /repos/<slug>
-    // -f visibility=private` for header-aware retry.
-    const repoEditCalls = vi.mocked(execa).mock.calls.filter(c => {
-      const args = c[1] as unknown;
-      return Array.isArray(args) && args.includes('PATCH') && args.includes('visibility=private');
-    });
-    expect(repoEditCalls.length).toBeGreaterThan(0);
+    expect(vi.mocked(setRepoVisibility)).toHaveBeenCalledWith('owner/MyVault', 'private');
     expect(vi.mocked(disablePages)).toHaveBeenCalled();
   });
 });

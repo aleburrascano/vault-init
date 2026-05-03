@@ -49,6 +49,13 @@ beforeEach(() => {
   vi.mocked(vaultsRoot).mockReturnValue(tmp);
   vi.mocked(findTool).mockImplementation(async (name: string) => `/usr/bin/${name}`);
   vi.mocked(select).mockResolvedValue('private');
+  // Track the most-recent setPagesVisibility PUT so the post-mutate poll
+  // (added in 2.7.4 to bridge GitHub's eventual-consistency window) can
+  // observe the requested state on the next GET. Without this, the poll
+  // would receive an empty stdout response, predicate would never satisfy,
+  // and the test would timeout at 15s.
+  let pagesPublicState = false;
+
   vi.mocked(execa).mockImplementation((async (cmd: string, args?: readonly string[]) => {
     if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.name') {
       return { exitCode: 0, stdout: 'Test User', stderr: '' };
@@ -61,6 +68,24 @@ beforeEach(() => {
     }
     if (args?.[0] === 'api' && args?.[1] === 'user') {
       return { exitCode: 0, stdout: JSON.stringify({ login: 'testuser', plan: { name: 'pro' } }), stderr: '' };
+    }
+    // PUT /repos/<slug>/pages — setPagesVisibility's mutation. Capture the
+    // requested state for the post-mutate poll's GET to read back.
+    if (
+      args?.[0] === 'api' && typeof args?.[1] === 'string' && args[1].endsWith('/pages')
+      && args.includes('PUT')
+    ) {
+      pagesPublicState = args.includes('public=true');
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }
+    // GET /repos/<slug>/pages — used by both pagesExist (enablePages's poll)
+    // and getPagesVisibility (setPagesVisibility's poll). Return the tracked
+    // state so polls converge.
+    if (
+      args?.[0] === 'api' && typeof args?.[1] === 'string' && args[1].endsWith('/pages')
+      && !args.includes('--method')
+    ) {
+      return { exitCode: 0, stdout: JSON.stringify({ public: pagesPublicState }), stderr: '' };
     }
     return { exitCode: 0, stdout: '', stderr: '' };
   }) as never);
