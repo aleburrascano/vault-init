@@ -702,6 +702,90 @@ describe('I-19: branch protection argv', () => {
   });
 });
 
+// ── I-20: Phase 5/6 enablePages reject is swallowed (still pushes) ───────────
+
+describe('I-20: enablePages reject swallowing', () => {
+  it('logs a manual-enable hint when enablePages throws but still runs the git push', async () => {
+    // setupGitHubPages (init.ts:79-95) catches enablePages errors and logs
+    // a hint pointing at the manual settings URL. pushNewRepo runs
+    // unconditionally AFTER setupGitHubPages — a regression that hoists
+    // the push inside the try/catch would silently skip the push on any
+    // Pages failure, leaving the user with a created-but-empty repo.
+    vi.mocked(select).mockResolvedValue('public');
+    vi.mocked(execa).mockImplementation((async (cmd: string, args?: readonly string[]) => {
+      if (args?.[0] === 'auth' && args?.[1] === 'status') return { exitCode: 0, stdout: '', stderr: '' };
+      if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.name') return { exitCode: 0, stdout: 'User', stderr: '' };
+      if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.email') return { exitCode: 0, stdout: 'u@e.com', stderr: '' };
+      if (args?.[0] === 'api' && args?.[1] === 'user') {
+        return { exitCode: 0, stdout: JSON.stringify({ login: 'testuser', plan: { name: 'pro' } }), stderr: '' };
+      }
+      // /pages POST fails fatally (e.g. repo not yet ready for Pages —
+      // realistic 422 right after createRepo before GitHub settles).
+      if (args?.[0] === 'api' && args?.includes('--method') && args?.includes('POST')
+          && args.some(a => String(a).includes('/pages'))) {
+        return { exitCode: 1, stdout: '', stderr: 'gh: API request failed: 422 Unprocessable Entity' };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }) as never);
+
+    const lines: string[] = [];
+    const { run } = await import('../../src/commands/init.js');
+    await run('PagesFailVault', { cfgPath: join(tmp, '.claude.json'), log: arrayLogger(lines) }).catch(() => {});
+
+    // The manual-enable hint MUST appear in logs
+    expect(lines.some(l => /Could not auto-enable GitHub Pages/i.test(l))).toBe(true);
+    expect(lines.some(l => /Enable manually/i.test(l))).toBe(true);
+
+    // pushNewRepo MUST still run
+    const pushCall = vi.mocked(execa).mock.calls.find(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args.includes('push');
+    });
+    expect(pushCall).toBeDefined();
+  });
+});
+
+// ── I-21: Phase 5/6 setPagesVisibility reject is swallowed (auth-gated) ──────
+
+describe('I-21: setPagesVisibility reject swallowing (auth-gated)', () => {
+  it('logs a warning when setPagesVisibility fails after enablePages succeeded', async () => {
+    // setupGitHubPages (init.ts:88-94) calls setPagesVisibility only when
+    // pagesPrivate is true (auth-gated). If that PUT fails, the catch
+    // logs a "may be publicly accessible" warning. The flow continues —
+    // the repo is private, just the Pages site might be public-readable.
+    vi.mocked(select).mockResolvedValue('auth-gated');
+    vi.mocked(execa).mockImplementation((async (cmd: string, args?: readonly string[]) => {
+      if (args?.[0] === 'auth' && args?.[1] === 'status') return { exitCode: 0, stdout: '', stderr: '' };
+      if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.name') return { exitCode: 0, stdout: 'User', stderr: '' };
+      if (cmd === 'git' && args?.[0] === 'config' && args?.[1] === 'user.email') return { exitCode: 0, stdout: 'u@e.com', stderr: '' };
+      if (args?.[0] === 'api' && args?.[1] === 'user') {
+        return { exitCode: 0, stdout: JSON.stringify({ login: 'testuser', plan: { name: 'pro' } }), stderr: '' };
+      }
+      // PUT /pages with public=false fails (e.g. permission issue)
+      if (args?.[0] === 'api' && args?.includes('--method') && args?.includes('PUT')
+          && args.some(a => String(a).includes('/pages'))) {
+        return { exitCode: 1, stdout: '', stderr: 'gh: API request failed: 403 Forbidden' };
+      }
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }) as never);
+
+    const lines: string[] = [];
+    const { run } = await import('../../src/commands/init.js');
+    await run('PrivPagesVault', { cfgPath: join(tmp, '.claude.json'), log: arrayLogger(lines) }).catch(() => {});
+
+    // The "may be publicly accessible" warning MUST appear
+    expect(lines.some(l => /Could not set Pages to private/i.test(l))).toBe(true);
+    expect(lines.some(l => /publicly accessible/i.test(l))).toBe(true);
+
+    // pushNewRepo MUST still run despite the Pages-visibility failure
+    const pushCall = vi.mocked(execa).mock.calls.find(c => {
+      const args = c[1] as unknown;
+      return Array.isArray(args) && args.includes('push');
+    });
+    expect(pushCall).toBeDefined();
+  });
+});
+
 // ── I-18: vault name at NAME_MAX_LENGTH boundary ─────────────────────────────
 
 describe('I-18: vault name boundary', () => {
