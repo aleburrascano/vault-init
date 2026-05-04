@@ -151,6 +151,34 @@ export async function ensureGitConfig({ nameOpt, emailOpt }: EnsureGitConfigOpti
  * `delete_repo` is NOT one of the required scopes — it's granted on demand
  * by `vaultkit destroy` only.
  */
+/**
+ * Commands that bypass the bootstrap gate. Two members:
+ *   - `setup`  — the gate is a check-only mirror of what setup itself
+ *                installs/configures; setup must be runnable when prereqs
+ *                are missing (that's its whole job).
+ *   - `doctor` — the diagnostic command. Must always work so users can
+ *                see what's broken without being blocked by the gate.
+ *
+ * Co-located with `requireSetup` so a single import wires the entire gate.
+ * Exported as a `Set<string>` so callers can also `SETUP_BYPASS.has(name)`
+ * directly when needed (e.g. the architecture fitness function).
+ */
+export const SETUP_BYPASS: ReadonlySet<string> = new Set(['setup', 'doctor']);
+
+/**
+ * Apply the bootstrap gate for a command, or skip if the command is in
+ * `SETUP_BYPASS`. Used by `bin/vaultkit.ts:wrap()` so the gate is one
+ * call rather than an inline conditional.
+ *
+ * Calling shape mirrors `requireSetup` itself — accepts a Logger so the
+ * gate can emit guidance later if we ever want to (today it's silent on
+ * the happy path).
+ */
+export async function gateOrSkip(commandName: string, log: Logger): Promise<void> {
+  if (SETUP_BYPASS.has(commandName)) return;
+  await requireSetup(log);
+}
+
 export async function requireSetup(_log: Logger): Promise<void> {
   const node = checkNode();
   if (!node.ok) {
