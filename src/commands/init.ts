@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { confirm, select } from '@inquirer/prompts';
-import { execa } from 'execa';
 import { validateName, sha256 } from '../lib/vault.js';
 import { renderVaultJson } from '../lib/vault-templates.js';
 import { createDirectoryTree, writeLayoutFiles, CANONICAL_LAYOUT_FILES } from '../lib/vault-layout.js';
@@ -9,7 +8,7 @@ import { findTool, vaultsRoot } from '../lib/platform.js';
 import { getLauncherTemplate, getDeployTemplate } from '../lib/template-paths.js';
 import { checkNode, ensureGh, ensureGhAuth, ensureGitConfig } from '../lib/prereqs.js';
 import { findOrInstallClaude, runMcpAdd, runMcpRemove, manualMcpAddCommand } from '../lib/mcp.js';
-import { setDefaultBranch, addRemote, pushNewRepo } from '../lib/git.js';
+import { init as gitInit, setDefaultBranch, addRemote, add as gitAdd, commit as gitCommit, pushNewRepo } from '../lib/git.js';
 import { ghJsonWithInput } from '../lib/gh-retry.js';
 import { createRepo, deleteRepo, repoUrl, repoCloneUrl } from '../lib/github-repo.js';
 import { enablePages, setPagesVisibility } from '../lib/github-pages.js';
@@ -206,10 +205,10 @@ export async function run(
 
     // [3/6] Git init + initial commit
     log.info('[3/6] Committing initial files...');
-    await execa('git', ['init', vaultDir]);
+    await gitInit(vaultDir);
     await setDefaultBranch(vaultDir, 'main');
-    await execa('git', ['-C', vaultDir, 'add', '.']);
-    await execa('git', ['-C', vaultDir, 'commit', '-m', `chore: initialize ${name}`]);
+    await gitAdd(vaultDir, '.');
+    await gitCommit(vaultDir, `chore: initialize ${name}`);
 
     // [4/6] GitHub repo. Flip createdRepo BEFORE addRemote so a local-side
     // failure (stale remote, perms) still triggers deleteRepo in rollback —
