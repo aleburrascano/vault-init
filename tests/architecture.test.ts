@@ -175,3 +175,52 @@ describe('architecture: command module shape', () => {
     expect(violations).toEqual([]);
   });
 });
+
+describe('architecture: bootstrap gate is wired', () => {
+  it('bin/vaultkit.ts:wrap() applies gateOrSkip before running the command handler', async () => {
+    const text = readFileSync(join(REPO_ROOT, 'bin/vaultkit.ts'), 'utf8');
+    // The gate must be invoked from inside wrap() — assert both the
+    // import and a top-level call exist. Catches the regression where
+    // someone removes the gate call but leaves the import (or vice versa).
+    expect(text, 'bin/vaultkit.ts is not importing gateOrSkip from prereqs').toMatch(
+      /import\s+\{[^}]*\bgateOrSkip\b[^}]*\}\s+from\s+['"]\.\.\/src\/lib\/prereqs\.js['"]/,
+    );
+    // Match a non-commented line: line-start, optional whitespace, then
+    // `await gateOrSkip(commandName, ...)`. The `^\s*await` anchor is
+    // important — without it, a commented-out `// await gateOrSkip(...)`
+    // would still match and the regression would slip through.
+    expect(text, 'bin/vaultkit.ts is not calling gateOrSkip(commandName, ...) in an active line').toMatch(
+      /^\s*await\s+gateOrSkip\s*\(\s*commandName\s*,/m,
+    );
+  });
+
+  it('every src/commands/*.ts file declares its gate posture in tests/bootstrap-gate.test.ts', async () => {
+    // Self-maintaining check: a new command added via /add-command must
+    // appear in either COMMANDS_THAT_MUST_BE_GATED or BYPASS in the
+    // bootstrap-gate test. Otherwise this fitness function fails and
+    // points the contributor at the test file to declare the posture.
+    const commandFiles = await readSourceFiles('src/commands/*.ts');
+    const commandNames = commandFiles.map(f => basename(f.path).replace(/\.ts$/, ''));
+    const gateTestText = readFileSync(join(REPO_ROOT, 'tests/bootstrap-gate.test.ts'), 'utf8');
+    const undeclared: string[] = [];
+    for (const name of commandNames) {
+      // Match the command name as a quoted literal anywhere in the file —
+      // the lists currently use single quotes, but accept double quotes
+      // and backticks too in case future formatting changes.
+      const literal = new RegExp(`['"\`]${name}['"\`]`);
+      if (!literal.test(gateTestText)) {
+        undeclared.push(name);
+      }
+    }
+    if (undeclared.length > 0) {
+      expect.fail(
+        `Commands missing gate-posture declaration in tests/bootstrap-gate.test.ts:\n` +
+        `  ${undeclared.join(', ')}\n\n` +
+        `Each new command must appear in either COMMANDS_THAT_MUST_BE_GATED (the\n` +
+        `default — gate fires when prereqs are missing) or BYPASS (rare — only for\n` +
+        `setup and doctor today). The /add-command skill should remind you, but\n` +
+        `this fitness function is the backstop.`,
+      );
+    }
+  });
+});
