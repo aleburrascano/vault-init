@@ -1048,7 +1048,8 @@ liveDescribe('live: init creates real GitHub repo', { timeout: 60_000 }, () => {
   }, 60_000);
 
   it('creates the GitHub repo', async () => {
-    const { repoExists, getCurrentUser } = await import('../../src/lib/github.js');
+    const { repoExists } = await import('../../src/lib/github-repo.js');
+    const { getCurrentUser } = await import('../../src/lib/github-auth.js');
     const user = await getCurrentUser();
     expect(await repoExists(`${user}/${LIVE_VAULT}`)).toBe(true);
   });

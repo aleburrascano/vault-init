@@ -19,14 +19,19 @@ vi.mock('../../src/lib/platform.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../src/lib/platform.js')>();
   return { ...real, findTool: vi.fn() };
 });
-vi.mock('../../src/lib/github.js', async (importOriginal) => {
-  const real = await importOriginal<typeof import('../../src/lib/github.js')>();
+vi.mock('../../src/lib/github-repo.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/lib/github-repo.js')>();
   return {
     ...real,
     isAdmin: vi.fn(),
     getVisibility: vi.fn(),
     setRepoVisibility: vi.fn(),
-    requireAuthGatedEligible: vi.fn(),
+  };
+});
+vi.mock('../../src/lib/github-pages.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/lib/github-pages.js')>();
+  return {
+    ...real,
     enablePages: vi.fn(),
     setPagesVisibility: vi.fn(),
     disablePages: vi.fn(),
@@ -34,15 +39,18 @@ vi.mock('../../src/lib/github.js', async (importOriginal) => {
     getPagesVisibility: vi.fn(),
   };
 });
+vi.mock('../../src/lib/github-auth.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/lib/github-auth.js')>();
+  return { ...real, requireAuthGatedEligible: vi.fn() };
+});
 
 import { confirm } from '@inquirer/prompts';
 import { execa } from 'execa';
 import { add, commit, pushOrPr } from '../../src/lib/git.js';
 import { findTool } from '../../src/lib/platform.js';
-import {
-  isAdmin, getVisibility, setRepoVisibility, requireAuthGatedEligible,
-  enablePages, setPagesVisibility, disablePages, pagesExist, getPagesVisibility,
-} from '../../src/lib/github.js';
+import { isAdmin, getVisibility, setRepoVisibility } from '../../src/lib/github-repo.js';
+import { enablePages, setPagesVisibility, disablePages, pagesExist, getPagesVisibility } from '../../src/lib/github-pages.js';
+import { requireAuthGatedEligible } from '../../src/lib/github-auth.js';
 import { writeCfg } from '../helpers/registry.js';
 
 let tmp: string;
@@ -400,15 +408,17 @@ describe.skip('live: visibility toggles real GitHub repo', { timeout: 60_000 }, 
     vi.mocked(add).mockImplementation(realGit.add);
     vi.mocked(commit).mockImplementation(realGit.commit);
     vi.mocked(pushOrPr).mockImplementation(realGit.pushOrPr);
-    const realGithub = await vi.importActual<typeof import('../../src/lib/github.js')>('../../src/lib/github.js');
-    vi.mocked(isAdmin).mockImplementation(realGithub.isAdmin);
-    vi.mocked(getVisibility).mockImplementation(realGithub.getVisibility);
-    vi.mocked(requireAuthGatedEligible).mockImplementation(realGithub.requireAuthGatedEligible);
-    vi.mocked(enablePages).mockImplementation(realGithub.enablePages);
-    vi.mocked(setPagesVisibility).mockImplementation(realGithub.setPagesVisibility);
-    vi.mocked(disablePages).mockImplementation(realGithub.disablePages);
-    vi.mocked(pagesExist).mockImplementation(realGithub.pagesExist);
-    vi.mocked(getPagesVisibility).mockImplementation(realGithub.getPagesVisibility);
+    const realGithubRepo = await vi.importActual<typeof import('../../src/lib/github-repo.js')>('../../src/lib/github-repo.js');
+    vi.mocked(isAdmin).mockImplementation(realGithubRepo.isAdmin);
+    vi.mocked(getVisibility).mockImplementation(realGithubRepo.getVisibility);
+    const realGithubPages = await vi.importActual<typeof import('../../src/lib/github-pages.js')>('../../src/lib/github-pages.js');
+    vi.mocked(enablePages).mockImplementation(realGithubPages.enablePages);
+    vi.mocked(setPagesVisibility).mockImplementation(realGithubPages.setPagesVisibility);
+    vi.mocked(disablePages).mockImplementation(realGithubPages.disablePages);
+    vi.mocked(pagesExist).mockImplementation(realGithubPages.pagesExist);
+    vi.mocked(getPagesVisibility).mockImplementation(realGithubPages.getPagesVisibility);
+    const realGithubAuth = await vi.importActual<typeof import('../../src/lib/github-auth.js')>('../../src/lib/github-auth.js');
+    vi.mocked(requireAuthGatedEligible).mockImplementation(realGithubAuth.requireAuthGatedEligible);
   }
 
   beforeEach(restoreReal);
@@ -419,14 +429,16 @@ describe.skip('live: visibility toggles real GitHub repo', { timeout: 60_000 }, 
     // body's assertion sequence starts from a known state.
     const { getVaultDir } = await import('../../src/lib/registry.js');
     if ((await getVaultDir(fixtureName)) === null) {
-      const { getCurrentUser } = await import('../../src/lib/github.js');
+      const { getCurrentUser } = await import('../../src/lib/github-auth.js');
       const user = await getCurrentUser();
       const { run: connectRun } = await import('../../src/commands/connect.js');
       await connectRun(`${user}/${fixtureName}`, { skipMcp: true, log: silent });
     }
 
-    const { getVisibility: realGetVisibility, getCurrentUser, setRepoVisibility } =
-      await vi.importActual<typeof import('../../src/lib/github.js')>('../../src/lib/github.js');
+    const { getVisibility: realGetVisibility, setRepoVisibility } =
+      await vi.importActual<typeof import('../../src/lib/github-repo.js')>('../../src/lib/github-repo.js');
+    const { getCurrentUser } =
+      await vi.importActual<typeof import('../../src/lib/github-auth.js')>('../../src/lib/github-auth.js');
     const user = await getCurrentUser();
     const slug = `${user}/${fixtureName}`;
     if ((await realGetVisibility(slug)) !== 'private') {
@@ -440,8 +452,10 @@ describe.skip('live: visibility toggles real GitHub repo', { timeout: 60_000 }, 
     // orphan sweep + a subsequent test's beforeEach, which both reset.
     try {
       const fixtureName = getFixtureName();
-      const { getVisibility: realGetVisibility, getCurrentUser, setRepoVisibility } =
-        await vi.importActual<typeof import('../../src/lib/github.js')>('../../src/lib/github.js');
+      const { getVisibility: realGetVisibility, setRepoVisibility } =
+        await vi.importActual<typeof import('../../src/lib/github-repo.js')>('../../src/lib/github-repo.js');
+      const { getCurrentUser } =
+        await vi.importActual<typeof import('../../src/lib/github-auth.js')>('../../src/lib/github-auth.js');
       const user = await getCurrentUser();
       const slug = `${user}/${fixtureName}`;
       if ((await realGetVisibility(slug)) !== 'private') {
@@ -455,7 +469,8 @@ describe.skip('live: visibility toggles real GitHub repo', { timeout: 60_000 }, 
   it('toggles private vault to public and back', async () => {
     const fixtureName = getFixtureName();
     const { run } = await import('../../src/commands/visibility.js');
-    const { getVisibility, getCurrentUser } = await import('../../src/lib/github.js');
+    const { getVisibility } = await import('../../src/lib/github-repo.js');
+    const { getCurrentUser } = await import('../../src/lib/github-auth.js');
     const user = await getCurrentUser();
     const slug = `${user}/${fixtureName}`;
 

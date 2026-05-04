@@ -58,7 +58,8 @@ liveDescribe('live: destroy removes real GitHub repo', { timeout: 60_000 }, () =
 
   afterAll(async () => {
     // Force cleanup in case test failed before destroy ran
-    const { repoExists, getCurrentUser } = await import('../../src/lib/github.js');
+    const { repoExists } = await import('../../src/lib/github-repo.js');
+    const { getCurrentUser } = await import('../../src/lib/github-auth.js');
     const { execa } = await import('execa');
     const { findTool } = await import('../../src/lib/platform.js');
     const user = await getCurrentUser().catch(() => null);
@@ -75,7 +76,8 @@ liveDescribe('live: destroy removes real GitHub repo', { timeout: 60_000 }, () =
     const { run } = await import('../../src/commands/destroy.js');
     await run(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: silent });
 
-    const { repoExists, getCurrentUser } = await import('../../src/lib/github.js');
+    const { repoExists } = await import('../../src/lib/github-repo.js');
+    const { getCurrentUser } = await import('../../src/lib/github-auth.js');
     const user = await getCurrentUser();
     expect(await repoExists(`${user}/${LIVE_VAULT}`)).toBe(false);
   });

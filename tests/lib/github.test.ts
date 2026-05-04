@@ -1,10 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import {
-  _parseUserJson,
-  _parsePlanJson,
-  _parseRepoJson,
-  _parsePagesJson,
-} from '../../src/lib/github.js';
+import { _parseUserJson, _parsePlanJson } from '../../src/lib/github-auth.js';
+import { _parseRepoJson } from '../../src/lib/github-repo.js';
+import { _parsePagesJson } from '../../src/lib/github-pages.js';
 
 // Tests only the pure JSON-parsing helpers — no gh CLI invoked.
 // Integration tests (createRepo, deleteRepo, etc.) are deferred to manual testing.

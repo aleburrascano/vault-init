@@ -13,15 +13,20 @@ vi.mock('../../src/lib/platform.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../src/lib/platform.js')>();
   return { ...real, findTool: vi.fn() };
 });
-vi.mock('../../src/lib/github.js', async (importOriginal) => {
-  const real = await importOriginal<typeof import('../../src/lib/github.js')>();
-  return { ...real, isAdmin: vi.fn(), ensureDeleteRepoScope: vi.fn() };
+vi.mock('../../src/lib/github-repo.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/lib/github-repo.js')>();
+  return { ...real, isAdmin: vi.fn() };
+});
+vi.mock('../../src/lib/github-auth.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/lib/github-auth.js')>();
+  return { ...real, ensureDeleteRepoScope: vi.fn() };
 });
 
 import { input } from '@inquirer/prompts';
 import { execa } from 'execa';
 import { findTool } from '../../src/lib/platform.js';
-import { isAdmin, ensureDeleteRepoScope } from '../../src/lib/github.js';
+import { isAdmin } from '../../src/lib/github-repo.js';
+import { ensureDeleteRepoScope } from '../../src/lib/github-auth.js';
 import { writeCfg } from '../helpers/registry.js';
 
 let tmp: string;

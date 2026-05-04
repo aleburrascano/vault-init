@@ -6,11 +6,9 @@ import { renderVaultJson } from '../lib/vault-templates.js';
 import { findTool } from '../lib/platform.js';
 import { getDeployTemplate } from '../lib/template-paths.js';
 import { add, commit, pushOrPr, getRepoSlug } from '../lib/git.js';
-import {
-  getVisibility, isAdmin, requireAuthGatedEligible,
-  enablePages, setPagesVisibility, setRepoVisibility, disablePages, pagesExist, getPagesVisibility,
-  repoUrl,
-} from '../lib/github.js';
+import { getVisibility, isAdmin, setRepoVisibility, repoUrl } from '../lib/github-repo.js';
+import { enablePages, setPagesVisibility, disablePages, pagesExist, getPagesVisibility } from '../lib/github-pages.js';
+import { requireAuthGatedEligible } from '../lib/github-auth.js';
 import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
 import { PROMPTS, LABELS } from '../lib/messages.js';

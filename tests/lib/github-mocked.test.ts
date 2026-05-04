@@ -17,19 +17,23 @@ import {
   isAdmin,
   getVisibility,
   setRepoVisibility,
+  repoUrl,
+  repoCloneUrl,
+} from '../../src/lib/github-repo.js';
+import {
   enablePages,
   setPagesVisibility,
   disablePages,
   pagesExist,
   getPagesVisibility,
+  pagesUrl,
+} from '../../src/lib/github-pages.js';
+import {
   getCurrentUser,
   getUserPlan,
   isAuthenticated,
   ensureDeleteRepoScope,
-  repoUrl,
-  repoCloneUrl,
-  pagesUrl,
-} from '../../src/lib/github.js';
+} from '../../src/lib/github-auth.js';
 import { findTool } from '../../src/lib/platform.js';
 
 const GH_PATH = '/usr/bin/gh';

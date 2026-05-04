@@ -10,11 +10,9 @@ import { getLauncherTemplate, getDeployTemplate } from '../lib/template-paths.js
 import { checkNode, ensureGh, ensureGhAuth, ensureGitConfig } from '../lib/prereqs.js';
 import { findOrInstallClaude, runMcpAdd, runMcpRemove, manualMcpAddCommand } from '../lib/mcp.js';
 import { setDefaultBranch, addRemote, pushNewRepo } from '../lib/git.js';
-import {
-  createRepo, deleteRepo, getCurrentUser, requireAuthGatedEligible,
-  enablePages, setPagesVisibility,
-  repoUrl, repoCloneUrl,
-} from '../lib/github.js';
+import { createRepo, deleteRepo, repoUrl, repoCloneUrl } from '../lib/github-repo.js';
+import { enablePages, setPagesVisibility } from '../lib/github-pages.js';
+import { getCurrentUser, requireAuthGatedEligible } from '../lib/github-auth.js';
 import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
 import { VAULT_FILES, VAULT_DIRS, WORKFLOW_FILES, PUBLISH_MODES, isPublishMode, type PublishMode } from '../lib/constants.js';
