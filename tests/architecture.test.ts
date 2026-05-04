@@ -28,18 +28,17 @@ const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
  * reason. Future contributors should resist adding entries without a
  * written justification.
  *
- * Most categories enforced without exemptions. The `git-bypass-execa`
- * category is being unwound across A3-A8 (see plan
- * `can-you-go-through-inherited-squirrel.md`); each migration commit
- * removes one entry from the list. A future commit removes the category
- * and its EXCEPTIONS row entirely.
+ * Empty today — every category enumerated below is enforced without
+ * exemptions. New violations must either fix or earn an entry here.
+ *
+ * History: the `git-bypass-execa` category was used during the A2-A8
+ * migration (May 2026, ADR-0007) to grandfather six pre-existing raw
+ * `execa('git', …)` call sites while they were unwound one commit at
+ * a time. The category was cleared in A8 and removed in A9. The pattern
+ * is the template for future unwinding work — start with EXCEPTIONS
+ * populated, then drain it.
  */
 const EXCEPTIONS: Record<string, string[]> = {
-  // Pre-existing raw `execa('git', …)` call sites in command files,
-  // grandfathered when the git ACL fitness function was introduced.
-  // Each migration to src/lib/git.ts wrappers removes one entry.
-  // Empty — A8 cleared the last entry. The category itself can be removed
-  // when ADR-0007 lands and the comment block above no longer references it.
 };
 
 async function readSourceFiles(pattern: string): Promise<Array<{ path: string; text: string }>> {

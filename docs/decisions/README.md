@@ -21,6 +21,7 @@ Format: [Michael Nygard's template](https://cognitect.com/blog/2011/11/15/docume
 | [ADR-0004](0004-deleteRepo-via-gh-api-for-header-aware-retry.md) | `deleteRepo` migrated to `gh api` for header-aware retry | Accepted |
 | [ADR-0005](0005-two-pat-round-robin-and-burst-rate-hardening.md) | Two-PAT round-robin and burst-rate hardening in CI | Accepted |
 | [ADR-0006](0006-vitest-fileParallelism-disabled.md) | Vitest `fileParallelism: false` for shared-state safety | Accepted |
+| [ADR-0007](0007-git-cli-acl-via-src-lib-git.md) | Git CLI Anti-Corruption Layer via `src/lib/git.ts` | Accepted |
 | [ADR-0009](0009-bootstrap-gate-at-dispatch-layer.md) | Bootstrap gate at the dispatch layer | Accepted |
 
 ## When to add an ADR
