@@ -176,6 +176,99 @@ describe('architecture: command module shape', () => {
   });
 });
 
+describe('architecture: layer dependency rule', () => {
+  it('no file in src/lib/ imports from src/commands/', async () => {
+    // The layering is bin → commands → libs. A lib importing from a command
+    // would create either a cycle or an upward dependency — both signal the
+    // wrong layer for whatever is being shared. If the shared logic exists,
+    // it belongs in another lib that both the source command AND consumers
+    // can import.
+    const files = await readSourceFiles('src/lib/**/*.ts');
+    const violations: Array<{ path: string; lines: string[] }> = [];
+    for (const { path, text } of files) {
+      const lines = text.split('\n');
+      const hits = lines
+        .map((line, i) => ({ line: line.trim(), num: i + 1 }))
+        .filter(({ line }) =>
+          /from\s+['"](?:\.\.\/commands\/|\.\.\/\.\.\/src\/commands\/)/.test(line),
+        );
+      if (hits.length > 0) {
+        violations.push({ path, lines: hits.map(({ line, num }) => `:${num}  ${line}`) });
+      }
+    }
+    if (violations.length > 0) {
+      const msg = violations.map(v => `${v.path}\n  ${v.lines.join('\n  ')}`).join('\n');
+      expect.fail(
+        `Files in src/lib/ that import from src/commands/ — this inverts the\n` +
+        `intended layering. If the logic needs to be shared, extract it to a\n` +
+        `new lib both commands and libs can import.\n\n` +
+        `Violations:\n${msg}`,
+      );
+    }
+  });
+});
+
+describe('architecture: logger boundary', () => {
+  it('no file in src/ outside src/lib/logger.ts uses console.*', async () => {
+    // The Logger interface is the project's only DI seam (per code-style.md
+    // and ADR-0009 context). Reaching for console.* directly bypasses
+    // ConsoleLogger / SilentLogger and breaks tests that assert on
+    // arrayLogger output. The bin/ layer is intentionally allowed (verbose
+    // debug telemetry — there's no Logger plumbed at that level), so this
+    // check is scoped to src/ only.
+    const files = await readSourceFiles('src/**/*.ts');
+    const violations: Array<{ path: string; lines: string[] }> = [];
+    for (const { path, text } of files) {
+      if (path === 'src/lib/logger.ts') continue;
+      const lines = text.split('\n');
+      const hits = lines
+        .map((line, i) => ({ line: line.trim(), num: i + 1 }))
+        .filter(({ line }) => /\bconsole\.(log|warn|error|info|debug)\s*\(/.test(line));
+      if (hits.length > 0) {
+        violations.push({ path, lines: hits.map(({ line, num }) => `:${num}  ${line}`) });
+      }
+    }
+    if (violations.length > 0) {
+      const msg = violations.map(v => `${v.path}\n  ${v.lines.join('\n  ')}`).join('\n');
+      expect.fail(
+        `Files in src/ outside src/lib/logger.ts using console.* directly.\n` +
+        `Route through the Logger interface (RunOptions.log for commands;\n` +
+        `accept a Logger parameter for lib functions that print).\n\n` +
+        `Violations:\n${msg}`,
+      );
+    }
+  });
+});
+
+describe('architecture: inter-command imports', () => {
+  it('no src/commands/*.ts file imports from another src/commands/*.ts', async () => {
+    // Commands are the user-facing entry points. If one command needs
+    // another's logic, the logic should be extracted to a lib so both can
+    // call it without coupling commands to each other. The current pattern
+    // (e.g. init's rollback path uses `runMcpRemove` from mcp.ts, not
+    // `disconnect.run`) is the right shape — preserve it.
+    const files = await readSourceFiles('src/commands/*.ts');
+    const violations: Array<{ path: string; lines: string[] }> = [];
+    for (const { path, text } of files) {
+      const lines = text.split('\n');
+      const hits = lines
+        .map((line, i) => ({ line: line.trim(), num: i + 1 }))
+        .filter(({ line }) => /from\s+['"]\.\/[a-z]/.test(line));
+      if (hits.length > 0) {
+        violations.push({ path, lines: hits.map(({ line, num }) => `:${num}  ${line}`) });
+      }
+    }
+    if (violations.length > 0) {
+      const msg = violations.map(v => `${v.path}\n  ${v.lines.join('\n  ')}`).join('\n');
+      expect.fail(
+        `Command files importing from sibling command files. Extract the\n` +
+        `shared logic to a lib and have both commands call it.\n\n` +
+        `Violations:\n${msg}`,
+      );
+    }
+  });
+});
+
 describe('architecture: bootstrap gate is wired', () => {
   it('bin/vaultkit.ts:wrap() applies gateOrSkip before running the command handler', async () => {
     const text = readFileSync(join(REPO_ROOT, 'bin/vaultkit.ts'), 'utf8');

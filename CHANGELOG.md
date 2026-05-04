@@ -18,6 +18,12 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 - **README install section** now uses an `> [!IMPORTANT]` admonition naming the new failure mode (`Error: vaultkit isn't set up yet`) so fresh-install users discover the requirement before hitting it.
 - **[ADR-0009: Bootstrap gate at the dispatch layer](docs/decisions/0009-bootstrap-gate-at-dispatch-layer.md)** records the decision, alternatives rejected (npm postinstall, per-command preflight, marker files), and the consequences. Cross-linked from `.claude/rules/architecture.md` and `domain-language.md`.
 
+### Architecture
+- **Three new architectural fitness functions in `tests/architecture.test.ts`:**
+  - **Layer dependency rule** — no file in `src/lib/` may import from `src/commands/`. Catches the inverted-dependency mistake where a lib reaches into a command (would create a cycle or signal that the lib belongs at a different layer).
+  - **Logger boundary** — no file in `src/` outside `src/lib/logger.ts` may use `console.*` directly. Routes all output through the `Logger` interface so tests can assert on `arrayLogger` capture without intercepting stdio. The bin layer (`bin/vaultkit.ts`) is intentionally out of scope: verbose-debug telemetry there has no Logger plumbed.
+  - **Inter-command imports** — no `src/commands/*.ts` may import from a sibling command. Shared logic must live in a lib so commands stay decoupled. Both regression-tested by injecting violations and confirming the fitness function fails.
+
 ## [2.7.4] - 2026-05-03
 
 ### Improved
