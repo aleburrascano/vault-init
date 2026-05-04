@@ -239,13 +239,96 @@ export interface CloneOptions {
   useGh?: boolean;
 }
 
+/**
+ * Classify a clone failure's stderr into a typed `VaultkitError`. Mirrors
+ * `gh-retry.ts:_classifyGhFailure` for the gh-API path and the existing
+ * `isAccountFlaggedStderr` helper above. Exposed as `_classifyCloneFailure`
+ * (underscore prefix = test-only export, per the project convention).
+ *
+ * Categories:
+ *   - `auth_flagged` → `AUTH_REQUIRED` (account abuse-flag)
+ *   - `not_found`    → `UNRECOGNIZED_INPUT` (repo doesn't exist or no access)
+ *   - `permission`   → `AUTH_REQUIRED` (SSH key / auth issue)
+ *   - `network`      → `NETWORK_TIMEOUT` (DNS / connection / timeout)
+ *   - `unknown`      → null (caller re-throws original error verbatim)
+ */
+export function _classifyCloneFailure(stderr: string, repo: string): VaultkitError | null {
+  if (isAccountFlaggedStderr(stderr)) {
+    return new VaultkitError(
+      'AUTH_REQUIRED',
+      `GitHub disabled the upstream repo — the account is likely abuse-flagged.\n` +
+        `  (repo: ${repo})`,
+    );
+  }
+  // gh repo clone wraps `gh: Could not resolve to a Repository`. git surfaces
+  // `Repository not found.` (HTTPS) or `ERROR: Repository ... not found` (SSH).
+  if (
+    /Could not resolve to a Repository/i.test(stderr) ||
+    /Repository not found/i.test(stderr) ||
+    /ERROR: Repository [^ ]+ not found/i.test(stderr) ||
+    /remote: Repository not found/i.test(stderr)
+  ) {
+    return new VaultkitError(
+      'UNRECOGNIZED_INPUT',
+      `Repository "${repo}" not found, or you don't have access.\n` +
+        `  Check the spelling. If it's a private repo, run 'vaultkit setup' to authenticate gh.`,
+    );
+  }
+  // SSH-key auth failure (the user used a git@ URL but their key isn't loaded).
+  if (
+    /Permission denied \(publickey\)/i.test(stderr) ||
+    /git@github\.com: Permission denied/i.test(stderr)
+  ) {
+    return new VaultkitError(
+      'AUTH_REQUIRED',
+      `SSH key not configured for GitHub.\n` +
+        `  Use the HTTPS form (https://github.com/${repo}) or run 'vaultkit setup' to authenticate gh.`,
+    );
+  }
+  // gh's HTTP 401 surface (rare — gh re-auths automatically; this catches
+  // edge cases where a stale token persists). Checked BEFORE the network
+  // regex below because a 401 surfaces as "unable to access ... HTTP 401",
+  // which the network catch-all would otherwise match first.
+  if (/HTTP 401/i.test(stderr) || /authentication required/i.test(stderr)) {
+    return new VaultkitError(
+      'AUTH_REQUIRED',
+      `Authentication required to clone ${repo}.\n` +
+        `  Run 'vaultkit setup' to (re)authenticate gh.`,
+    );
+  }
+  // DNS / connection failures — usually transient or offline. The
+  // generic `unable to access … returned error` catch-all is intentionally
+  // last so more specific error codes (401, 403 abuse-flag, 404 not-found)
+  // can match first.
+  if (
+    /Could not resolve host/i.test(stderr) ||
+    /Failed to connect to/i.test(stderr) ||
+    /Connection (refused|timed out|reset)/i.test(stderr) ||
+    /unable to access .* The requested URL returned error/i.test(stderr)
+  ) {
+    return new VaultkitError(
+      'NETWORK_TIMEOUT',
+      `Network error while cloning ${repo}.\n` +
+        `  Check your internet connection and try again.`,
+    );
+  }
+  return null;
+}
+
 export async function clone(repo: string, dest: string, { useGh = true }: CloneOptions = {}): Promise<void> {
   const gh = useGh ? await findTool('gh') : null;
-  if (gh) {
-    await execa(gh, ['repo', 'clone', repo, dest]);
-  } else {
-    await execa('git', ['clone', repo, dest]);
-  }
+  // Run with `reject: false` so we can classify the stderr before propagating.
+  // The execa call itself doesn't throw — we throw our own typed error below.
+  const result = gh
+    ? await execa(gh, ['repo', 'clone', repo, dest], { reject: false })
+    : await execa('git', ['clone', repo, dest], { reject: false });
+  if ((result.exitCode ?? 0) === 0) return;
+  const stderr = String(result.stderr ?? '');
+  const classified = _classifyCloneFailure(stderr, repo);
+  if (classified) throw classified;
+  // Unclassified failure — surface the raw stderr so the caller still has
+  // the diagnostic info, but include the repo for context.
+  throw new Error(`git clone of ${repo} failed${stderr ? `:\n${stderr.trim()}` : ''}`);
 }
 
 /**

@@ -10,6 +10,9 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 - **Universal bootstrap-gate test sweep at `tests/bootstrap-gate.test.ts`.** Parameterized over every `src/commands/*.ts` file: 11 non-bypass commands × 3 failure modes (gh missing, gh unauthed, git config empty) + 1 healthy-prereqs path + 2 bypass commands × 1 unconditional-pass path = 47 assertions. Catches the class of bug where a new command added via `/add-command` forgets to declare its gate posture, or where the gate stops firing for one specific command without anyone noticing.
 - **Architectural fitness functions for the bootstrap gate.** Two new checks in `tests/architecture.test.ts`: (1) `bin/vaultkit.ts:wrap()` actively calls `gateOrSkip(commandName, ...)` (not commented out, not behind a feature flag) and imports it from prereqs; (2) every `src/commands/*.ts` file's name appears in `bootstrap-gate.test.ts`'s `COMMANDS_THAT_MUST_BE_GATED` or `BYPASS` list. A new command added via `/add-command` cannot ship without declaring its gate posture — the fitness function fails CI until the contributor adds an entry.
 
+### Improved
+- **`clone()` failures translate to typed `VaultkitError` instead of raw git stderr.** Mirrors the pattern in `gh-retry.ts:_classifyGhFailure` for the gh-API path. Adds `_classifyCloneFailure(stderr, repo)` (test-only export, underscore prefix) covering: account-flagged (`AUTH_REQUIRED`), repo-not-found via gh or plain git (`UNRECOGNIZED_INPUT`), SSH publickey failure (`AUTH_REQUIRED`), HTTP 401 (`AUTH_REQUIRED`), DNS / connection / timeout (`NETWORK_TIMEOUT`). Unrecognized stderr re-throws as a plain `Error` with the original diagnostic preserved. Defense-in-depth alongside the bootstrap gate: even when prereqs are healthy, a typo'd repo slug or expired SSH key now surfaces a typed error pointing at `vaultkit setup` rather than dumping git stderr.
+
 ## [2.7.4] - 2026-05-03
 
 ### Improved
