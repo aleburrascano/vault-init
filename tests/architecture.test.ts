@@ -28,10 +28,25 @@ const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
  * reason. Future contributors should resist adding entries without a
  * written justification.
  *
- * Empty today — every category enumerated below is enforced without
- * exemptions. New violations must either fix or earn an entry here.
+ * Most categories enforced without exemptions. The `git-bypass-execa`
+ * category is being unwound across A3-A8 (see plan
+ * `can-you-go-through-inherited-squirrel.md`); each migration commit
+ * removes one entry from the list. A future commit removes the category
+ * and its EXCEPTIONS row entirely.
  */
-const EXCEPTIONS: Record<string, string[]> = {};
+const EXCEPTIONS: Record<string, string[]> = {
+  // Pre-existing raw `execa('git', …)` call sites in command files,
+  // grandfathered when the git ACL fitness function was introduced.
+  // Each migration to src/lib/git.ts wrappers removes one entry.
+  'git-bypass-execa': [
+    'src/commands/backup.ts',
+    'src/commands/doctor.ts',
+    'src/commands/init.ts',
+    'src/commands/status.ts',
+    'src/commands/update.ts',
+    'src/commands/verify.ts',
+  ],
+};
 
 async function readSourceFiles(pattern: string): Promise<Array<{ path: string; text: string }>> {
   const files: Array<{ path: string; text: string }> = [];
@@ -49,8 +64,8 @@ function isExempt(category: keyof typeof EXCEPTIONS, path: string): boolean {
 describe('architecture: gh CLI Anti-Corruption Layer', () => {
   it('no command file invokes gh via raw execa (must go through github-* or ghJson)', async () => {
     // Match either string-literal `execa('gh',`/`execa("gh",` or a
-    // variable named `ghPath` / `gh_path`. Anything else execa-shells
-    // out (notably git) is fine — git has its own ACL via src/lib/git.ts.
+    // variable named `ghPath` / `gh_path`. The matching git ACL check
+    // lives in the next describe block.
     const files = await readSourceFiles('src/commands/*.ts');
     const violations: Array<{ path: string; lines: string[] }> = [];
     for (const { path, text } of files) {
@@ -58,7 +73,14 @@ describe('architecture: gh CLI Anti-Corruption Layer', () => {
       const lines = text.split('\n');
       const hits = lines
         .map((line, i) => ({ line: line.trim(), num: i + 1 }))
-        .filter(({ line }) => /\bexeca\s*\(\s*(['"]gh['"]|ghPath|gh_path)\b/.test(line));
+        // The trailing alternation deliberately drops the `\b` that an
+        // earlier draft had — `\b` requires a word-char/non-word-char
+        // transition, but a quote `'` is not a word char, so a literal
+        // `'gh'` boundary never matched. Today's regex matches the
+        // literal-quote form via `['"]gh['"]` (no boundary needed because
+        // the closing quote already terminates the match) and the
+        // variable form via the explicit identifiers.
+        .filter(({ line }) => /\bexeca\s*\(\s*(['"]gh['"]|ghPath|gh_path)/.test(line));
       if (hits.length > 0) {
         violations.push({ path, lines: hits.map(({ line, num }) => `:${num}  ${line}`) });
       }
@@ -71,6 +93,45 @@ describe('architecture: gh CLI Anti-Corruption Layer', () => {
         `import { ghJson } from '../lib/gh-retry.js' for ad-hoc API calls.\n` +
         `If a follow-up is genuinely required, add the file path to\n` +
         `EXCEPTIONS['gh-bypass-execa'] in tests/architecture.test.ts with a reason.\n\n` +
+        `Violations:\n${msg}`,
+      );
+    }
+  });
+
+  it('no command file invokes git via raw execa (must go through src/lib/git.ts)', async () => {
+    // Mirror of the gh check for the matching git ACL. Match either
+    // `execa('git', …)` / `execa("git", …)` or a variable form
+    // (`gitPath` / `git_path`). src/lib/git.ts is the sole authorized
+    // call site — it owns retry, abuse-flag classification, and the
+    // typed VaultkitError translation. Bypassing it loses those, and
+    // makes the wrapper a half-truth ("the git ACL exists but six
+    // commands ignore it" — exactly the architecture-erosion case the
+    // fitness function category was designed to prevent).
+    //
+    // Six pre-existing violations are grandfathered in EXCEPTIONS.
+    // Migration commits A3-A8 remove them one at a time.
+    const files = await readSourceFiles('src/commands/*.ts');
+    const violations: Array<{ path: string; lines: string[] }> = [];
+    for (const { path, text } of files) {
+      if (isExempt('git-bypass-execa', path)) continue;
+      const lines = text.split('\n');
+      const hits = lines
+        .map((line, i) => ({ line: line.trim(), num: i + 1 }))
+        .filter(({ line }) => /\bexeca\s*\(\s*(['"]git['"]|gitPath|git_path)/.test(line));
+      if (hits.length > 0) {
+        violations.push({ path, lines: hits.map(({ line, num }) => `:${num}  ${line}`) });
+      }
+    }
+    if (violations.length > 0) {
+      const msg = violations.map(v => `${v.path}\n  ${v.lines.join('\n  ')}`).join('\n');
+      expect.fail(
+        `Found raw \`execa('git', ...)\` calls in command files. Route through\n` +
+        `the src/lib/git.ts wrappers (init/clone/push/pull/getStatus/archiveZip\n` +
+        `/pushNewRepo/pushOrPr/getRepoSlug, plus whichever new verb covers your\n` +
+        `case). If the verb you need doesn't exist yet, add it to git.ts before\n` +
+        `the call site so the ACL stays the sole owner.\n` +
+        `If a follow-up is genuinely required, add the file path to\n` +
+        `EXCEPTIONS['git-bypass-execa'] in tests/architecture.test.ts with a reason.\n\n` +
         `Violations:\n${msg}`,
       );
     }
