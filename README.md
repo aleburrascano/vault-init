@@ -11,9 +11,12 @@ Make an Obsidian wiki searchable by Claude Code — yours, your team's, or someo
 
 ```bash
 npm install -g @aleburrascano/vaultkit
-vaultkit setup     # one-time: checks node, gh, git, claude — installs/auths what's missing
+vaultkit setup     # REQUIRED: bootstraps prerequisites — see below
 vaultkit help
 ```
+
+> [!IMPORTANT]
+> **You must run `vaultkit setup` once after installing.** Every other command (`init`, `connect`, `pull`, `visibility`, …) refuses to run with `Error: vaultkit isn't set up yet` until setup verifies the prerequisites. The two exceptions are `vaultkit setup` itself (obviously) and `vaultkit doctor` (so you can diagnose without being blocked).
 
 `vaultkit setup` walks through every prerequisite in one go (node 22+, gh CLI, gh auth with `repo` + `workflow` scopes, git config, claude CLI). It's idempotent — re-run any time. The `delete_repo` scope is requested separately on the first `vaultkit destroy` so you're never asked up front to authorize a destructive permission you may never use.
 
