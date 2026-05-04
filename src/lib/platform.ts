@@ -1,64 +1,19 @@
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
 import { execa } from 'execa';
 import { confirm } from '@inquirer/prompts';
 import { VaultkitError } from './errors.js';
 import type { Logger } from './logger.js';
 
-const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
-
 /**
- * Absolute path to the byte-immutable launcher template
- * (`lib/mcp-start.js.tmpl`). In dev resolves to `<repo>/lib/...`; after
- * `npm run build` the post-build script copies the template into
- * `dist/lib/`, so the same `'../../lib/...'` offset works from
- * `dist/src/lib/platform.js`. Single source of truth — `init.ts` and
- * `update.ts` should call this rather than recomputing the path.
+ * Platform / OS / external-tool discovery. Owns: which platform we're on,
+ * where the user's home-dir state files live, where the vaults root is,
+ * how to find or install the `gh` and `claude` CLIs.
+ *
+ * Template path resolution lives in [template-paths.ts](./template-paths.ts)
+ * — that module changes for different reasons (new template, build pipeline)
+ * than this one (new OS, new tool to discover or install).
  */
-export function getLauncherTemplate(): string {
-  return join(SCRIPT_DIR, '../../lib/mcp-start.js.tmpl');
-}
-
-/**
- * Absolute path to the GitHub Pages deploy workflow template
- * (`lib/deploy.yml.tmpl`). Same resolution rules as `getLauncherTemplate`.
- * Used by `init.ts` (initial vault scaffolding) and `visibility.ts`
- * (when toggling a vault to a publishing mode that needs the workflow).
- */
-export function getDeployTemplate(): string {
-  return join(SCRIPT_DIR, '../../lib/deploy.yml.tmpl');
-}
-
-/**
- * Absolute path to the freshness GitHub Action template
- * (`lib/freshness.yml.tmpl`). Scheduled weekly run that invokes
- * `vaultkit refresh --vault-dir .` and opens a PR with the report.
- * Same dev/post-build resolution as `getLauncherTemplate`.
- */
-export function getFreshnessTemplate(): string {
-  return join(SCRIPT_DIR, '../../lib/freshness.yml.tmpl');
-}
-
-/**
- * Absolute path to the PR description scaffold
- * (`lib/pr-template.md.tmpl`). Asks contributors to declare the
- * Claude Code session config they used (model, thinking, effort)
- * when applying a freshness report. Same resolution as above.
- */
-export function getPrTemplate(): string {
-  return join(SCRIPT_DIR, '../../lib/pr-template.md.tmpl');
-}
-
-/**
- * Absolute path to the project-scoped Claude Code settings template
- * (`lib/claude-settings.json.tmpl`). Pins recommended model defaults
- * for refresh sessions where the vault directory is the cwd.
- * Same resolution as above.
- */
-export function getClaudeSettingsTemplate(): string {
-  return join(SCRIPT_DIR, '../../lib/claude-settings.json.tmpl');
-}
 
 export function isWindows(): boolean {
   return process.platform === 'win32';

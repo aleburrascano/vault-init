@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { confirm } from '@inquirer/prompts';
 import { Vault } from '../lib/vault.js';
 import { renderVaultJson } from '../lib/vault-templates.js';
-import { findTool, getDeployTemplate } from '../lib/platform.js';
+import { findTool } from '../lib/platform.js';
+import { getDeployTemplate } from '../lib/template-paths.js';
 import { add, commit, pushOrPr, getRepoSlug } from '../lib/git.js';
 import {
   getVisibility, isAdmin, requireAuthGatedEligible,

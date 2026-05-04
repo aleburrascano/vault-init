@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { renderManagedSection } from './claude-md-merge.js';
-import { getFreshnessTemplate, getPrTemplate, getClaudeSettingsTemplate } from './platform.js';
+import { getFreshnessTemplate, getPrTemplate, getClaudeSettingsTemplate } from './template-paths.js';
 
 export const WIKI_STYLE_SECTION_ID = 'wiki-style';
 export const WIKI_STYLE_HEADING = 'Wiki Style & Refresh Policy';

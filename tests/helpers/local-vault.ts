@@ -7,7 +7,7 @@ import {
   createDirectoryTree,
   writeLayoutFiles,
 } from '../../src/lib/vault-layout.js';
-import { getLauncherTemplate } from '../../src/lib/platform.js';
+import { getLauncherTemplate } from '../../src/lib/template-paths.js';
 import { sha256 } from '../../src/lib/vault.js';
 import { addToRegistry, removeFromRegistry } from '../../src/lib/registry.js';
 import { VAULT_FILES } from '../../src/lib/constants.js';

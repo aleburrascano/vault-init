@@ -464,9 +464,10 @@ describe('I-12: runMcpAdd argv shape', () => {
     await run('TmplVault', { cfgPath: join(tmp, '.claude.json'), log: silent }).catch(() => {});
 
     const { sha256 } = await import('../../src/lib/vault.js');
-    // getLauncherTemplate is NOT in the platform mock list (line 19) — it
-    // resolves to the real <repo>/lib/mcp-start.js.tmpl path.
-    const { getLauncherTemplate } = await import('../../src/lib/platform.js');
+    // getLauncherTemplate lives in template-paths.ts (not in this file's
+    // platform mock list) so it resolves to the real
+    // <repo>/lib/mcp-start.js.tmpl path.
+    const { getLauncherTemplate } = await import('../../src/lib/template-paths.js');
     const onDiskHash = await sha256(join(tmp, 'TmplVault', '.mcp-start.js'));
     const templateHash = await sha256(getLauncherTemplate());
     expect(onDiskHash).toBe(templateHash);
