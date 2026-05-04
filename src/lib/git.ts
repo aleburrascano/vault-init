@@ -165,6 +165,17 @@ export async function isWorktreeDirty(dir: string): Promise<boolean> {
 }
 
 /**
+ * Returns the raw human-readable output of `git status` (no `--porcelain`),
+ * suitable for printing directly to a terminal. Used by `status` for the
+ * single-vault detailed view. Distinct from `getStatus()` (structured) and
+ * `isWorktreeDirty()` (boolean) — pick whichever shape your caller needs.
+ */
+export async function getStatusText(dir: string): Promise<string> {
+  const result = await git(['status'], dir);
+  return String(result.stdout ?? '');
+}
+
+/**
  * Read a `git config` value (typically `user.name` / `user.email`). Returns
  * the trimmed string, or empty string when the key isn't set. Never throws —
  * an unset key is a normal "no value" result for callers (`doctor` uses this

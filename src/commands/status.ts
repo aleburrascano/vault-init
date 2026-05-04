@@ -1,8 +1,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { execa } from 'execa';
 import { getAllVaults } from '../lib/registry.js';
-import { getStatus } from '../lib/git.js';
+import { getStatus, getStatusText } from '../lib/git.js';
 import { Vault } from '../lib/vault.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
@@ -22,8 +21,7 @@ export async function run(
     }
     log.info(`${name}`);
     log.info(`  Path: ${vault.dir}`);
-    const result = await execa('git', ['-C', vault.dir, 'status'], { reject: false });
-    log.info(String(result.stdout ?? ''));
+    log.info(await getStatusText(vault.dir));
     return;
   }
 
