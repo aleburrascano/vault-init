@@ -34,6 +34,7 @@ paths:
 - Call `log.info(...)` for normal output (was: every `log(...)` call before v2.1.0). Use `log.warn(...)` for recoverable conditions; `log.error(...)` for fatal-but-handled. `log.debug(...)` is verbose-only.
 - Don't prefix info messages with `Warning:` and route them through `log.info` — use `log.warn(...)` and drop the prefix; the level conveys it.
 - Tests use `silent` (no-op singleton) or `arrayLogger(lines)` from `tests/helpers/logger.ts`. Don't pass inline `log: () => {}` or `log: (m) => arr.push(m)` — those don't satisfy the `Logger` interface.
+- **Logger is the project's dependency-injection seam.** The rule generalizes beyond commands: any lib module that emits user-visible output accepts a `Logger` parameter rather than reaching for `console.*` directly — current examples are `src/lib/prereqs.ts` (`ensureGh`, `ensureGhAuth`, `ensureGitConfig` all take `{ log }`), `src/lib/update-check.ts` (`checkForUpdate(version, log)`), and `src/lib/github.ts` (`ensureDeleteRepoScope(log?)`). This is the only DI we run by convention — it gives tests a process-free assertion seam (assert on the captured `arrayLogger` lines) without forcing every other dependency through a parameter, which would be premature for vaultkit's size. When adding a new lib function that prints, follow the same pattern; when adding one that doesn't print, don't invent a Logger parameter for symmetry.
 
 ## Type discipline
 
