@@ -23,34 +23,20 @@ const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 /**
  * Files that are known to cross a boundary today and have been chosen
- * (with rationale) NOT to fix in this commit. Each entry should pin a
- * follow-up: either an issue number, a planned refactor, or "permanent"
- * with the reason. Future contributors should resist adding entries
- * without a written justification.
+ * (with rationale) NOT to fix. Each entry should pin a follow-up:
+ * either an issue number, a planned refactor, or "permanent" with the
+ * reason. Future contributors should resist adding entries without a
+ * written justification.
  */
 const EXCEPTIONS: Record<string, string[]> = {
-  // Two pre-existing gh-direct invocations that fixing requires
-  // extending the ACL surface, deferred to keep this commit isolated:
-  //
-  //   src/commands/init.ts — setupBranchProtection() calls `gh api ...
-  //   --method PUT --input -` with stdin-piped JSON for branch
-  //   protection rules. The ghJson wrapper in src/lib/gh-retry.ts does
-  //   not currently expose execa's { input } option; routing through
-  //   the ACL requires forwarding stdin from ghJson.
-  //
-  //   src/commands/doctor.ts — runs `gh auth status` for the
-  //   diagnostic table, reading exitCode + stderr to display to the
-  //   user. The existing isAuthenticated() wrapper in github-auth.ts
-  //   only returns a boolean; doctor wants the human-readable output.
-  //   A future github-auth.ts wrapper (e.g. authStatus(): Promise<{
-  //   authenticated: boolean; rawOutput: string }>) would close this.
-  'gh-bypass-execa': ['src/commands/init.ts', 'src/commands/doctor.ts'],
   // doctor.ts reads ~/.claude.json directly via
   // `readFileSync(claudeJsonPath())` for diagnostic display. Read-only
   // (the security invariant in security-invariants.md is about
   // destructive ops). A future refactor should add a
   // `getRawConfig(cfgPath?)` helper to registry.ts and route doctor
-  // through it; deferred here for the same scope reason.
+  // through it; the doctor command's whole job is reporting registry
+  // state, so the centralization buys both schema-evolution safety
+  // and a marginal layering win, but isn't blocking today.
   'claudeJsonPath-outside-registry': ['src/commands/doctor.ts'],
 };
 

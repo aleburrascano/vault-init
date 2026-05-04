@@ -3,6 +3,7 @@ import { execa } from 'execa';
 import { getAllVaults } from '../lib/registry.js';
 import { Vault } from '../lib/vault.js';
 import { findTool, claudeJsonPath } from '../lib/platform.js';
+import { isAuthenticated } from '../lib/github-auth.js';
 import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { LABELS } from '../lib/messages.js';
 import type { ClaudeConfig, CommandModule, RunOptions } from '../types.js';
@@ -40,14 +41,10 @@ export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {
   const ghPath = await findTool('gh');
   if (!ghPath) {
     log.info('  ! warn  gh: not found (recommended — install from https://cli.github.com)');
+  } else if (!(await isAuthenticated())) {
+    log.info(`  ! warn  gh: found but not authenticated (run: gh auth login)`);
   } else {
-    // Check auth
-    const authResult = await execa(ghPath, ['auth', 'status'], { reject: false });
-    if (authResult.exitCode !== 0) {
-      log.info(`  ! warn  gh: found but not authenticated (run: gh auth login)`);
-    } else {
-      log.info(`  + ok   gh: authenticated`);
-    }
+    log.info(`  + ok   gh: authenticated`);
   }
 
   // claude — recommended

@@ -138,10 +138,20 @@ export function _classifyGhFailure(
   return { kind: 'fatal', reason: stderr.split('\n')[0]?.trim() || `exit ${status ?? 'unknown'}` };
 }
 
-export async function gh(...args: string[]): Promise<GhResult> {
+/**
+ * One gh invocation with an optional stdin payload. Private — public
+ * callers go through `gh()` (no stdin) or one of the higher-level
+ * wrappers. Centralizes the `findTool` + execa shape so that adding
+ * stdin support didn't require changing every public entry point's
+ * signature.
+ */
+async function ghCall(args: string[], input?: string): Promise<GhResult> {
   const ghPath = await findTool('gh');
   if (!ghPath) throw new Error('gh CLI not found. Install from https://cli.github.com');
-  const result = await execa(ghPath, args, { reject: false });
+  const execaOpts = input !== undefined
+    ? { reject: false, input }
+    : { reject: false };
+  const result = await execa(ghPath, args, execaOpts);
   const stdout = String(result.stdout ?? '');
   const stderr = String(result.stderr ?? '');
   const exitCode = result.exitCode ?? 1;
@@ -150,6 +160,10 @@ export async function gh(...args: string[]): Promise<GhResult> {
     return { stdout, stderr, exitCode, ...parsed };
   }
   return { stdout, stderr, exitCode, headers: {}, body: stdout, status: undefined };
+}
+
+export async function gh(...args: string[]): Promise<GhResult> {
+  return ghCall(args);
 }
 
 const RATE_LIMIT_PROACTIVE_THRESHOLD = 50;
@@ -193,26 +207,26 @@ async function maybeProactiveSleep(headers: Record<string, string>): Promise<voi
 }
 
 /**
- * Throwing variant of `gh` with classification-aware retry.
+ * Classification-aware retry loop. Calls `makeCall()` repeatedly until
+ * success or until classification says to stop. `contextDesc` is the
+ * caller-formatted "gh <args>" string used in error messages — kept
+ * separate from `makeCall` so the input variant can elide stdin
+ * payloads (which may contain sensitive data) from surfaced errors.
  *
- * On success: if the call used `--include` and headers advertise low
+ * Behavior on success: if response headers advertise low
  * `X-RateLimit-Remaining`, sleep until reset (capped at 60s).
  *
- * On failure: classify the response and either:
- * - `transient`: retry with 1s/2s/4s backoff (4 attempts total).
+ * Behavior on failure: classify the response and either:
+ * - `transient`: retry with the TRANSIENT_DELAYS schedule (5 attempts).
  * - `rate_limited`: wait `Retry-After` (or 60s) then retry up to 3x more.
  * - `auth_flagged`: throw VaultkitError('AUTH_REQUIRED') — do not retry.
  * - `fatal`: throw immediately with the underlying error.
- *
- * Used by every wrapper that expects success (createRepo, deleteRepo,
- * setRepoVisibility, getVisibility, enablePages, etc.) so retry semantics
- * live in one place.
  */
-export async function ghJson(...args: string[]): Promise<string> {
+async function runWithRetry(makeCall: () => Promise<GhResult>, contextDesc: string): Promise<string> {
   let transientAttempts = 0;
   let rateLimitedAttempts = 0;
   for (;;) {
-    const result = await gh(...args);
+    const result = await makeCall();
     if (result.exitCode === 0) {
       await maybeProactiveSleep(result.headers);
       return result.body;
@@ -223,17 +237,17 @@ export async function ghJson(...args: string[]): Promise<string> {
         'AUTH_REQUIRED',
         `GitHub disabled the test repo — the account is likely abuse-flagged.\n` +
           `  Wait 24-72h for the flag to clear, or rotate VAULTKIT_TEST_GH_TOKEN to a fresh PAT account.\n` +
-          `  (gh ${args.join(' ')})`,
+          `  (${contextDesc})`,
       );
     }
     if (cls.kind === 'fatal') {
-      throw new Error(`gh ${args.join(' ')}: ${result.stderr || cls.reason}`);
+      throw new Error(`${contextDesc}: ${result.stderr || cls.reason}`);
     }
     if (cls.kind === 'rate_limited') {
       if (rateLimitedAttempts >= RATE_LIMIT_RETRY_BUDGET) {
         throw new VaultkitError(
           'RATE_LIMITED',
-          `GitHub rate-limited 'gh ${args.join(' ')}' after ${RATE_LIMIT_RETRY_BUDGET + 1} attempts (${cls.reason}).`,
+          `GitHub rate-limited '${contextDesc}' after ${RATE_LIMIT_RETRY_BUDGET + 1} attempts (${cls.reason}).`,
         );
       }
       rateLimitedAttempts += 1;
@@ -242,9 +256,33 @@ export async function ghJson(...args: string[]): Promise<string> {
     }
     // transient
     if (transientAttempts >= TRANSIENT_DELAYS.length) {
-      throw new Error(`gh ${args.join(' ')}: ${cls.reason} — exhausted retry budget. ${result.stderr}`);
+      throw new Error(`${contextDesc}: ${cls.reason} — exhausted retry budget. ${result.stderr}`);
     }
     await sleep(TRANSIENT_DELAYS[transientAttempts] ?? 0);
     transientAttempts += 1;
   }
+}
+
+/**
+ * Throwing variant of `gh` with classification-aware retry. Used by
+ * every wrapper that expects success (createRepo, deleteRepo,
+ * setRepoVisibility, getVisibility, enablePages, etc.) so retry
+ * semantics live in one place. For calls that need to forward a
+ * stdin payload (e.g. `gh api --input -` for branch protection),
+ * use `ghJsonWithInput` instead.
+ */
+export async function ghJson(...args: string[]): Promise<string> {
+  return runWithRetry(() => ghCall(args), `gh ${args.join(' ')}`);
+}
+
+/**
+ * Variant of `ghJson` that forwards a stdin payload to gh — for calls
+ * like `gh api --method PUT /repos/<slug>/branches/main/protection
+ * --input -` where the request body is supplied on stdin. Same retry +
+ * classification semantics as `ghJson`. The `input` is elided from
+ * surfaced error messages (replaced by the literal `<stdin>` token) so
+ * a future caller passing sensitive data does not leak it to logs.
+ */
+export async function ghJsonWithInput(input: string, ...args: string[]): Promise<string> {
+  return runWithRetry(() => ghCall(args, input), `gh ${args.join(' ')} <stdin>`);
 }

@@ -10,6 +10,7 @@ import { getLauncherTemplate, getDeployTemplate } from '../lib/template-paths.js
 import { checkNode, ensureGh, ensureGhAuth, ensureGitConfig } from '../lib/prereqs.js';
 import { findOrInstallClaude, runMcpAdd, runMcpRemove, manualMcpAddCommand } from '../lib/mcp.js';
 import { setDefaultBranch, addRemote, pushNewRepo } from '../lib/git.js';
+import { ghJsonWithInput } from '../lib/gh-retry.js';
 import { createRepo, deleteRepo, repoUrl, repoCloneUrl } from '../lib/github-repo.js';
 import { enablePages, setPagesVisibility } from '../lib/github-pages.js';
 import { getCurrentUser, requireAuthGatedEligible } from '../lib/github-auth.js';
@@ -88,18 +89,22 @@ async function setupGitHubPages(githubUser: string, name: string, pagesPrivate: 
   }
 }
 
-async function setupBranchProtection(ghPath: string, githubUser: string, name: string, log: Logger): Promise<void> {
+async function setupBranchProtection(githubUser: string, name: string, log: Logger): Promise<void> {
   const protectionBody = JSON.stringify({
     required_status_checks: null,
     enforce_admins: false,
     required_pull_request_reviews: { required_approving_review_count: 1, dismiss_stale_reviews: false },
     restrictions: null,
   });
-  const result = await execa(ghPath, [
-    'api', `repos/${githubUser}/${name}/branches/main/protection`,
-    '--method', 'PUT', '--input', '-',
-  ], { input: protectionBody, reject: false });
-  if (result.exitCode !== 0) {
+  try {
+    await ghJsonWithInput(protectionBody,
+      'api', `repos/${githubUser}/${name}/branches/main/protection`,
+      '--method', 'PUT', '--input', '-',
+    );
+  } catch {
+    // Branch protection requires a paid plan on private repos and a
+    // few other forms of permission; surface as an info-level note
+    // with the manual recovery URL rather than aborting init.
     log.info(`  Note: Branch protection not applied (may require a paid plan for private repos).`);
     log.info(`  Set up manually: ${repoUrl(`${githubUser}/${name}`, 'settings/branches')}`);
   }
@@ -225,7 +230,7 @@ export async function run(
 
     // [6/6] Branch protection
     log.info('[6/6] Protecting main branch...');
-    await setupBranchProtection(ghPath, githubUser, name, log);
+    await setupBranchProtection(githubUser, name, log);
 
     // MCP registration
     registeredMcp = await registerMcpForVault(vaultDir, name, skipInstallCheck, log);
