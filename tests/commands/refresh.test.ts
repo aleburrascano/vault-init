@@ -7,9 +7,11 @@ import {
   detectGithubSlug,
   classifySource,
   loadSources,
+} from '../../src/lib/freshness/sources.js';
+import {
   formatReport,
   SIMILARITY_THRESHOLD,
-} from '../../src/commands/refresh.js';
+} from '../../src/lib/freshness/report.js';
 
 let tmp: string;
 beforeEach(() => {
