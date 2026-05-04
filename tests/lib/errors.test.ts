@@ -69,6 +69,7 @@ describe('EXIT_CODES', () => {
       'UNRECOGNIZED_INPUT',
       'PARTIAL_FAILURE',
       'RATE_LIMITED',
+      'SETUP_REQUIRED',
     ];
     for (const code of expectedCodes) {
       expect(EXIT_CODES[code], `missing exit code for ${code}`).toBeDefined();
@@ -76,10 +77,10 @@ describe('EXIT_CODES', () => {
     }
   });
 
-  it('uses exit codes 2-13 (vaultkit-reserved range)', () => {
+  it('uses exit codes 2-14 (vaultkit-reserved range)', () => {
     for (const code of Object.values(EXIT_CODES)) {
       expect(code).toBeGreaterThanOrEqual(2);
-      expect(code).toBeLessThanOrEqual(13);
+      expect(code).toBeLessThanOrEqual(14);
     }
   });
 
@@ -102,18 +103,19 @@ describe('EXIT_CODES', () => {
       UNRECOGNIZED_INPUT: 11,
       PARTIAL_FAILURE: 12,
       RATE_LIMITED: 13,
+      SETUP_REQUIRED: 14,
     };
     for (const [code, value] of Object.entries(expected)) {
       expect(EXIT_CODES[code as VaultkitErrorCode], `EXIT_CODES.${code} drifted`).toBe(value);
     }
   });
 
-  it('uses every integer from 2 through 13 exactly once (contiguity)', () => {
-    // Range + uniqueness + count == 12 → contiguous over [2..13]. Catches
+  it('uses every integer from 2 through 14 exactly once (contiguity)', () => {
+    // Range + uniqueness + count == 13 → contiguous over [2..14]. Catches
     // a future code drop that leaves a gap (e.g. removes NOT_REGISTERED but
-    // doesn't renumber, so 3 is unused while 13 is still RATE_LIMITED).
+    // doesn't renumber, so 3 is unused while 14 is still SETUP_REQUIRED).
     const codes = Object.values(EXIT_CODES).sort((a, b) => a - b);
-    expect(codes).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    expect(codes).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
   });
 });
 
@@ -124,6 +126,7 @@ describe('DEFAULT_MESSAGES', () => {
       'NOT_VAULT_LIKE', 'HASH_MISMATCH', 'AUTH_REQUIRED',
       'PERMISSION_DENIED', 'TOOL_MISSING', 'NETWORK_TIMEOUT',
       'UNRECOGNIZED_INPUT', 'PARTIAL_FAILURE', 'RATE_LIMITED',
+      'SETUP_REQUIRED',
     ];
     for (const code of expectedCodes) {
       const msg = DEFAULT_MESSAGES[code];
@@ -162,6 +165,7 @@ describe('DEFAULT_MESSAGES', () => {
       UNRECOGNIZED_INPUT: 'is not in a recognized format.',
       PARTIAL_FAILURE: 'partially failed — some operations did not complete.',
       RATE_LIMITED: 'was rate-limited by GitHub after exhausting the retry budget.',
+      SETUP_REQUIRED: "vaultkit isn't set up yet. Run 'vaultkit setup' to install and authenticate the prerequisites (gh, git, etc.). Use 'vaultkit doctor' to diagnose without running setup.",
     };
     for (const [code, value] of Object.entries(expected)) {
       expect(DEFAULT_MESSAGES[code as VaultkitErrorCode], `DEFAULT_MESSAGES.${code} drifted`).toBe(value);

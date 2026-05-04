@@ -19,6 +19,7 @@ import {
   ensureGh,
   ensureGhAuth,
   ensureGitConfig,
+  requireSetup,
 } from '../../src/lib/prereqs.js';
 import { isVaultkitError } from '../../src/lib/errors.js';
 
@@ -488,5 +489,172 @@ describe('checkNode', () => {
     } finally {
       restore();
     }
+  });
+});
+
+describe('requireSetup', () => {
+  // Helper: stub process.versions.node since requireSetup calls checkNode().
+  const stubNodeVersion = (v: string) => {
+    const original = Object.getOwnPropertyDescriptor(process.versions, 'node');
+    Object.defineProperty(process.versions, 'node', {
+      configurable: true,
+      get: () => v,
+    });
+    return () => {
+      if (original) Object.defineProperty(process.versions, 'node', original);
+    };
+  };
+
+  // Helper: configure execa to respond to `gh auth status` and the two
+  // `git config` reads. Each test overrides only what it cares about.
+  function mockGate(opts: {
+    ghAuthExitCode?: number;
+    ghAuthScopes?: string;
+    gitName?: string;
+    gitEmail?: string;
+  }): void {
+    const ghAuthExitCode = opts.ghAuthExitCode ?? 0;
+    const ghAuthScopes = opts.ghAuthScopes ?? "Token scopes: 'repo', 'workflow'";
+    const gitName = opts.gitName ?? 'Test User';
+    const gitEmail = opts.gitEmail ?? 'test@example.com';
+    vi.mocked(execa).mockImplementation((async (cmd: string, args?: readonly string[]) => {
+      if (cmd.endsWith('gh') || cmd === '/usr/bin/gh') {
+        if (args?.[0] === 'auth' && args?.[1] === 'status') {
+          return { exitCode: ghAuthExitCode, stdout: '', stderr: ghAuthScopes };
+        }
+      }
+      if (cmd === 'git' && args?.[0] === 'config') {
+        if (args[1] === 'user.name') return { exitCode: 0, stdout: gitName, stderr: '' };
+        if (args[1] === 'user.email') return { exitCode: 0, stdout: gitEmail, stderr: '' };
+      }
+      throw new Error(`unexpected execa call: ${cmd} ${args?.join(' ')}`);
+    }) as never);
+  }
+
+  it('passes silently when every prereq is satisfied', async () => {
+    vi.mocked(findTool).mockResolvedValue('/usr/bin/gh');
+    mockGate({});
+    await expect(requireSetup(arrayLogger([]))).resolves.toBeUndefined();
+  });
+
+  it('throws SETUP_REQUIRED when Node < 22', async () => {
+    const restore = stubNodeVersion('20.10.0');
+    try {
+      vi.mocked(findTool).mockResolvedValue('/usr/bin/gh');
+      mockGate({});
+      let caught: unknown;
+      try {
+        await requireSetup(arrayLogger([]));
+      } catch (err) {
+        caught = err;
+      }
+      expect(isVaultkitError(caught)).toBe(true);
+      expect((caught as { code: string }).code).toBe('SETUP_REQUIRED');
+      expect((caught as { message: string }).message).toMatch(/Node\.js 22\+/);
+      expect((caught as { message: string }).message).toMatch(/vaultkit setup/);
+    } finally {
+      restore();
+    }
+  });
+
+  it('throws SETUP_REQUIRED when gh is missing from PATH', async () => {
+    vi.mocked(findTool).mockResolvedValue(null);
+    let caught: unknown;
+    try {
+      await requireSetup(arrayLogger([]));
+    } catch (err) {
+      caught = err;
+    }
+    expect(isVaultkitError(caught)).toBe(true);
+    expect((caught as { code: string }).code).toBe('SETUP_REQUIRED');
+    expect((caught as { message: string }).message).toMatch(/gh.*not installed/i);
+    expect((caught as { message: string }).message).toMatch(/vaultkit setup/);
+  });
+
+  it('throws SETUP_REQUIRED when gh auth status fails (not authenticated)', async () => {
+    vi.mocked(findTool).mockResolvedValue('/usr/bin/gh');
+    mockGate({ ghAuthExitCode: 1, ghAuthScopes: '' });
+    let caught: unknown;
+    try {
+      await requireSetup(arrayLogger([]));
+    } catch (err) {
+      caught = err;
+    }
+    expect(isVaultkitError(caught)).toBe(true);
+    expect((caught as { code: string }).code).toBe('SETUP_REQUIRED');
+    expect((caught as { message: string }).message).toMatch(/not authenticated/i);
+  });
+
+  it('throws SETUP_REQUIRED when gh token is missing required scopes', async () => {
+    vi.mocked(findTool).mockResolvedValue('/usr/bin/gh');
+    // Authed but only has 'gist' — missing 'repo' AND 'workflow'.
+    mockGate({ ghAuthScopes: "Token scopes: 'gist'" });
+    let caught: unknown;
+    try {
+      await requireSetup(arrayLogger([]));
+    } catch (err) {
+      caught = err;
+    }
+    expect(isVaultkitError(caught)).toBe(true);
+    expect((caught as { code: string }).code).toBe('SETUP_REQUIRED');
+    expect((caught as { message: string }).message).toMatch(/scope/);
+    expect((caught as { message: string }).message).toMatch(/repo/);
+    expect((caught as { message: string }).message).toMatch(/workflow/);
+  });
+
+  it('throws SETUP_REQUIRED when scopes are partial (only repo, missing workflow)', async () => {
+    vi.mocked(findTool).mockResolvedValue('/usr/bin/gh');
+    mockGate({ ghAuthScopes: "Token scopes: 'repo'" });
+    let caught: unknown;
+    try {
+      await requireSetup(arrayLogger([]));
+    } catch (err) {
+      caught = err;
+    }
+    expect(isVaultkitError(caught)).toBe(true);
+    expect((caught as { code: string }).code).toBe('SETUP_REQUIRED');
+    expect((caught as { message: string }).message).toMatch(/workflow/);
+    // 'repo' is present, so it should NOT be listed as missing.
+    expect((caught as { message: string }).message).not.toMatch(/scope.*: repo[^,]/);
+  });
+
+  it('throws SETUP_REQUIRED when git config user.name is empty', async () => {
+    vi.mocked(findTool).mockResolvedValue('/usr/bin/gh');
+    mockGate({ gitName: '' });
+    let caught: unknown;
+    try {
+      await requireSetup(arrayLogger([]));
+    } catch (err) {
+      caught = err;
+    }
+    expect(isVaultkitError(caught)).toBe(true);
+    expect((caught as { code: string }).code).toBe('SETUP_REQUIRED');
+    expect((caught as { message: string }).message).toMatch(/git config/);
+  });
+
+  it('throws SETUP_REQUIRED when git config user.email is empty', async () => {
+    vi.mocked(findTool).mockResolvedValue('/usr/bin/gh');
+    mockGate({ gitEmail: '' });
+    let caught: unknown;
+    try {
+      await requireSetup(arrayLogger([]));
+    } catch (err) {
+      caught = err;
+    }
+    expect(isVaultkitError(caught)).toBe(true);
+    expect((caught as { code: string }).code).toBe('SETUP_REQUIRED');
+    expect((caught as { message: string }).message).toMatch(/git config/);
+  });
+
+  it('does NOT prompt or shell out beyond the four required probes (no network, no install)', async () => {
+    // Pin the gate's surface: one findTool call, one `gh auth status`, two
+    // `git config` reads. No `gh auth login`, no `installGhForPlatform`.
+    vi.mocked(findTool).mockResolvedValue('/usr/bin/gh');
+    mockGate({});
+    await requireSetup(arrayLogger([]));
+    expect(vi.mocked(installGhForPlatform)).not.toHaveBeenCalled();
+    expect(vi.mocked(input)).not.toHaveBeenCalled();
+    // 1 auth status + 2 git config = 3 execa calls
+    expect(vi.mocked(execa)).toHaveBeenCalledTimes(3);
   });
 });

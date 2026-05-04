@@ -123,3 +123,68 @@ export async function ensureGitConfig({ nameOpt, emailOpt }: EnsureGitConfigOpti
     await execa('git', ['config', '--global', 'user.email', e]);
   }
 }
+
+/**
+ * Check-only gate run before every command except `setup` and `doctor`.
+ * Throws `VaultkitError('SETUP_REQUIRED')` with a clear pointer if any of:
+ *
+ *   - Node < 22
+ *   - `gh` not on PATH
+ *   - `gh auth status` fails (not authenticated)
+ *   - `gh` token missing `repo` or `workflow` scope
+ *   - `git config user.name` or `user.email` empty
+ *
+ * `claude` is intentionally NOT required here — not every command uses MCP,
+ * and `findOrInstallClaude` already handles its absence per-command.
+ *
+ * Idempotent and fast on a configured machine: every check is a single
+ * `findTool()` call or a `gh auth status` parse. No network. No prompts.
+ *
+ * Wired into `bin/vaultkit.ts:wrap()` so it runs before every command in
+ * `program.commands` except those in the `SETUP_BYPASS` set (`setup`,
+ * `doctor`). New commands added via `/add-command` automatically inherit
+ * the gate; the architecture fitness function in `tests/architecture.test.ts`
+ * enforces that every command file declares its gate posture in
+ * `tests/bootstrap-gate.test.ts`.
+ *
+ * Per the auth scope rule in `.claude/rules/security-invariants.md`,
+ * `delete_repo` is NOT one of the required scopes — it's granted on demand
+ * by `vaultkit destroy` only.
+ */
+export async function requireSetup(_log: Logger): Promise<void> {
+  const node = checkNode();
+  if (!node.ok) {
+    throw new VaultkitError('SETUP_REQUIRED', `${node.message}\nThen run 'vaultkit setup' to verify the rest.`);
+  }
+
+  const ghPath = await findTool('gh');
+  if (!ghPath) {
+    throw new VaultkitError('SETUP_REQUIRED',
+      "GitHub CLI ('gh') is not installed or not on PATH. Run 'vaultkit setup' to install and authenticate it.");
+  }
+
+  const status = await execa(ghPath, ['auth', 'status'], { reject: false });
+  if (status.exitCode !== 0) {
+    throw new VaultkitError('SETUP_REQUIRED',
+      "GitHub CLI is not authenticated. Run 'vaultkit setup' to authenticate (the 'repo' and 'workflow' scopes are needed).");
+  }
+
+  // gh prints "Token scopes: 'repo', 'workflow', ..." to stderr in `auth status`.
+  // Match each required scope as a quoted literal — same parse shape as ensureGhAuth.
+  const output = String(status.stderr ?? '') + String(status.stdout ?? '');
+  const requiredScopes = ['repo', 'workflow'];
+  const missing = requiredScopes.filter(s => !output.includes(`'${s}'`));
+  if (missing.length > 0) {
+    throw new VaultkitError('SETUP_REQUIRED',
+      `GitHub CLI is missing required OAuth scope(s): ${missing.join(', ')}. Run 'vaultkit setup' to grant them.`);
+  }
+
+  const nameResult = await execa('git', ['config', 'user.name'], { reject: false });
+  const emailResult = await execa('git', ['config', 'user.email'], { reject: false });
+  const hasName = String(nameResult.stdout ?? '').trim().length > 0;
+  const hasEmail = String(emailResult.stdout ?? '').trim().length > 0;
+  if (!hasName || !hasEmail) {
+    throw new VaultkitError('SETUP_REQUIRED',
+      "git config user.name / user.email is not set. Run 'vaultkit setup' to configure git.");
+  }
+}

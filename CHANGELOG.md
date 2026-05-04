@@ -4,6 +4,9 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+- **`SETUP_REQUIRED` error code** (exit 14) and `requireSetup(log)` helper in `src/lib/prereqs.ts`. Check-only gate verifying Node ≥ 22, `gh` on PATH and authenticated, `gh` token has `repo` + `workflow` scopes, and `git config user.name`/`user.email` are set. No wiring yet (lands in a follow-up commit) — pure addition. First step of the bootstrap-UX track that gates non-setup commands when prereqs are missing, replacing the cryptic clone failures users hit on fresh installs.
+
 ## [2.7.4] - 2026-05-03
 
 ### Improved

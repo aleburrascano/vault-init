@@ -19,7 +19,8 @@ export type VaultkitErrorCode =
   | 'NETWORK_TIMEOUT'        // git fetch/pull or gh API timed out
   | 'UNRECOGNIZED_INPUT'     // user-supplied input (mode, URL, etc.) couldn't be parsed
   | 'PARTIAL_FAILURE'        // multi-step flow failed mid-way (e.g. pull-then-repin)
-  | 'RATE_LIMITED';          // GitHub secondary rate limit; retry budget exhausted
+  | 'RATE_LIMITED'           // GitHub secondary rate limit; retry budget exhausted
+  | 'SETUP_REQUIRED';        // vaultkit setup hasn't been run; prereqs missing at command entry
 
 /**
  * Errors thrown intentionally by vaultkit, with a machine-readable code.
@@ -39,7 +40,7 @@ export function isVaultkitError(err: unknown): err is VaultkitError {
 
 /**
  * Maps each error code to the process exit code emitted by `wrap()`.
- * Codes 2–13 are reserved for vaultkit categories; 0 = success, 1 = an
+ * Codes 2–14 are reserved for vaultkit categories; 0 = success, 1 = an
  * unhandled/unknown error. Public contract: scripted callers may rely on
  * these specific codes.
  */
@@ -56,6 +57,7 @@ export const EXIT_CODES: Record<VaultkitErrorCode, number> = {
   UNRECOGNIZED_INPUT: 11,
   PARTIAL_FAILURE: 12,
   RATE_LIMITED: 13,
+  SETUP_REQUIRED: 14,
 };
 
 /**
@@ -81,4 +83,5 @@ export const DEFAULT_MESSAGES: Record<VaultkitErrorCode, string> = {
   UNRECOGNIZED_INPUT: 'is not in a recognized format.',
   PARTIAL_FAILURE: 'partially failed — some operations did not complete.',
   RATE_LIMITED: 'was rate-limited by GitHub after exhausting the retry budget.',
+  SETUP_REQUIRED: "vaultkit isn't set up yet. Run 'vaultkit setup' to install and authenticate the prerequisites (gh, git, etc.). Use 'vaultkit doctor' to diagnose without running setup.",
 };
