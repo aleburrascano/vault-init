@@ -5,7 +5,7 @@ import { VAULT_DIRS } from '../lib/constants.js';
 import { VaultkitError } from '../lib/errors.js';
 import { compareSource } from '../lib/text-compare.js';
 import { findTool } from '../lib/platform.js';
-import { ghJson } from '../lib/gh-retry.js';
+import { getCommitsSince } from '../lib/github-repo.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
@@ -136,18 +136,9 @@ export function loadSources(vaultDir: string): SourceEntry[] {
 }
 
 async function checkGitSource(entry: SourceEntry, slug: string): Promise<GitCheck> {
-  const args = ['api', `repos/${slug}/commits`];
-  if (entry.sourceDate) {
-    args.push('-X', 'GET', '-F', `since=${entry.sourceDate}`, '-F', 'per_page=30');
-  } else {
-    args.push('-X', 'GET', '-F', 'per_page=10');
-  }
   try {
-    const stdout = await ghJson(...args);
-    const commits = JSON.parse(stdout || '[]') as Array<{ commit?: { message?: string } }>;
-    const subjects = commits
-      .map(c => (c.commit?.message ?? '').split(/\r?\n/)[0] ?? '')
-      .filter(Boolean);
+    const commits = await getCommitsSince(slug, entry.sourceDate ?? undefined);
+    const subjects = commits.map(c => c.subject);
     return { kind: 'git', entry, slug, newCommits: commits.length, recentSubjects: subjects.slice(0, 5) };
   } catch (err) {
     const msg = (err as { message?: string })?.message ?? String(err);

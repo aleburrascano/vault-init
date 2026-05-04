@@ -129,6 +129,41 @@ export async function setRepoVisibility(slug: string, visibility: Visibility): P
   );
 }
 
+/**
+ * Lightweight commit metadata returned by `getCommitsSince`. The full
+ * GitHub commits API response carries a lot more (sha, parents, author,
+ * stats, files, …) — this is the trimmed shape vaultkit's freshness
+ * check cares about. Add fields here on demand; keep YAGNI honest.
+ */
+export interface CommitInfo {
+  /** First line of the commit message (before the `\n\n` body separator). */
+  subject: string;
+}
+
+/**
+ * Lists commits on the default branch, optionally bounded to a `since`
+ * timestamp. Replaces the previous ad-hoc `ghJson('api',
+ * 'repos/<slug>/commits', …)` call in `refresh.ts` so the GitHub API
+ * response shape never leaks past the ACL boundary.
+ *
+ * `sinceISO` is an ISO-8601 timestamp (e.g. `2025-12-01T00:00:00Z`); when
+ * omitted, returns the most recent `perPage` commits regardless of date.
+ *
+ * Default `perPage`: 30 when `sinceISO` is given (matches the previous
+ * inline default — wide enough to capture a meaningful window), 10
+ * otherwise (sampling shape).
+ */
+export async function getCommitsSince(slug: string, sinceISO?: string, perPage?: number): Promise<CommitInfo[]> {
+  const args = ['api', `repos/${slug}/commits`, '-X', 'GET'];
+  if (sinceISO) args.push('-F', `since=${sinceISO}`);
+  args.push('-F', `per_page=${perPage ?? (sinceISO ? 30 : 10)}`);
+  const stdout = await ghJson(...args);
+  const raw = JSON.parse(stdout || '[]') as Array<{ commit?: { message?: string } }>;
+  return raw
+    .map(c => ({ subject: (c.commit?.message ?? '').split(/\r?\n/)[0] ?? '' }))
+    .filter(c => c.subject.length > 0);
+}
+
 // ─── URL builders ─────────────────────────────────────────────────────────
 
 /**
