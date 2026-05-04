@@ -1,8 +1,8 @@
-import { execa } from 'execa';
 import { getAllVaults, getAllMcpServerNames } from '../lib/registry.js';
 import { Vault } from '../lib/vault.js';
 import { findTool } from '../lib/platform.js';
 import { isAuthenticated } from '../lib/github-auth.js';
+import { getConfig } from '../lib/git.js';
 import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { LABELS } from '../lib/messages.js';
 import type { CommandModule, RunOptions } from '../types.js';
@@ -55,10 +55,8 @@ export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {
   }
 
   // git config
-  const nameResult = await execa('git', ['config', 'user.name'], { reject: false });
-  const emailResult = await execa('git', ['config', 'user.email'], { reject: false });
-  const userName = String(nameResult.stdout ?? '').trim();
-  const userEmail = String(emailResult.stdout ?? '').trim();
+  const userName = await getConfig('user.name');
+  const userEmail = await getConfig('user.email');
   if (!userName || !userEmail) {
     log.info('  x fail  git config: user.name or user.email not set');
     log.info('    Run: git config --global user.name "Your Name"');

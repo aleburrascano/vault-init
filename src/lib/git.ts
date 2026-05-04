@@ -164,6 +164,21 @@ export async function isWorktreeDirty(dir: string): Promise<boolean> {
   return (result.stdout ?? '').trim().length > 0;
 }
 
+/**
+ * Read a `git config` value (typically `user.name` / `user.email`). Returns
+ * the trimmed string, or empty string when the key isn't set. Never throws —
+ * an unset key is a normal "no value" result for callers (`doctor` uses this
+ * to detect missing identity config without treating it as a fatal error).
+ *
+ * Reads global + local config; the global path is what most commands care
+ * about for identity (vaultkit's `setup` and `prereqs.ensureGitConfig`
+ * write to `--global`).
+ */
+export async function getConfig(key: string): Promise<string> {
+  const result = await execa('git', ['config', key], { reject: false });
+  return String(result.stdout ?? '').trim();
+}
+
 export async function getStatus(dir: string): Promise<GitStatus> {
   const [branchRes, statusRes, remoteRes, logRes] = await Promise.all([
     git(['rev-parse', '--abbrev-ref', 'HEAD'], dir),
