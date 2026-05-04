@@ -39,6 +39,19 @@ async function wrap(fn: () => Promise<void>, commandName: string, args: string[]
     if (message) {
       process.stderr.write(`Error: ${message}\n`);
     }
+    // For setup-related failure modes, append a single hint pointing at
+    // `vaultkit setup`. The message body already explains what's wrong;
+    // the hint reinforces the action without repeating the cause. Only
+    // fires for the three codes whose remedy genuinely is `vaultkit setup`
+    // — adding it for every code would dilute the signal.
+    if (
+      isVaultkitError(err) &&
+      (err.code === 'SETUP_REQUIRED' || err.code === 'TOOL_MISSING' || err.code === 'AUTH_REQUIRED') &&
+      // Don't double-print if the message already names setup.
+      !/vaultkit setup/i.test(message ?? '')
+    ) {
+      process.stderr.write(`Hint: run 'vaultkit setup' to bootstrap or repair prerequisites.\n`);
+    }
     process.exit(exitCode);
   }
 }
