@@ -1,3 +1,23 @@
+/**
+ * Anti-Corruption Layer for the `gh` CLI surface — the typed-wrappers half.
+ * Translates `gh`'s native JSON shapes into vaultkit's domain types
+ * (`Visibility`, `GhRepoInfo`, plain `string` plan names, etc.) and bundles
+ * the security-critical argv shapes (e.g. `gh api --method DELETE /repos/<slug>`
+ * via `deleteRepo`, `gh api --method PATCH /repos/<slug> visibility=...`
+ * via `setRepoVisibility`) so commands consume domain operations, not gh
+ * argv quirks. All retry / rate-limit / auth-flag classification is delegated
+ * to `gh-retry.ts` so this file only owns the API surface, not the failure
+ * model. Mutations that require eventual-consistency bridging (visibility,
+ * Pages) `pollUntil` their corresponding read endpoints before returning.
+ *
+ * Together with `gh-retry.ts`, this forms the single boundary between
+ * vaultkit and `gh`. Commands MUST go through these wrappers (or `ghJson`
+ * from `gh-retry.ts` for ad-hoc API calls without a wrapper); never
+ * `execa('gh', …)` directly. Bypassing this layer loses retry, rate-limit
+ * defenses (account-flagging risk), poll-after-mutate, and the
+ * `VaultkitError` translation that drives the public exit-code contract.
+ */
+
 import { execa } from 'execa';
 import { findTool } from './platform.js';
 import { VaultkitError } from './errors.js';

@@ -3,11 +3,21 @@ import { findTool } from './platform.js';
 import { VaultkitError } from './errors.js';
 
 /**
- * Raw and retry-aware `gh` wrappers plus the failure-classification rules
- * that drive retry behavior. Lives separately from `github.ts` so:
+ * Anti-Corruption Layer for the `gh` CLI surface — the retry / classification
+ * half. Translates `gh`'s native failure shapes (process exit codes, stderr
+ * patterns, HTTP status + headers from `--include`) into vaultkit's domain
+ * vocabulary (`VaultkitError` codes: `AUTH_REQUIRED`, `RATE_LIMITED`,
+ * `NETWORK_TIMEOUT`, `PERMISSION_DENIED`). Together with `github.ts`'s typed
+ * wrappers + JSON parsers, this forms the single boundary between vaultkit
+ * and `gh` — nothing else in the codebase should `execa('gh', …)` directly.
+ *
+ * Lives separately from `github.ts` so:
  *   1. The retry layer is independently testable (see github-rate-limit.test.ts).
- *   2. Other consumers (e.g. `vaultkit refresh` calling `gh api`) can reach
- *      `ghJson` without pulling in the whole API-wrappers surface.
+ *   2. Ad-hoc consumers (e.g. `vaultkit refresh` calling `gh api repos/<slug>/commits`)
+ *      can reach `ghJson` without pulling in the whole API-wrappers surface.
+ *      Commands ARE allowed to import `ghJson` directly when no `github.ts`
+ *      wrapper exists yet — this preserves the ACL because `ghJson` already
+ *      embeds the retry + classification semantics.
  *
  * The pure helpers `_parseGhIncludeOutput` and `_classifyGhFailure` are
  * exported with the `_` prefix as a "exported only for tests" convention.

@@ -74,6 +74,17 @@ To scaffold a new command: `/add-command`.
 
 [src/types.ts](../../src/types.ts) holds shared types: `ClaudeConfig`, `McpServerEntry`, `VaultRecord`, `RunOptions`, `CommandModule`, `GitPushResult`, `GitPullResult`, `GitStatus`, `GitPushOrPrResult`, `GhUserResponse`, `GhRepoResponse`, `GhPagesResponse`, `GhRepoInfo`, `Visibility`.
 
+## Anti-Corruption Layer — gh CLI boundary
+
+[src/lib/gh-retry.ts](../../src/lib/gh-retry.ts) + [src/lib/github.ts](../../src/lib/github.ts) together form the single boundary between vaultkit and the `gh` CLI surface — an Anti-Corruption Layer in the DDD sense. The pair translates `gh`'s native shapes (process exit codes, stderr patterns, HTTP status + headers, untyped JSON) into vaultkit's domain vocabulary (`VaultkitError` codes, typed records like `GhRepoInfo` / `Visibility`, the public exit-code contract).
+
+- **`gh-retry.ts`** owns the failure model: retry classification (transient / rate_limited / auth_flagged / fatal), backoff, `Retry-After` header handling, and translation to `VaultkitError`. Exports `gh` (raw) and `ghJson` (throwing).
+- **`github.ts`** owns the API surface: typed wrappers (`createRepo`, `deleteRepo`, `setRepoVisibility`, `enablePages`, etc.), JSON parsers, URL builders, and `pollUntil`-based eventual-consistency bridging for visibility / Pages mutations.
+- **[src/lib/git.ts](../../src/lib/git.ts)** is the matching boundary for the `git` CLI (recognizes the same `auth_flagged` stderr patterns so the failure mode surfaces identically across the gh-API and git-push paths).
+- **[src/lib/mcp.ts](../../src/lib/mcp.ts)** is the matching boundary for the `claude mcp` CLI (single source of truth for the `--expected-sha256=<hash>` invariant).
+
+The non-bypass rule: commands MUST go through `github.ts` wrappers (or `ghJson` for ad-hoc API calls without a wrapper); never `execa('gh', …)` directly. Same for `git` and `claude mcp`. Bypassing the ACL loses retry, rate-limit defenses (account-flagging risk on burst), poll-after-mutate, and the `VaultkitError` translation that drives the documented exit-code contract. See [.claude/rules/security-invariants.md](security-invariants.md) for the codified rule and [.claude/rules/code-style.md](code-style.md) for the import discipline.
+
 ## Templates — `lib/`
 
 | File | Purpose |
