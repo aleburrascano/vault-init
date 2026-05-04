@@ -1,8 +1,8 @@
 import { confirm } from '@inquirer/prompts';
-import { execa } from 'execa';
 import { Vault, sha256 } from '../lib/vault.js';
 import { findTool } from '../lib/platform.js';
 import { runMcpRepin, manualMcpRepinCommands } from '../lib/mcp.js';
+import { fetch as gitFetch, hasUpstream, diffFileNames, diff as gitDiff, pull } from '../lib/git.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
 import { LABELS } from '../lib/messages.js';
@@ -35,19 +35,14 @@ export async function run(
   // Check for upstream drift
   let upstreamDrift = false;
   if (vault.hasGitRepo()) {
-    await execa('git', ['-C', vault.dir, 'fetch', '--quiet'], { reject: false });
-    const hasUpstream = (await execa('git', ['-C', vault.dir, 'rev-parse', '@{u}'], { reject: false })).exitCode === 0;
-    if (hasUpstream) {
-      const diffResult = await execa('git', [
-        '-C', vault.dir, 'diff', '--name-only', 'HEAD..@{u}', '--', '.mcp-start.js',
-      ], { reject: false });
-      const diffFiles = String(diffResult.stdout ?? '').trim();
-      if (diffFiles === '.mcp-start.js') {
+    await gitFetch(vault.dir);
+    if (await hasUpstream(vault.dir)) {
+      const diffFiles = await diffFileNames(vault.dir, 'HEAD..@{u}', ['.mcp-start.js']);
+      if (diffFiles.length === 1 && diffFiles[0] === '.mcp-start.js') {
         upstreamDrift = true;
         log.info('Upstream has a different .mcp-start.js — diff:');
         log.info('----------------------------------------');
-        const diffOut = await execa('git', ['-C', vault.dir, '--no-pager', 'diff', 'HEAD..@{u}', '--', '.mcp-start.js'], { reject: false });
-        log.info(String(diffOut.stdout ?? ''));
+        log.info(await gitDiff(vault.dir, 'HEAD..@{u}', ['.mcp-start.js']));
         log.info('----------------------------------------');
         log.info('');
       }
@@ -72,8 +67,8 @@ export async function run(
     log.info('');
     const ok = yes || await confirm({ message: 'Pull upstream and re-pin?', default: false });
     if (!ok) { log.info(LABELS.ABORTED); return; }
-    const pullResult = await execa('git', ['-C', vault.dir, 'pull', '--ff-only', '--quiet'], { reject: false });
-    if (pullResult.exitCode !== 0) {
+    const pullResult = await pull(vault.dir, { ffOnly: true });
+    if (!pullResult.success) {
       throw new VaultkitError('PARTIAL_FAILURE', `git pull failed. Resolve manually and re-run vaultkit verify ${name}.`);
     }
     finalHash = await sha256(vault.launcherPath);

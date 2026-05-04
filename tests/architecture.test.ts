@@ -38,9 +38,8 @@ const EXCEPTIONS: Record<string, string[]> = {
   // Pre-existing raw `execa('git', …)` call sites in command files,
   // grandfathered when the git ACL fitness function was introduced.
   // Each migration to src/lib/git.ts wrappers removes one entry.
-  'git-bypass-execa': [
-    'src/commands/verify.ts',
-  ],
+  // Empty — A8 cleared the last entry. The category itself can be removed
+  // when ADR-0007 lands and the comment block above no longer references it.
 };
 
 async function readSourceFiles(pattern: string): Promise<Array<{ path: string; text: string }>> {

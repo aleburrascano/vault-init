@@ -177,6 +177,56 @@ export async function getStagedFiles(dir: string): Promise<string[]> {
 }
 
 /**
+ * Update remote-tracking refs (`git fetch --quiet`). Never throws — `verify`
+ * uses this as a "best-effort refresh" before checking upstream drift; an
+ * offline machine should still be able to compare against the last fetched
+ * state. Returns the exit code so callers that care about success can branch.
+ */
+export async function fetch(dir: string): Promise<{ ok: boolean }> {
+  const result = await git(['fetch', '--quiet'], dir);
+  return { ok: result.exitCode === 0 };
+}
+
+/**
+ * Returns true iff the current branch has an upstream branch configured
+ * (i.e., `git rev-parse @{u}` succeeds). Useful as a precondition for any
+ * call that compares against `@{u}` or `origin/<branch>` — without it,
+ * downstream diff/pull commands fail with a confusing "no upstream" error.
+ */
+export async function hasUpstream(dir: string): Promise<boolean> {
+  const result = await git(['rev-parse', '@{u}'], dir);
+  return result.exitCode === 0;
+}
+
+/**
+ * Returns the list of files that differ between two git revisions, optionally
+ * scoped to a path. Used by `verify` to ask "did upstream change my launcher?"
+ * without incurring the cost of a full diff. Implemented as
+ * `git diff --name-only <range> -- <paths…>`.
+ */
+export async function diffFileNames(dir: string, range: string, paths: string[] = []): Promise<string[]> {
+  const args = ['diff', '--name-only', range];
+  if (paths.length > 0) args.push('--', ...paths);
+  const result = await git(args, dir);
+  const out = String(result.stdout ?? '').trim();
+  return out.length === 0 ? [] : out.split('\n').map(l => l.trim()).filter(Boolean);
+}
+
+/**
+ * Returns the raw human-readable diff between two refs, optionally scoped to
+ * paths. Pass through to `git --no-pager diff <range> -- <paths…>` so the
+ * output can be log.info'd directly without piping noise. Used by `verify`
+ * to show the user what's about to change before they accept an upstream
+ * launcher pull.
+ */
+export async function diff(dir: string, range: string, paths: string[] = []): Promise<string> {
+  const args = ['--no-pager', 'diff', range];
+  if (paths.length > 0) args.push('--', ...paths);
+  const result = await git(args, dir);
+  return String(result.stdout ?? '');
+}
+
+/**
  * Returns the raw human-readable output of `git status` (no `--porcelain`),
  * suitable for printing directly to a terminal. Used by `status` for the
  * single-vault detailed view. Distinct from `getStatus()` (structured) and
