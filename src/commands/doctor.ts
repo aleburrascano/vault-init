@@ -1,12 +1,11 @@
-import { readFileSync } from 'node:fs';
 import { execa } from 'execa';
-import { getAllVaults } from '../lib/registry.js';
+import { getAllVaults, getAllMcpServerNames } from '../lib/registry.js';
 import { Vault } from '../lib/vault.js';
-import { findTool, claudeJsonPath } from '../lib/platform.js';
+import { findTool } from '../lib/platform.js';
 import { isAuthenticated } from '../lib/github-auth.js';
 import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { LABELS } from '../lib/messages.js';
-import type { ClaudeConfig, CommandModule, RunOptions } from '../types.js';
+import type { CommandModule, RunOptions } from '../types.js';
 
 async function checkTool(name: string, required: boolean, log: Logger): Promise<boolean> {
   const path = await findTool(name);
@@ -119,10 +118,13 @@ export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {
       log.info(`         ${vault.expectedHash}`);
     }
 
-    // Count non-vault MCP servers
+    // Show non-vault MCP servers (other tools the user has registered,
+    // e.g. a different MCP server pointed at a non-vault directory).
+    // Best-effort — a corrupt registry surfaces from getAllVaults
+    // above, so getAllMcpServerNames here only fails on race against
+    // a concurrent edit; safe to silence.
     try {
-      const cfg = JSON.parse(readFileSync(cfgPath ?? claudeJsonPath(), 'utf8')) as ClaudeConfig;
-      const allServers = Object.keys(cfg?.mcpServers ?? {});
+      const allServers = await getAllMcpServerNames(cfgPath);
       const vaultNames = new Set(records.map(v => v.name));
       const others = allServers.filter(n => !vaultNames.has(n));
       if (others.length > 0) {

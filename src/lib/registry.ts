@@ -38,6 +38,22 @@ function extractVaultEntry(name: string, server: McpServerEntry | undefined): Va
   };
 }
 
+/**
+ * Returns the names of every MCP server registered in `~/.claude.json`,
+ * including non-vault entries (servers vaultkit didn't create — e.g. a
+ * different MCP tool the user has installed). `getAllVaults` filters
+ * down to the vault-shaped subset; this helper is for callers that
+ * need the full list (today: `vaultkit doctor`'s "Other MCP servers"
+ * section). Returns `[]` on a missing config; throws
+ * `VaultkitError('UNRECOGNIZED_INPUT')` on a corrupt one (same as
+ * every other registry reader).
+ */
+export async function getAllMcpServerNames(cfgPath: string = claudeJsonPath()): Promise<string[]> {
+  const config = parseConfig(cfgPath);
+  if (!config?.mcpServers) return [];
+  return Object.keys(config.mcpServers).sort();
+}
+
 export async function getAllVaults(cfgPath: string = claudeJsonPath()): Promise<VaultRecord[]> {
   const config = parseConfig(cfgPath);
   if (!config) return [];

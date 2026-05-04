@@ -27,18 +27,11 @@ const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
  * either an issue number, a planned refactor, or "permanent" with the
  * reason. Future contributors should resist adding entries without a
  * written justification.
+ *
+ * Empty today — every category enumerated below is enforced without
+ * exemptions. New violations must either fix or earn an entry here.
  */
-const EXCEPTIONS: Record<string, string[]> = {
-  // doctor.ts reads ~/.claude.json directly via
-  // `readFileSync(claudeJsonPath())` for diagnostic display. Read-only
-  // (the security invariant in security-invariants.md is about
-  // destructive ops). A future refactor should add a
-  // `getRawConfig(cfgPath?)` helper to registry.ts and route doctor
-  // through it; the doctor command's whole job is reporting registry
-  // state, so the centralization buys both schema-evolution safety
-  // and a marginal layering win, but isn't blocking today.
-  'claudeJsonPath-outside-registry': ['src/commands/doctor.ts'],
-};
+const EXCEPTIONS: Record<string, string[]> = {};
 
 async function readSourceFiles(pattern: string): Promise<Array<{ path: string; text: string }>> {
   const files: Array<{ path: string; text: string }> = [];
