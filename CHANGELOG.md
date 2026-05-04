@@ -5,7 +5,8 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 ## [Unreleased]
 
 ### Added
-- **`SETUP_REQUIRED` error code** (exit 14) and `requireSetup(log)` helper in `src/lib/prereqs.ts`. Check-only gate verifying Node ≥ 22, `gh` on PATH and authenticated, `gh` token has `repo` + `workflow` scopes, and `git config user.name`/`user.email` are set. No wiring yet (lands in a follow-up commit) — pure addition. First step of the bootstrap-UX track that gates non-setup commands when prereqs are missing, replacing the cryptic clone failures users hit on fresh installs.
+- **`SETUP_REQUIRED` error code** (exit 14) and `requireSetup(log)` helper in `src/lib/prereqs.ts`. Check-only gate verifying Node ≥ 22, `gh` on PATH and authenticated, `gh` token has `repo` + `workflow` scopes, and `git config user.name`/`user.email` are set. First step of the bootstrap-UX track that gates non-setup commands when prereqs are missing, replacing the cryptic clone failures users hit on fresh installs.
+- **Bootstrap gate wired into `bin/vaultkit.ts:wrap()`.** Every command except `setup` and `doctor` (the `SETUP_BYPASS` set) now runs `requireSetup` before its handler. A fresh install that skips `vaultkit setup` and runs e.g. `vaultkit connect owner/repo` now fails fast with a clear `Run 'vaultkit setup'` pointer instead of silently falling back to plain `git clone` and emitting a generic git error. `--version` and `--help` are commander built-ins and don't reach `wrap()`, so they're naturally excluded.
 
 ## [2.7.4] - 2026-05-03
 

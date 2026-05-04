@@ -6,7 +6,24 @@ import { Command } from 'commander';
 import { isVaultkitError, EXIT_CODES } from '../src/lib/errors.js';
 import { ConsoleLogger } from '../src/lib/logger.js';
 import { checkForUpdate } from '../src/lib/update-check.js';
+import { requireSetup } from '../src/lib/prereqs.js';
 import type { PublishMode } from '../src/lib/constants.js';
+
+/**
+ * Commands that bypass the bootstrap gate (`requireSetup`). Two members:
+ *   - `setup`  — the gate is a check-only mirror of what setup itself
+ *                installs/configures; setup must be runnable when prereqs
+ *                are missing (that's its whole job).
+ *   - `doctor` — the diagnostic command. Must always work so users can
+ *                see what's broken without being blocked by the gate.
+ *
+ * Every other command runs `await requireSetup(...)` first. The
+ * architecture fitness function in `tests/architecture.test.ts` enforces
+ * that every `src/commands/*.ts` file declares its gate posture in
+ * `tests/bootstrap-gate.test.ts` (either `COMMANDS_THAT_MUST_BE_GATED`
+ * or `BYPASS`).
+ */
+const SETUP_BYPASS = new Set(['setup', 'doctor']);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf8')) as { version: string };
@@ -25,6 +42,9 @@ async function wrap(fn: () => Promise<void>, commandName: string, args: string[]
   const verbose = process.env.VAULTKIT_VERBOSE === '1';
   if (verbose) console.error(`[debug] vaultkit ${commandName}${args.length ? ' ' + args.join(' ') : ''}`);
   try {
+    if (!SETUP_BYPASS.has(commandName)) {
+      await requireSetup(new ConsoleLogger());
+    }
     await fn();
     auditLog(commandName, args, 0, start);
     checkForUpdate(pkg.version, new ConsoleLogger());
