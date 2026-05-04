@@ -1,13 +1,12 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { confirm } from '@inquirer/prompts';
-import { execa } from 'execa';
 import { Vault, sha256 } from '../lib/vault.js';
 import { detectLayoutGaps, writeLayoutFiles } from '../lib/vault-layout.js';
 import { findTool } from '../lib/platform.js';
 import { getLauncherTemplate } from '../lib/template-paths.js';
 import { runMcpRepin, manualMcpRepinCommands } from '../lib/mcp.js';
-import { add, commit, pushOrPr } from '../lib/git.js';
+import { add, commit, pushOrPr, getStagedFiles } from '../lib/git.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
 import { PROMPTS, LABELS } from '../lib/messages.js';
@@ -135,9 +134,8 @@ export async function run(
 
   await add(vault.dir, filesToStage);
 
-  const stagedResult = await execa('git', ['-C', vault.dir, 'diff', '--cached', '--name-only'], { reject: false });
-  const staged = String(stagedResult.stdout ?? '').trim();
-  if (!staged) {
+  const staged = await getStagedFiles(vault.dir);
+  if (staged.length === 0) {
     log.info('  Nothing staged — skipping commit.');
     log.info('Done. Restart Claude Code to apply.');
     return;

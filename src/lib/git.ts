@@ -165,6 +165,18 @@ export async function isWorktreeDirty(dir: string): Promise<boolean> {
 }
 
 /**
+ * Returns the list of currently-staged files (paths relative to the repo
+ * root), one per element. Empty list if nothing is staged. Used by
+ * `update` to decide whether there's anything to commit before invoking
+ * `git commit`. Implemented as `git diff --cached --name-only`.
+ */
+export async function getStagedFiles(dir: string): Promise<string[]> {
+  const result = await git(['diff', '--cached', '--name-only'], dir);
+  const out = String(result.stdout ?? '').trim();
+  return out.length === 0 ? [] : out.split('\n').map(l => l.trim()).filter(Boolean);
+}
+
+/**
  * Returns the raw human-readable output of `git status` (no `--porcelain`),
  * suitable for printing directly to a terminal. Used by `status` for the
  * single-vault detailed view. Distinct from `getStatus()` (structured) and

@@ -39,7 +39,6 @@ const EXCEPTIONS: Record<string, string[]> = {
   // grandfathered when the git ACL fitness function was introduced.
   // Each migration to src/lib/git.ts wrappers removes one entry.
   'git-bypass-execa': [
-    'src/commands/update.ts',
     'src/commands/verify.ts',
   ],
 };
