@@ -1,8 +1,7 @@
 import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { execa } from 'execa';
 import { Vault } from '../lib/vault.js';
-import { archiveZip } from '../lib/git.js';
+import { archiveZip, isWorktreeDirty } from '../lib/git.js';
 import { vaultsRoot } from '../lib/platform.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
@@ -22,8 +21,7 @@ export async function run(
     throw new VaultkitError('NOT_VAULT_LIKE', `${vault.dir} is not a git repository.`);
   }
 
-  const statusResult = await execa('git', ['-C', vault.dir, 'status', '--porcelain'], { reject: false });
-  if (String(statusResult.stdout ?? '').trim().length > 0) {
+  if (await isWorktreeDirty(vault.dir)) {
     log.warn(`Vault has uncommitted changes — they will NOT be in the backup.`);
     log.info(`  Hint: cd "${vault.dir}" && git add . && git commit -m "wip: pre-backup snapshot"`);
   }

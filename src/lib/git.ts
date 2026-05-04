@@ -152,6 +152,18 @@ export async function pull(dir: string, { timeout = 30000, ffOnly = true }: Pull
   return { success: true, upToDate, timedOut: false, stderr: result.stderr ?? '' };
 }
 
+/**
+ * Cheap check for "are there uncommitted working-tree changes?" Used by
+ * commands like `backup` that need a yes/no answer without paying for the
+ * full `getStatus()` (which also reads branch, remote, log, and
+ * ahead/behind). Implemented as `git status --porcelain` then
+ * `length > 0`.
+ */
+export async function isWorktreeDirty(dir: string): Promise<boolean> {
+  const result = await git(['status', '--porcelain'], dir);
+  return (result.stdout ?? '').trim().length > 0;
+}
+
 export async function getStatus(dir: string): Promise<GitStatus> {
   const [branchRes, statusRes, remoteRes, logRes] = await Promise.all([
     git(['rev-parse', '--abbrev-ref', 'HEAD'], dir),
