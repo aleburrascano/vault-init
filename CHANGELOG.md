@@ -14,6 +14,10 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 - **`clone()` failures translate to typed `VaultkitError` instead of raw git stderr.** Mirrors the pattern in `gh-retry.ts:_classifyGhFailure` for the gh-API path. Adds `_classifyCloneFailure(stderr, repo)` (test-only export, underscore prefix) covering: account-flagged (`AUTH_REQUIRED`), repo-not-found via gh or plain git (`UNRECOGNIZED_INPUT`), SSH publickey failure (`AUTH_REQUIRED`), HTTP 401 (`AUTH_REQUIRED`), DNS / connection / timeout (`NETWORK_TIMEOUT`). Unrecognized stderr re-throws as a plain `Error` with the original diagnostic preserved. Defense-in-depth alongside the bootstrap gate: even when prereqs are healthy, a typo'd repo slug or expired SSH key now surfaces a typed error pointing at `vaultkit setup` rather than dumping git stderr.
 - **`bin/vaultkit.ts:wrap()` appends a `Hint:` line for setup-related failures.** When `SETUP_REQUIRED`, `TOOL_MISSING`, or `AUTH_REQUIRED` propagate to the catch block, a single line `Hint: run 'vaultkit setup' to bootstrap or repair prerequisites.` is appended after the `Error:` line. Only fires for those three codes (adding it for every category would dilute the signal) and is suppressed when the error message already mentions `vaultkit setup` (avoids double-printing for messages that already name the remedy).
 
+### Documentation
+- **README install section** now uses an `> [!IMPORTANT]` admonition naming the new failure mode (`Error: vaultkit isn't set up yet`) so fresh-install users discover the requirement before hitting it.
+- **[ADR-0009: Bootstrap gate at the dispatch layer](docs/decisions/0009-bootstrap-gate-at-dispatch-layer.md)** records the decision, alternatives rejected (npm postinstall, per-command preflight, marker files), and the consequences. Cross-linked from `.claude/rules/architecture.md` and `domain-language.md`.
+
 ## [2.7.4] - 2026-05-03
 
 ### Improved
