@@ -1,8 +1,8 @@
-import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { type DbLike, openFts5Db } from './sqlite-backend.js';
 
 /**
  * SQLite FTS5 + BM25 search index for vaultkit-managed vaults. Owns the
@@ -114,9 +114,9 @@ export interface ISearchIndex {
  * lock the file on Windows).
  */
 export class SearchIndex implements ISearchIndex {
-  private db: DatabaseSync;
+  private db: DbLike;
 
-  constructor(db: DatabaseSync) {
+  constructor(db: DbLike) {
     this.db = db;
     this.ensureSchema();
   }
@@ -373,7 +373,7 @@ export function openSearchIndex(dbPath?: string): SearchIndex {
   if (path !== ':memory:') {
     mkdirSync(dirname(path), { recursive: true });
   }
-  const db = new DatabaseSync(path);
+  const db = openFts5Db(path);
   // WAL mode for better concurrency between the indexer (writer) and
   // multiple per-vault MCP server processes (readers). Skipped for
   // in-memory DBs since journal modes don't apply there.
