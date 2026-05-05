@@ -2,6 +2,13 @@ import { confirm } from '@inquirer/prompts';
 import { ConsoleLogger } from '../lib/logger.js';
 import { checkNode, ensureGh, ensureGhAuth, ensureGitConfig } from '../lib/prereqs.js';
 import { findOrInstallClaude } from '../lib/mcp.js';
+import {
+  runSearchMcpAdd,
+  runSearchMcpRepin,
+  isSearchMcpRegistered,
+  installSearchLauncher,
+  SEARCH_MCP_NAME,
+} from '../lib/search-mcp.js';
 import { isVaultkitError } from '../lib/errors.js';
 import { PROMPTS } from '../lib/messages.js';
 import type { CommandModule, RunOptions } from '../types.js';
@@ -27,7 +34,7 @@ export interface SetupOptions extends RunOptions {
  * demand by `vaultkit destroy` so users aren't asked to authorise a
  * destructive permission they may never use.
  */
-export async function run({ skipInstallCheck = false, log = new ConsoleLogger() }: SetupOptions = {}): Promise<number> {
+export async function run({ cfgPath, skipInstallCheck = false, log = new ConsoleLogger() }: SetupOptions = {}): Promise<number> {
   log.info('vaultkit setup — one-time prerequisite check');
   log.info('');
 
@@ -84,6 +91,41 @@ export async function run({ skipInstallCheck = false, log = new ConsoleLogger() 
     log.info(`  + ok   claude: ${claudePath}`);
   } else {
     log.info('  ! warn  claude: not installed — MCP registration will be skipped on `vaultkit init`');
+  }
+
+  // 6. vaultkit-search MCP. Registered once globally (not per-vault) so
+  //    cross-vault BM25 search "just works" after setup. Idempotent on
+  //    re-run: register if absent; repin if a vaultkit upgrade changed
+  //    the launcher template SHA. Skip silently when claude CLI is
+  //    missing — the launcher is a vaultkit-internal concern that the
+  //    user can't act on without claude.
+  if (claudePath) {
+    try {
+      if (isSearchMcpRegistered(cfgPath)) {
+        // Already registered. Repin in case the launcher template SHA
+        // drifted in this vaultkit upgrade (idempotent — same template
+        // bytes produce the same pin, no-op for unchanged installs).
+        await runSearchMcpRepin(claudePath);
+        log.info(`  + ok   ${SEARCH_MCP_NAME}: registered (re-pinned)`);
+      } else {
+        await runSearchMcpAdd(claudePath);
+        log.info(`  + ok   ${SEARCH_MCP_NAME}: registered`);
+      }
+    } catch (err) {
+      // Best-effort. Search is value-add, not critical-path — a failure
+      // here shouldn't block the rest of setup.
+      const msg = isVaultkitError(err) ? err.message : (err as Error).message;
+      log.info(`  ! warn  ${SEARCH_MCP_NAME}: ${msg}`);
+    }
+  } else {
+    // Install the launcher even without claude so a future
+    // `claude mcp add` (manual or post-claude-install) can pin against
+    // the same bytes.
+    try {
+      await installSearchLauncher();
+    } catch {
+      // Best-effort — silent.
+    }
   }
 
   log.info('');

@@ -8,6 +8,8 @@ import { findTool, vaultsRoot } from '../lib/platform.js';
 import { getLauncherTemplate, getDeployTemplate } from '../lib/template-paths.js';
 import { checkNode, ensureGh, ensureGhAuth, ensureGitConfig } from '../lib/prereqs.js';
 import { findOrInstallClaude, runMcpAdd, runMcpRemove, manualMcpAddCommand } from '../lib/mcp.js';
+import { openSearchIndex } from '../lib/search-index.js';
+import { indexVault } from '../lib/search-indexer.js';
 import { init as gitInit, setDefaultBranch, addRemote, add as gitAdd, commit as gitCommit, pushNewRepo } from '../lib/git.js';
 import { ghJsonWithInput } from '../lib/gh-retry.js';
 import { createRepo, deleteRepo, repoUrl, repoCloneUrl } from '../lib/github-repo.js';
@@ -233,6 +235,24 @@ export async function run(
 
     // MCP registration
     registeredMcp = await registerMcpForVault(vaultDir, name, skipInstallCheck, log);
+
+    // Index the new vault for vaultkit-search MCP. Best-effort —
+    // failures here don't block init or trigger rollback (search is
+    // value-add, not critical-path; user can run `vaultkit update`
+    // later to retry).
+    try {
+      const idx = openSearchIndex();
+      try {
+        const result = await indexVault(name, vaultDir, idx);
+        if (result.added > 0) {
+          log.info(`  Search: indexed ${result.added} note${result.added === 1 ? '' : 's'} into vaultkit-search.`);
+        }
+      } finally {
+        idx.close();
+      }
+    } catch (err) {
+      log.warn(`  Search: indexing failed — ${(err as Error).message}. Run 'vaultkit update ${name}' to retry.`);
+    }
 
     printDoneSummary(name, githubUser, vaultDir, publishMode, baseUrl, log);
 
