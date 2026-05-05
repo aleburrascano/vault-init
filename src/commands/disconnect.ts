@@ -4,8 +4,7 @@ import { Vault } from '../lib/vault.js';
 import { removeFromRegistry } from '../lib/registry.js';
 import { findTool } from '../lib/platform.js';
 import { runMcpRemove, manualMcpRemoveCommand } from '../lib/mcp.js';
-import { openSearchIndex } from '../lib/search-index.js';
-import { removeVaultFromIndex } from '../lib/search-indexer.js';
+import { removeVaultFromIndex, withSearchIndex } from '../lib/search-indexer.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError, DEFAULT_MESSAGES } from '../lib/errors.js';
 import { PROMPTS, LABELS } from '../lib/messages.js';
@@ -69,16 +68,7 @@ export async function run(
   // Purge the vault from the search index. Best-effort — same shape
   // as `destroy.ts`. A reconnect via `vaultkit connect` will re-index
   // the vault on the next `vaultkit update` / `pull`.
-  try {
-    const idx = openSearchIndex();
-    try {
-      removeVaultFromIndex(name, idx);
-    } finally {
-      idx.close();
-    }
-  } catch {
-    // Best-effort.
-  }
+  await withSearchIndex(idx => removeVaultFromIndex(name, idx));
 
   log.info('');
   log.info(`Done. ${name} disconnected.`);

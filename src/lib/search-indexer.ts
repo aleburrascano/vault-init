@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { posix, basename, extname } from 'node:path';
 import { parseFrontmatter } from './freshness/sources.js';
-import type { ISearchIndex, IndexRecord } from './search-index.js';
+import { openSearchIndex, type ISearchIndex, type IndexRecord, type SearchIndex } from './search-index.js';
 import { walkMarkdown } from './vault-walk.js';
 
 /**
@@ -93,6 +93,33 @@ export function removeVaultFromIndex(vaultName: string, index: ISearchIndex): nu
   const before = index.count(vaultName);
   index.delete(vaultName);
   return before;
+}
+
+/**
+ * Best-effort search-index wrapper. Opens the default index, runs `fn`
+ * inside a `try/finally` that always closes the handle, and swallows
+ * any error (open failure, fn failure, close failure) — returns
+ * `undefined` in that case.
+ *
+ * Search is value-add, not critical-path: a stale or missing index is
+ * never a reason to fail a vault-lifecycle command. Used by `destroy`
+ * and `disconnect` for index cleanup; `init` and `pull` keep their own
+ * try/finally because they need to log result counts and re-open per
+ * vault (different shape).
+ */
+export async function withSearchIndex<T>(
+  fn: (index: SearchIndex) => Promise<T> | T,
+): Promise<T | undefined> {
+  try {
+    const idx = openSearchIndex();
+    try {
+      return await fn(idx);
+    } finally {
+      idx.close();
+    }
+  } catch {
+    return undefined;
+  }
 }
 
 /**
