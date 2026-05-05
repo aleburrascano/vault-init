@@ -1,6 +1,6 @@
 {
   "name": "@aleburrascano/vaultkit",
-  "version": "2.7.4",
+  "version": "2.8.0",
   "type": "module",
   "description": "Obsidian wiki management — create, connect, and destroy vaults with GitHub Pages and Claude Code MCP.",
   "author": "Alessandro Burrascano <aleburrascano123@gmail.com>",
@@ -29,7 +29,11 @@
     "execa": "^9.5.2",
     "jsdom": "^29.1.1"
   },
+  "optionalDependencies": {
+    "better-sqlite3": "^9.4.3"
+  },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/jsdom": "^28.0.1",
     "@types/node": "^22.0.0",
     "fast-check": "^4.7.0",
