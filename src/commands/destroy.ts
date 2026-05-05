@@ -14,6 +14,9 @@ import { VaultkitError, DEFAULT_MESSAGES } from '../lib/errors.js';
 import { PROMPTS, LABELS } from '../lib/messages.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
+const DESTROY_STATUSES = ['skipped', 'deleted', 'failed', 'removed', 'not-registered'] as const;
+type DestroyStatus = typeof DESTROY_STATUSES[number];
+
 export interface DestroyOptions extends RunOptions {
   skipConfirm?: boolean;
   skipMcp?: boolean;
@@ -69,7 +72,11 @@ export async function run(
     log.info('');
   }
 
-  const status = { github: 'skipped', mcp: 'skipped', local: 'skipped' };
+  const status: { github: DestroyStatus; mcp: DestroyStatus; local: DestroyStatus } = {
+    github: 'skipped',
+    mcp: 'skipped',
+    local: 'skipped',
+  };
 
   if (repoDeletable && repoSlug) {
     log.info('Deleting GitHub repo...');
