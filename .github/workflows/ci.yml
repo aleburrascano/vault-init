@@ -1,25 +1,16 @@
-name: Main
-
-# Single workflow for CI + Release. The `test` job runs on every push to
-# main, every PR, and every tag push. The `publish` job runs only on tag
-# pushes AND only after both matrix legs of `test` are green — so a
-# Windows-only red blocks publish, and we don't run the test suite twice
-# per tag push (the previous CI + Release split did, doubling the
-# GitHub-API burst footprint and tripping abuse heuristics — see
-# docs/roadmap.md "Live-test CI").
+name: CI
 
 on:
   push:
     branches: [main]
-    tags: ['v*.*.*']
   pull_request:
     branches: [main]
 
 # Live tests create real `vk-live-*` repos. Two test PATs (A and B) are
 # rotated round-robin via `GITHUB_RUN_NUMBER % 2` so per-account abuse
-# heuristics see roughly half the load each. Concurrency: only one Main
-# run touches either account at a time, so name collisions and orphan
-# races stay contained regardless of which PAT was selected.
+# heuristics see roughly half the load each. Shared concurrency group with
+# release.yml so a branch push and a tag push can never overlap and race
+# on the same test accounts.
 concurrency:
   group: vaultkit-live-tests
   cancel-in-progress: false
@@ -180,39 +171,3 @@ jobs:
 
       - name: npm publish dry-run (verify package contents)
         run: npm publish --dry-run --access public
-
-  publish:
-    needs: test
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write  # for npm provenance
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Verify tag matches package.json version
-        run: |
-          PKG_VER=$(node -p "require('./package.json').version")
-          TAG_VER="${GITHUB_REF_NAME#v}"
-          if [ "$PKG_VER" != "$TAG_VER" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG_VER" >&2
-            exit 1
-          fi
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
-      - name: Publish to npm
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,0 +1,172 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+# Shared concurrency group with ci.yml so a tag push and a branch push
+# can never overlap and race on the same test accounts.
+concurrency:
+  group: vaultkit-live-tests
+  cancel-in-progress: false
+
+jobs:
+  test:
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select test PAT (round-robin A/B)
+        shell: bash
+        env:
+          PAT_A: ${{ secrets.VAULTKIT_TEST_GH_TOKEN_A }}
+          PAT_B: ${{ secrets.VAULTKIT_TEST_GH_TOKEN_B }}
+        run: |
+          INDEX=$(( GITHUB_RUN_NUMBER % 2 ))
+          if [ "$INDEX" -eq 0 ]; then
+            LABEL=A
+            CHOSEN="$PAT_A"
+          else
+            LABEL=B
+            CHOSEN="$PAT_B"
+          fi
+          if [ -z "$CHOSEN" ]; then
+            echo "VAULTKIT_TEST_GH_TOKEN_${LABEL} secret is missing — add both _A and _B." >&2
+            exit 1
+          fi
+          echo "GH_TOKEN=$CHOSEN" >> "$GITHUB_ENV"
+          echo "VAULTKIT_TEST_PAT_LABEL=$LABEL" >> "$GITHUB_ENV"
+          echo "Selected PAT: $LABEL (run_number=$GITHUB_RUN_NUMBER)"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      - name: Authenticate gh CLI
+        shell: bash
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "GH_TOKEN not exported by Select test PAT step." >&2
+            exit 1
+          fi
+          gh auth status
+
+      - name: Configure git for live tests
+        shell: bash
+        run: |
+          git config --global user.name "vaultkit-ci"
+          git config --global user.email "ci@vaultkit.test"
+          git config --global credential.helper store
+          printf 'https://x-access-token:%s@github.com\n' "$GH_TOKEN" > "$HOME/.git-credentials"
+          chmod 600 "$HOME/.git-credentials"
+
+      - name: Pre-test cleanup of orphaned live-test repos
+        if: always()
+        shell: bash
+        env:
+          PAT_A: ${{ secrets.VAULTKIT_TEST_GH_TOKEN_A }}
+          PAT_B: ${{ secrets.VAULTKIT_TEST_GH_TOKEN_B }}
+        run: |
+          sweep_orphans() {
+            local label="$1"
+            local token="$2"
+            if [ -z "$token" ]; then
+              echo "Skipping cleanup for PAT $label — secret not set."
+              return 0
+            fi
+            (
+              export GH_TOKEN="$token"
+              local user
+              user=$(gh api user --jq .login)
+              gh repo list "$user" --limit 200 --json name \
+                --jq '.[] | select(.name | startswith("vk-live-")) | .name' \
+                | while read -r repo; do
+                    echo "[$label] Deleting orphan: $user/$repo"
+                    gh repo delete "$user/$repo" --yes || true
+                  done
+            )
+          }
+          sweep_orphans A "$PAT_A"
+          sweep_orphans B "$PAT_B"
+
+      - name: Run tests
+        run: npm test
+
+      - name: Post-test cleanup of any remaining live-test repos
+        if: always()
+        shell: bash
+        env:
+          PAT_A: ${{ secrets.VAULTKIT_TEST_GH_TOKEN_A }}
+          PAT_B: ${{ secrets.VAULTKIT_TEST_GH_TOKEN_B }}
+        run: |
+          sweep_orphans() {
+            local label="$1"
+            local token="$2"
+            if [ -z "$token" ]; then
+              echo "Skipping cleanup for PAT $label — secret not set."
+              return 0
+            fi
+            (
+              export GH_TOKEN="$token"
+              local user
+              user=$(gh api user --jq .login)
+              gh repo list "$user" --limit 200 --json name \
+                --jq '.[] | select(.name | startswith("vk-live-")) | .name' \
+                | while read -r repo; do
+                    echo "[$label] Cleaning up: $user/$repo"
+                    gh repo delete "$user/$repo" --yes || true
+                  done
+            )
+          }
+          sweep_orphans A "$PAT_A"
+          sweep_orphans B "$PAT_B"
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write  # for npm provenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify tag matches package.json version
+        run: |
+          PKG_VER=$(node -p "require('./package.json').version")
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          if [ "$PKG_VER" != "$TAG_VER" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG_VER" >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to npm
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
