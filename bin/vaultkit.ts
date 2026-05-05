@@ -92,7 +92,7 @@ Commands:
 
   WHEN SOMETHING'S WRONG
     doctor                            Check environment + flag broken vaults
-    update <name>                     Refresh launcher and restore missing layout files
+    update [name|--all]               Refresh launcher and restore layout (single vault or all)
     verify <name>                     Inspect launcher SHA-256 and re-pin if needed
 
   CHANGE OR REMOVE
@@ -225,21 +225,25 @@ to 30s; override with VAULTKIT_PULL_TIMEOUT (milliseconds).
   });
 
 program
-  .command('update <name>')
-  .description('Refresh launcher and restore missing layout files')
+  .command('update [name]')
+  .description('Refresh launcher and restore missing layout files (use --all to update every vault)')
+  .option('--all', 'update every registered vault in one pass')
   .addHelpText('after', `
 Examples:
-  $ vaultkit update my-wiki
+  $ vaultkit update my-wiki      # single vault
+  $ vaultkit update --all        # every registered vault
 
 Re-pins the launcher SHA-256 in MCP and restores any missing canonical
 layout files (CLAUDE.md, README.md, raw/, wiki/, etc.). Run after a
-vaultkit upgrade or when 'vaultkit verify' reports drift.
+vaultkit upgrade or when 'vaultkit verify' reports drift. With --all,
+iterates every registered vault and reports a per-vault status summary;
+exits non-zero if any vault failed.
 `)
-  .action(async (name: string) => {
+  .action(async (name: string | undefined, opts: { all?: boolean }) => {
     await wrap(async () => {
       const { run } = await import('../src/commands/update.js');
-      await run(name);
-    }, 'update', [name]);
+      await run(name, opts.all ? { all: true } : {});
+    }, 'update', opts.all ? ['--all'] : [name ?? '']);
   });
 
 program

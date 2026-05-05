@@ -9,6 +9,7 @@ import { runMcpRepin, manualMcpRepinCommands } from '../lib/mcp.js';
 import { openSearchIndex } from '../lib/search-index.js';
 import { indexVault } from '../lib/search-indexer.js';
 import { add, commit, pushOrPr, getStagedFiles } from '../lib/git.js';
+import { getAllVaults } from '../lib/registry.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
 import { PROMPTS, LABELS } from '../lib/messages.js';
@@ -23,19 +24,91 @@ import type { CommandModule, RunOptions } from '../types.js';
 
 export interface UpdateOptions extends RunOptions {
   skipConfirm?: boolean;
+  all?: boolean;
 }
 
 export async function run(
-  name: string,
-  { cfgPath, log = new ConsoleLogger(), skipConfirm = false }: UpdateOptions = {},
+  name: string | undefined,
+  opts: UpdateOptions = {},
 ): Promise<void> {
-  const vault = await Vault.requireFromName(name, cfgPath);
+  const log = opts.log ?? new ConsoleLogger();
 
+  if (opts.all) {
+    if (name !== undefined) {
+      throw new VaultkitError(
+        'UNRECOGNIZED_INPUT',
+        `'vaultkit update' accepts either a vault name OR --all, not both.`,
+      );
+    }
+    return runAll({ ...opts, log });
+  }
+
+  if (name === undefined) {
+    throw new VaultkitError(
+      'UNRECOGNIZED_INPUT',
+      `'vaultkit update' requires a vault name (or --all to update every registered vault).`,
+    );
+  }
+
+  const vault = await Vault.requireFromName(name, opts.cfgPath);
+  await updateOneVault(vault, { ...opts, log });
+}
+
+async function runAll(opts: UpdateOptions): Promise<void> {
+  const log = opts.log ?? new ConsoleLogger();
+  const records = await getAllVaults(opts.cfgPath);
+
+  if (records.length === 0) {
+    log.info('No registered vaults — nothing to update.');
+    return;
+  }
+
+  log.info(`Updating ${records.length} registered vault(s)...`);
+  log.info('');
+
+  const results: Array<{ name: string; status: 'ok' | 'fail'; message?: string }> = [];
+
+  for (const record of records) {
+    const vault = Vault.fromRecord(record);
+    log.info(`--- ${vault.name} ---`);
+    try {
+      await updateOneVault(vault, { ...opts, log, skipConfirm: true });
+      results.push({ name: vault.name, status: 'ok' });
+    } catch (err) {
+      const msg = (err as { message?: string })?.message ?? String(err);
+      results.push({ name: vault.name, status: 'fail', message: msg });
+      log.warn(`  Failed: ${msg}`);
+    }
+    log.info('');
+  }
+
+  log.info('Summary:');
+  for (const r of results) {
+    if (r.status === 'ok') {
+      log.info(`  + ok   ${r.name}`);
+    } else {
+      log.info(`  x fail ${r.name}: ${r.message}`);
+    }
+  }
+
+  const fails = results.filter(r => r.status === 'fail');
+  if (fails.length > 0) {
+    throw new VaultkitError(
+      'PARTIAL_FAILURE',
+      `${fails.length} of ${results.length} vault(s) failed to update.`,
+    );
+  }
+}
+
+async function updateOneVault(
+  vault: Vault,
+  { log = new ConsoleLogger(), skipConfirm = false }: UpdateOptions,
+): Promise<void> {
   if (!vault.hasGitRepo()) {
     throw new VaultkitError('NOT_VAULT_LIKE', `${vault.dir} is not a git repository — aborting.`);
   }
 
-  log.info(`Updating ${name} at ${vault.dir}...`);
+  log.info(`Updating ${vault.name} at ${vault.dir}...`);
 
   // Launcher refresh detection
   const beforeHash = vault.hasLauncher() ? await vault.sha256OfLauncher() : '';
@@ -76,7 +149,7 @@ export async function run(
   const afterHash = await vault.sha256OfLauncher();
 
   // Apply: create missing layout files
-  writeLayoutFiles(vault.dir, { name, siteUrl: '' }, missing);
+  writeLayoutFiles(vault.dir, { name: vault.name, siteUrl: '' }, missing);
   const added = [...missing];
 
   // Apply: merge the wiki-style section into existing CLAUDE.md (no-op if
@@ -114,7 +187,7 @@ export async function run(
   try {
     const idx = openSearchIndex();
     try {
-      await indexVault(name, vault.dir, idx);
+      await indexVault(vault.name, vault.dir, idx);
     } finally {
       idx.close();
     }
@@ -126,9 +199,9 @@ export async function run(
   const claudePath = await findTool('claude');
   if (claudePath) {
     log.info(`Re-pinning MCP registration with SHA-256 ${afterHash}...`);
-    await runMcpRepin(claudePath, name, vault.launcherPath, afterHash);
+    await runMcpRepin(claudePath, vault.name, vault.launcherPath, afterHash);
   } else {
-    const manual = manualMcpRepinCommands(name, vault.launcherPath, afterHash);
+    const manual = manualMcpRepinCommands(vault.name, vault.launcherPath, afterHash);
     log.warn('Claude Code not found — MCP re-registration skipped.');
     log.info(`  Once installed, run:`);
     log.info(`    ${manual.remove}`);
@@ -184,5 +257,5 @@ export async function run(
 }
 
 // Compile-time check: `run` matches the CommandModule contract.
-const _module: CommandModule<[string], UpdateOptions, void> = { run };
+const _module: CommandModule<[string | undefined], UpdateOptions, void> = { run };
 void _module;

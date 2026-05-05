@@ -74,7 +74,7 @@ EVERYDAY USE
 
 WHEN SOMETHING'S WRONG
   vaultkit doctor                     Check environment + flag broken vaults
-  vaultkit update <name>              Vault is missing layout files or has a stale launcher
+  vaultkit update [name|--all]        Refresh launcher / restore layout (single vault or all)
   vaultkit verify <name>              Launcher refused to start (pinned SHA-256 mismatch)
 
 CHANGE OR REMOVE

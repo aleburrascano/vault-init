@@ -46,4 +46,33 @@ describe('update command', () => {
     expect(existsSync(join(vaultDir, 'raw'))).toBe(true);
     expect(existsSync(join(vaultDir, 'wiki'))).toBe(true);
   });
+
+  it('throws when neither name nor --all is given', async () => {
+    const cfgPath = join(tmp, '.claude.json');
+    writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
+    const { run } = await import('../../src/commands/update.js');
+    await expect(run(undefined, { cfgPath })).rejects.toThrow(/requires a vault name/i);
+  });
+
+  it('throws when both name and --all are given', async () => {
+    const cfgPath = join(tmp, '.claude.json');
+    writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
+    const { run } = await import('../../src/commands/update.js');
+    await expect(run('MyVault', { cfgPath, all: true })).rejects.toThrow(/either a vault name OR --all/i);
+  });
+
+  it('--all with empty registry is a no-op', async () => {
+    const cfgPath = join(tmp, '.claude.json');
+    writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
+    const lines: string[] = [];
+    const log = {
+      info: (m: string) => lines.push(m),
+      warn: (m: string) => lines.push(`WARN: ${m}`),
+      error: (m: string) => lines.push(`ERROR: ${m}`),
+      debug: () => {},
+    };
+    const { run } = await import('../../src/commands/update.js');
+    await run(undefined, { cfgPath, all: true, log });
+    expect(lines.some(l => /no registered vaults/i.test(l))).toBe(true);
+  });
 });

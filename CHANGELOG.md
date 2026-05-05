@@ -4,6 +4,9 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+- **`vaultkit update --all` bulk migration.** Iterates every registered vault and migrates each one in a single pass, printing a per-vault `+ ok` / `x fail` summary. The single-vault `vaultkit update <name>` path is unchanged. Cuts the per-vault migration burden after a breaking-change release (e.g. the 2.8.0 launcher template change) from N commands to 1, and eliminates the "I migrated `main` but forgot `notes`" partial-migration class. Internally the per-vault flow was extracted into a private `updateOneVault` helper so the loop and the single-vault path share one code path.
+
 ## [2.8.0] - 2026-05-05
 
 ### Added
