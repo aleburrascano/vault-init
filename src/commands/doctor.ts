@@ -6,16 +6,17 @@ import { getConfig } from '../lib/git.js';
 import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { LABELS } from '../lib/messages.js';
 import { classifyLauncherSha, historicalVersionLabel } from '../lib/launcher-history.js';
+import { MARK } from '../lib/constants.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 async function checkTool(name: string, required: boolean, log: Logger): Promise<boolean> {
   const path = await findTool(name);
   if (!path) {
-    const level = required ? 'x fail' : '! warn';
+    const level = required ? MARK.FAIL : MARK.WARN;
     log.info(`  ${level}  ${name}: not found`);
     return false;
   }
-  log.info(`  + ok   ${name}: ${path}`);
+  log.info(`  ${MARK.OK}   ${name}: ${path}`);
   return true;
 }
 
@@ -31,40 +32,40 @@ export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {
   // node version — required >= 22
   const nodeMajor = parseInt(process.versions.node.split('.')[0] ?? '0', 10);
   if (nodeMajor < 22) {
-    log.info(`  x fail  node: v${process.versions.node} (v22+ required)`);
+    log.info(`  ${MARK.FAIL}  node: v${process.versions.node} (v22+ required)`);
     issues++;
   } else {
-    log.info(`  + ok   node: v${process.versions.node}`);
+    log.info(`  ${MARK.OK}   node: v${process.versions.node}`);
   }
 
   // gh — recommended
   const ghPath = await findTool('gh');
   if (!ghPath) {
-    log.info('  ! warn  gh: not found (recommended — install from https://cli.github.com)');
+    log.info(`  ${MARK.WARN}  gh: not found (recommended — install from https://cli.github.com)`);
   } else if (!(await isAuthenticated())) {
-    log.info(`  ! warn  gh: found but not authenticated (run: gh auth login)`);
+    log.info(`  ${MARK.WARN}  gh: found but not authenticated (run: gh auth login)`);
   } else {
-    log.info(`  + ok   gh: authenticated`);
+    log.info(`  ${MARK.OK}   gh: authenticated`);
   }
 
   // claude — recommended
   const claudePath = await findTool('claude');
   if (!claudePath) {
-    log.info('  ! warn  claude: not found (run: npm install -g @anthropic-ai/claude-code)');
+    log.info(`  ${MARK.WARN}  claude: not found (run: npm install -g @anthropic-ai/claude-code)`);
   } else {
-    log.info(`  + ok   claude: ${claudePath}`);
+    log.info(`  ${MARK.OK}   claude: ${claudePath}`);
   }
 
   // git config
   const userName = await getConfig('user.name');
   const userEmail = await getConfig('user.email');
   if (!userName || !userEmail) {
-    log.info('  x fail  git config: user.name or user.email not set');
+    log.info(`  ${MARK.FAIL}  git config: user.name or user.email not set`);
     log.info('    Run: git config --global user.name "Your Name"');
     log.info('         git config --global user.email "you@example.com"');
     issues++;
   } else {
-    log.info(`  + ok   git config: ${userName} <${userEmail}>`);
+    log.info(`  ${MARK.OK}   git config: ${userName} <${userEmail}>`);
   }
 
   log.info('');
@@ -78,14 +79,14 @@ export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {
     for (const record of records) {
       const vault = Vault.fromRecord(record);
       if (!vault.existsOnDisk()) {
-        log.info(`  x fail  ${vault.name}: directory missing (${vault.dir})`);
+        log.info(`  ${MARK.FAIL}  ${vault.name}: directory missing (${vault.dir})`);
         log.info(`    Hint: vaultkit connect ${vault.name}`);
         issues++;
         continue;
       }
 
       if (!vault.hasLauncher()) {
-        log.info(`  ! warn  ${vault.name}: .mcp-start.js missing`);
+        log.info(`  ${MARK.WARN}  ${vault.name}: .mcp-start.js missing`);
         log.info(`    Hint: vaultkit update ${vault.name}`);
         continue;
       }
@@ -93,7 +94,7 @@ export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {
       const onDiskHash = await vault.sha256OfLauncher();
 
       if (!vault.expectedHash) {
-        log.info(`  ! warn  ${vault.name}: no pinned hash (legacy registration)`);
+        log.info(`  ${MARK.WARN}  ${vault.name}: no pinned hash (legacy registration)`);
         log.info(`    Hint: vaultkit update ${vault.name}`);
         continue;
       }
@@ -102,12 +103,12 @@ export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {
         const classification = classifyLauncherSha(onDiskHash, vault.expectedHash);
         if (classification === 'historical') {
           const label = historicalVersionLabel(onDiskHash) ?? 'a prior version';
-          log.info(`  ! warn  ${vault.name}: hash mismatch — outdated after upgrade (was ${label})`);
+          log.info(`  ${MARK.WARN}  ${vault.name}: hash mismatch — outdated after upgrade (was ${label})`);
           log.info(`    Pinned:  ${vault.expectedHash}`);
           log.info(`    On-disk: ${onDiskHash}`);
           log.info(`    Hint: vaultkit update --all`);
         } else {
-          log.info(`  x fail  ${vault.name}: hash mismatch — SHA matches no known vaultkit version (possible tampering)`);
+          log.info(`  ${MARK.FAIL}  ${vault.name}: hash mismatch — SHA matches no known vaultkit version (possible tampering)`);
           log.info(`    Pinned:  ${vault.expectedHash}`);
           log.info(`    On-disk: ${onDiskHash}`);
           log.info(`    Inspect: ${vault.launcherPath}`);
@@ -118,12 +119,12 @@ export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {
       }
 
       if (!vault.isVaultLike()) {
-        log.info(`  ! warn  ${vault.name}: vault layout incomplete`);
+        log.info(`  ${MARK.WARN}  ${vault.name}: vault layout incomplete`);
         log.info(`    Hint: vaultkit update ${vault.name}`);
         continue;
       }
 
-      log.info(`  + ok   ${vault.name} (${vault.dir})`);
+      log.info(`  ${MARK.OK}   ${vault.name} (${vault.dir})`);
       log.info(`         ${vault.expectedHash}`);
       const schemaSuffix = vault.schemaVersion === null ? '(legacy — re-run vaultkit update to backfill)' : `v${vault.schemaVersion}`;
       log.info(`         schema: ${schemaSuffix}`);

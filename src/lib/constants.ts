@@ -80,3 +80,17 @@ export type PublishMode = typeof PUBLISH_MODES[number];
 export function isPublishMode(value: string): value is PublishMode {
   return (PUBLISH_MODES as readonly string[]).includes(value);
 }
+
+/**
+ * Shared health-check output vocabulary used by `doctor` and `setup`.
+ * `MARK.*` is the canonical constant; `HEALTH_MARKS` / `HealthMark` are
+ * exported for callers that need to enumerate or type-narrow the set
+ * (e.g. status maps in destroy/disconnect).
+ */
+export const HEALTH_MARKS = ['+ ok', '! warn', 'x fail'] as const;
+export type HealthMark = typeof HEALTH_MARKS[number];
+export const MARK = {
+  OK: '+ ok' as const,
+  WARN: '! warn' as const,
+  FAIL: 'x fail' as const,
+} as const;

@@ -8,6 +8,7 @@ import { findOrInstallClaude, runMcpRemove } from '../lib/mcp.js';
 import { getAllMcpServerNames } from '../lib/registry.js';
 import { isVaultkitError } from '../lib/errors.js';
 import { PROMPTS } from '../lib/messages.js';
+import { MARK } from '../lib/constants.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 /**
@@ -53,9 +54,9 @@ export async function run({ cfgPath, skipInstallCheck = false, log = new Console
   // 1. Node version
   const node = checkNode();
   if (node.ok) {
-    log.info(`  + ok   ${node.message}`);
+    log.info(`  ${MARK.OK}   ${node.message}`);
   } else {
-    log.info(`  x fail  ${node.message}`);
+    log.info(`  ${MARK.FAIL}  ${node.message}`);
     log.info('');
     log.info('Cannot continue without Node.js 22+. Re-run setup after upgrading.');
     return 1;
@@ -65,28 +66,28 @@ export async function run({ cfgPath, skipInstallCheck = false, log = new Console
   let ghPath: string;
   try {
     ghPath = await ensureGh({ log, skipInstallCheck });
-    log.info(`  + ok   gh: ${ghPath}`);
+    log.info(`  ${MARK.OK}   gh: ${ghPath}`);
   } catch (err) {
-    log.info(`  x fail  gh: ${(err as Error).message}`);
+    log.info(`  ${MARK.FAIL}  gh: ${(err as Error).message}`);
     return ++issues;
   }
 
   // 3. gh auth + base scopes (`repo` + `workflow` cover init / push / pull / visibility / Pages).
   try {
     await ensureGhAuth({ ghPath, log, scopes: ['repo', 'workflow'] });
-    log.info('  + ok   gh auth: repo, workflow scopes granted');
+    log.info(`  ${MARK.OK}   gh auth: repo, workflow scopes granted`);
   } catch (err) {
     const msg = isVaultkitError(err) ? err.message : (err as Error).message;
-    log.info(`  x fail  gh auth: ${msg}`);
+    log.info(`  ${MARK.FAIL}  gh auth: ${msg}`);
     issues++;
   }
 
   // 4. git config
   try {
     await ensureGitConfig();
-    log.info('  + ok   git config: user.name and user.email set');
+    log.info(`  ${MARK.OK}   git config: user.name and user.email set`);
   } catch (err) {
-    log.info(`  x fail  git config: ${(err as Error).message}`);
+    log.info(`  ${MARK.FAIL}  git config: ${(err as Error).message}`);
     issues++;
   }
 
@@ -98,9 +99,9 @@ export async function run({ cfgPath, skipInstallCheck = false, log = new Console
       : confirm({ message: PROMPTS.INSTALL_CLAUDE, default: true }),
   });
   if (claudePath) {
-    log.info(`  + ok   claude: ${claudePath}`);
+    log.info(`  ${MARK.OK}   claude: ${claudePath}`);
   } else {
-    log.info('  ! warn  claude: not installed — MCP registration will be skipped on `vaultkit init`');
+    log.info(`  ${MARK.WARN}  claude: not installed — MCP registration will be skipped on \`vaultkit init\``);
   }
 
   // 6. Legacy vaultkit-search MCP cleanup (one-time migration per ADR-0011).
@@ -128,17 +129,17 @@ export async function run({ cfgPath, skipInstallCheck = false, log = new Console
   if (claudePath && serverNames.includes(LEGACY_SEARCH_MCP_NAME)) {
     try {
       await runMcpRemove(claudePath, LEGACY_SEARCH_MCP_NAME);
-      log.info(`  + ok   ${LEGACY_SEARCH_MCP_NAME}: legacy registration removed (search is now folded into per-vault MCP)`);
+      log.info(`  ${MARK.OK}   ${LEGACY_SEARCH_MCP_NAME}: legacy registration removed (search is now folded into per-vault MCP)`);
     } catch (err) {
       const msg = isVaultkitError(err) ? err.message : (err as Error).message;
-      log.info(`  ! warn  ${LEGACY_SEARCH_MCP_NAME}: legacy cleanup failed: ${msg}`);
+      log.info(`  ${MARK.WARN}  ${LEGACY_SEARCH_MCP_NAME}: legacy cleanup failed: ${msg}`);
     }
   }
   try {
     const legacyLauncher = legacySearchLauncherPath();
     if (existsSync(legacyLauncher)) {
       unlinkSync(legacyLauncher);
-      log.info(`  + ok   removed legacy launcher at ${legacyLauncher}`);
+      log.info(`  ${MARK.OK}   removed legacy launcher at ${legacyLauncher}`);
     }
   } catch {
     // Best-effort — silent.
