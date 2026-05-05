@@ -7,8 +7,20 @@ import { isVaultkitError, EXIT_CODES } from '../src/lib/errors.js';
 import { ConsoleLogger } from '../src/lib/logger.js';
 import { checkForUpdate } from '../src/lib/update-check.js';
 import { checkPostUpgrade } from '../src/lib/post-upgrade-check.js';
+import { preflightLauncherCheck, preflightAllVaults } from '../src/lib/preflight-launcher.js';
 import { gateOrSkip } from '../src/lib/prereqs.js';
 import type { PublishMode } from '../src/lib/constants.js';
+
+// Commands whose body is meaningfully affected by — or whose user is
+// most likely about to be bitten by — a stale launcher. The preflight
+// check fires before fn() runs so the user sees the warning at the
+// moment they're closest to opening Claude Code.
+//
+// Excluded by design: backup / disconnect / destroy / visibility — none
+// of these depend on the launcher; warning there is noise. Also
+// excluded: verify / update — already disambiguate stale launchers in
+// their own bodies, so a preflight line would duplicate.
+const VAULT_PREFLIGHT_COMMANDS = new Set(['status', 'pull', 'refresh']);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf8')) as { version: string };
@@ -28,6 +40,18 @@ async function wrap(fn: () => Promise<void>, commandName: string, args: string[]
   if (verbose) console.error(`[debug] vaultkit ${commandName}${args.length ? ' ' + args.join(' ') : ''}`);
   try {
     await gateOrSkip(commandName, new ConsoleLogger());
+    if (VAULT_PREFLIGHT_COMMANDS.has(commandName)) {
+      const preflightLog = new ConsoleLogger();
+      const maybeName = args[0];
+      // The vault-name regex from validateName — accepting otherwise
+      // means a refresh --vault-dir / a stray flag triggers a doomed
+      // preflight that would log "vault not registered" silently.
+      if (maybeName && /^[a-zA-Z0-9_-]+$/.test(maybeName)) {
+        await preflightLauncherCheck(maybeName, undefined, preflightLog).catch(() => { /* best-effort */ });
+      } else if (!maybeName) {
+        await preflightAllVaults(undefined, preflightLog).catch(() => { /* best-effort */ });
+      }
+    }
     await fn();
     auditLog(commandName, args, 0, start);
     const notifyLog = new ConsoleLogger();
