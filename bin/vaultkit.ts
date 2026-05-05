@@ -22,9 +22,21 @@ import type { PublishMode } from '../src/lib/constants.js';
 // their own bodies, so a preflight line would duplicate.
 const VAULT_PREFLIGHT_COMMANDS = new Set(['status', 'pull', 'refresh']);
 
+// Error codes whose remedy genuinely is `vaultkit setup`. Adding a 4th
+// is a one-line edit. Other codes get the bare error message — no hint —
+// so this signal stays meaningful.
+const SETUP_HINT_CODES = new Set(['SETUP_REQUIRED', 'TOOL_MISSING', 'AUTH_REQUIRED']);
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '../../package.json'), 'utf8')) as { version: string };
 const versionString = `${pkg.version} (node ${process.version}, ${process.platform} ${process.arch})`;
+
+function shouldPrintSetupHint(err: unknown, message: string | undefined): boolean {
+  if (!isVaultkitError(err)) return false;
+  if (!SETUP_HINT_CODES.has(err.code)) return false;
+  if (/vaultkit setup/i.test(message ?? '')) return false;
+  return true;
+}
 
 function auditLog(command: string, args: string[], exitCode: number, start: number): void {
   const logFile = process.env.VAULTKIT_LOG;
@@ -66,17 +78,7 @@ async function wrap(fn: () => Promise<void>, commandName: string, args: string[]
     if (message) {
       process.stderr.write(`Error: ${message}\n`);
     }
-    // For setup-related failure modes, append a single hint pointing at
-    // `vaultkit setup`. The message body already explains what's wrong;
-    // the hint reinforces the action without repeating the cause. Only
-    // fires for the three codes whose remedy genuinely is `vaultkit setup`
-    // — adding it for every code would dilute the signal.
-    if (
-      isVaultkitError(err) &&
-      (err.code === 'SETUP_REQUIRED' || err.code === 'TOOL_MISSING' || err.code === 'AUTH_REQUIRED') &&
-      // Don't double-print if the message already names setup.
-      !/vaultkit setup/i.test(message ?? '')
-    ) {
+    if (shouldPrintSetupHint(err, message)) {
       process.stderr.write(`Hint: run 'vaultkit setup' to bootstrap or repair prerequisites.\n`);
     }
     process.exit(exitCode);
