@@ -7,6 +7,8 @@ import { getRepoSlug } from '../lib/git.js';
 import { isAdmin, deleteRepoCapturing, repoUrl } from '../lib/github-repo.js';
 import { ensureDeleteRepoScope } from '../lib/github-auth.js';
 import { runMcpRemove, manualMcpRemoveCommand } from '../lib/mcp.js';
+import { openSearchIndex } from '../lib/search-index.js';
+import { removeVaultFromIndex } from '../lib/search-indexer.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError, DEFAULT_MESSAGES } from '../lib/errors.js';
 import { PROMPTS, LABELS } from '../lib/messages.js';
@@ -102,6 +104,21 @@ export async function run(
     status.local = 'deleted';
   } else {
     log.info('Local directory not found — skipping.');
+  }
+
+  // Purge the vault from the search index. Best-effort — failures
+  // here don't matter to the user-visible destroy result. If the
+  // index doesn't exist (search MCP never registered), this is a
+  // silent no-op.
+  try {
+    const idx = openSearchIndex();
+    try {
+      removeVaultFromIndex(name, idx);
+    } finally {
+      idx.close();
+    }
+  } catch {
+    // Best-effort.
   }
 
   log.info('');

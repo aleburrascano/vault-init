@@ -6,6 +6,8 @@ import { detectLayoutGaps, writeLayoutFiles } from '../lib/vault-layout.js';
 import { findTool } from '../lib/platform.js';
 import { getLauncherTemplate } from '../lib/template-paths.js';
 import { runMcpRepin, manualMcpRepinCommands } from '../lib/mcp.js';
+import { openSearchIndex } from '../lib/search-index.js';
+import { indexVault } from '../lib/search-indexer.js';
 import { add, commit, pushOrPr, getStagedFiles } from '../lib/git.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
@@ -103,6 +105,21 @@ export async function run(
       for (const line of snippet.split('\n')) log.info(`    ${line}`);
       log.info('');
     }
+  }
+
+  // Re-index vault for vaultkit-search MCP. Runs after layout
+  // reconcile + CLAUDE.md merge so any newly-added files are picked
+  // up. Best-effort — failures here don't block the rest of update
+  // (search is value-add, not critical-path).
+  try {
+    const idx = openSearchIndex();
+    try {
+      await indexVault(name, vault.dir, idx);
+    } finally {
+      idx.close();
+    }
+  } catch (err) {
+    log.warn(`  Search: re-index failed — ${(err as Error).message}.`);
   }
 
   // Re-pin MCP
