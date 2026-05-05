@@ -28,6 +28,8 @@ Format: [Michael Nygard's template](https://cognitect.com/blog/2011/11/15/docume
 | [ADR-0011](0011-vaultkit-mcp-replaces-obsidian-mcp-pro.md) | vaultkit owns the per-vault MCP — drops obsidian-mcp-pro and the global vaultkit-search MCP | Accepted |
 | [ADR-0012](0012-fitness-functions-for-security-invariants.md) | Fitness functions for security invariants | Accepted |
 | [ADR-0013](0013-isearchindex-interface.md) | ISearchIndex interface for MCP tool context | Accepted |
+| [ADR-0014](0014-npm-deprecate-on-launcher-breaking-change.md) | `npm deprecate` past versions on every launcher-template breaking change | Accepted |
+| [ADR-0015](0015-vault-schema-version-and-breaking-changes-table.md) | Per-vault schema version + centralized breaking-changes table | Accepted |
 
 ## When to add an ADR
 
