@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { getAllVaults } from '../lib/registry.js';
 import { pull } from '../lib/git.js';
-import { openSearchIndex, type SearchIndex } from '../lib/search-index.js';
+import { openSearchIndex, type ISearchIndex } from '../lib/search-index.js';
 import { indexVault } from '../lib/search-indexer.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { LABELS } from '../lib/messages.js';
@@ -23,7 +23,7 @@ export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {
   // current with upstream changes (new notes, edits to existing
   // notes, removed notes). Best-effort: a missing/corrupt index file
   // skips the re-index but doesn't block the pull.
-  let searchIndex: SearchIndex | null = null;
+  let searchIndex: ISearchIndex | null = null;
   try {
     searchIndex = openSearchIndex();
   } catch {

@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, posix, basename, extname } from 'node:path';
 import { parseFrontmatter } from './freshness/sources.js';
-import type { SearchIndex, IndexRecord } from './search-index.js';
+import type { ISearchIndex, IndexRecord } from './search-index.js';
 
 /**
  * Walks a vaultkit-managed vault directory and (re-)populates the
@@ -53,7 +53,7 @@ export interface IndexResult {
 export async function indexVault(
   vaultName: string,
   vaultDir: string,
-  index: SearchIndex,
+  index: ISearchIndex,
 ): Promise<IndexResult> {
   // Snapshot the previous set of paths for this vault so we can
   // distinguish added / updated / removed at the end.
@@ -98,7 +98,7 @@ export async function indexVault(
  * `disconnect` after the vault is unregistered. Returns the number of
  * rows deleted.
  */
-export function removeVaultFromIndex(vaultName: string, index: SearchIndex): number {
+export function removeVaultFromIndex(vaultName: string, index: ISearchIndex): number {
   const before = index.count(vaultName);
   index.delete(vaultName);
   return before;
@@ -194,7 +194,7 @@ function _extractTags(fm: Record<string, string>): string {
  * prefix for tests; the SearchIndex doesn't yet expose a path-listing
  * API directly because nothing else needs it.
  */
-export function _listVaultPaths(vaultName: string, index: SearchIndex): string[] {
+export function _listVaultPaths(vaultName: string, index: ISearchIndex): string[] {
   // Reach into the index via its query mechanism — we want every row
   // for the vault. A wildcard match would need FTS5's column filter,
   // but the simpler path is to use a raw SQL via a method we add.

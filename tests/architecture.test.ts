@@ -464,6 +464,26 @@ describe('architecture: catch blocks do not rethrow as plain Error', () => {
   });
 });
 
+describe('architecture: MCP tool context depends on ISearchIndex, not SearchIndex', () => {
+  it('src/mcp-tools/context.ts imports ISearchIndex (not the concrete class)', async () => {
+    // The ToolContext.index field must be typed as the ISearchIndex interface so
+    // tool unit tests can inject a FakeSearchIndex without SQLite. If this file
+    // imports the concrete SearchIndex class, tool tests are forced to construct a
+    // real (or :memory:) database, coupling them to implementation details.
+    const [contextFile] = await readSourceFiles('src/mcp-tools/context.ts');
+    expect(contextFile, 'could not read src/mcp-tools/context.ts').toBeDefined();
+    const text = contextFile!.text;
+    expect(
+      text,
+      'context.ts must import ISearchIndex (the interface), not SearchIndex (the class)',
+    ).toMatch(/import\s+type\s+\{[^}]*\bISearchIndex\b[^}]*\}/);
+    expect(
+      text,
+      'context.ts must not import the concrete SearchIndex class (use ISearchIndex instead)',
+    ).not.toMatch(/import\s+(?:type\s+)?\{[^}]*(?<![A-Za-z])SearchIndex(?![A-Za-z])[^}]*\}\s+from/);
+  });
+});
+
 describe('architecture: bootstrap gate is wired', () => {
   it('bin/vaultkit.ts:wrap() applies gateOrSkip before running the command handler', async () => {
     const text = readFileSync(join(REPO_ROOT, 'bin/vaultkit.ts'), 'utf8');

@@ -10,7 +10,7 @@
  * real `~/.claude.json` / `~/.vaultkit-search.db`.
  */
 
-import type { SearchIndex } from '../lib/search-index.js';
+import type { ISearchIndex } from '../lib/search-index.js';
 
 export interface VaultRef {
   /** Vault name as it appears in `~/.claude.json#mcpServers`. */
@@ -34,7 +34,7 @@ export interface ToolContext {
    */
   listVaults(): VaultRef[];
   /** Shared FTS5 + BM25 search index. */
-  index: SearchIndex;
+  index: ISearchIndex;
 }
 
 /**

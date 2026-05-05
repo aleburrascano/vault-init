@@ -81,12 +81,39 @@ export interface QueryOptions {
   topK?: number;
 }
 
+/** A note reference returned by tag-based lookups. */
+export interface NoteRef {
+  vault: string;
+  path: string;
+  title: string;
+}
+
+/**
+ * Public surface of the search index. Implemented by `SearchIndex` (the
+ * SQLite-backed production class) and `FakeSearchIndex` (the in-memory
+ * test double in `tests/helpers/search-index.ts`).
+ *
+ * MCP tools and the indexer depend on this interface so they can be
+ * tested without a real SQLite database.
+ */
+export interface ISearchIndex {
+  query(rawQuery: string, opts?: QueryOptions): SearchHit[];
+  listTags(vault?: string): string[];
+  notesByTag(tag: string, opts?: { vault?: string; topK?: number }): NoteRef[];
+  listVaults(): string[];
+  listPaths(vault: string): string[];
+  count(vault?: string): number;
+  upsert(record: IndexRecord): void;
+  delete(vault: string, path?: string): void;
+  close(): void;
+}
+
 /**
  * The index handle. Construct via `openSearchIndex()`. Always call
  * `close()` when done (especially in tests, where leaked handles can
  * lock the file on Windows).
  */
-export class SearchIndex {
+export class SearchIndex implements ISearchIndex {
   private db: DatabaseSync;
 
   constructor(db: DatabaseSync) {
@@ -278,11 +305,7 @@ export class SearchIndex {
    * Pass `vault: '*'` (or undefined) for cross-vault. Otherwise scopes
    * to the named vault.
    */
-  notesByTag(tag: string, opts: { vault?: string; topK?: number } = {}): Array<{
-    vault: string;
-    path: string;
-    title: string;
-  }> {
+  notesByTag(tag: string, opts: { vault?: string; topK?: number } = {}): NoteRef[] {
     const scoped = opts.vault !== undefined && opts.vault !== '*';
     const topK = Math.min(opts.topK ?? 50, 200);
     // Use FTS5 MATCH on the `tags` column with the quoted tag — this
@@ -307,11 +330,7 @@ export class SearchIndex {
       LIMIT ?
     `;
     try {
-      return this.db.prepare(sql).all(...(params as never[])) as Array<{
-        vault: string;
-        path: string;
-        title: string;
-      }>;
+      return this.db.prepare(sql).all(...(params as never[])) as unknown as NoteRef[];
     } catch (err) {
       // Same fallback as `query()` — surface bad-input as empty results.
       const msg = (err as { message?: string })?.message ?? '';
