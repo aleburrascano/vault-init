@@ -26,6 +26,8 @@ Format: [Michael Nygard's template](https://cognitect.com/blog/2011/11/15/docume
 | [ADR-0009](0009-bootstrap-gate-at-dispatch-layer.md) | Bootstrap gate at the dispatch layer | Accepted |
 | [ADR-0010](0010-bm25-search-mcp.md) | BM25 search MCP shipped with vaultkit | Superseded by ADR-0011 |
 | [ADR-0011](0011-vaultkit-mcp-replaces-obsidian-mcp-pro.md) | vaultkit owns the per-vault MCP — drops obsidian-mcp-pro and the global vaultkit-search MCP | Accepted |
+| [ADR-0012](0012-fitness-functions-for-security-invariants.md) | Fitness functions for security invariants | Accepted |
+| [ADR-0013](0013-isearchindex-interface.md) | ISearchIndex interface for MCP tool context | Accepted |
 
 ## When to add an ADR
 
