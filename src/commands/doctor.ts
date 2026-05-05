@@ -7,7 +7,7 @@ import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { LABELS } from '../lib/messages.js';
 import { classifyLauncherSha, historicalVersionLabel } from '../lib/launcher-history.js';
 import { MARK } from '../lib/constants.js';
-import type { CommandModule, RunOptions } from '../types.js';
+import type { CommandModule, RunOptions, VaultRecord } from '../types.js';
 
 async function checkTool(name: string, required: boolean, log: Logger): Promise<boolean> {
   const path = await findTool(name);
@@ -18,6 +18,59 @@ async function checkTool(name: string, required: boolean, log: Logger): Promise<
   }
   log.info(`  ${MARK.OK}   ${name}: ${path}`);
   return true;
+}
+
+/**
+ * Health-check one registered vault. Returns the count to add to the
+ * outer `issues` total — 1 if a fatal-level finding fired (`x fail`),
+ * 0 for `! warn` or `+ ok`. The helper owns its own logging so the
+ * caller stays a one-line `for` loop.
+ */
+async function checkVaultRecord(record: VaultRecord, log: Logger): Promise<number> {
+  const vault = Vault.fromRecord(record);
+  if (!vault.existsOnDisk()) {
+    log.info(`  ${MARK.FAIL}  ${vault.name}: directory missing (${vault.dir})`);
+    log.info(`    Hint: vaultkit connect ${vault.name}`);
+    return 1;
+  }
+  if (!vault.hasLauncher()) {
+    log.info(`  ${MARK.WARN}  ${vault.name}: .mcp-start.js missing`);
+    log.info(`    Hint: vaultkit update ${vault.name}`);
+    return 0;
+  }
+  const onDiskHash = await vault.sha256OfLauncher();
+  if (!vault.expectedHash) {
+    log.info(`  ${MARK.WARN}  ${vault.name}: no pinned hash (legacy registration)`);
+    log.info(`    Hint: vaultkit update ${vault.name}`);
+    return 0;
+  }
+  if (vault.expectedHash !== onDiskHash) {
+    const classification = classifyLauncherSha(onDiskHash, vault.expectedHash);
+    if (classification === 'historical') {
+      const label = historicalVersionLabel(onDiskHash) ?? 'a prior version';
+      log.info(`  ${MARK.WARN}  ${vault.name}: hash mismatch — outdated after upgrade (was ${label})`);
+      log.info(`    Pinned:  ${vault.expectedHash}`);
+      log.info(`    On-disk: ${onDiskHash}`);
+      log.info(`    Hint: vaultkit update --all`);
+      return 0;
+    }
+    log.info(`  ${MARK.FAIL}  ${vault.name}: hash mismatch — SHA matches no known vaultkit version (possible tampering)`);
+    log.info(`    Pinned:  ${vault.expectedHash}`);
+    log.info(`    On-disk: ${onDiskHash}`);
+    log.info(`    Inspect: ${vault.launcherPath}`);
+    log.info(`    Re-trust: vaultkit verify ${vault.name}`);
+    return 1;
+  }
+  if (!vault.isVaultLike()) {
+    log.info(`  ${MARK.WARN}  ${vault.name}: vault layout incomplete`);
+    log.info(`    Hint: vaultkit update ${vault.name}`);
+    return 0;
+  }
+  log.info(`  ${MARK.OK}   ${vault.name} (${vault.dir})`);
+  log.info(`         ${vault.expectedHash}`);
+  const schemaSuffix = vault.schemaVersion === null ? '(legacy — re-run vaultkit update to backfill)' : `v${vault.schemaVersion}`;
+  log.info(`         schema: ${schemaSuffix}`);
+  return 0;
 }
 
 export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {}): Promise<number> {
@@ -77,57 +130,7 @@ export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {
   } else {
     log.info('Vaults:');
     for (const record of records) {
-      const vault = Vault.fromRecord(record);
-      if (!vault.existsOnDisk()) {
-        log.info(`  ${MARK.FAIL}  ${vault.name}: directory missing (${vault.dir})`);
-        log.info(`    Hint: vaultkit connect ${vault.name}`);
-        issues++;
-        continue;
-      }
-
-      if (!vault.hasLauncher()) {
-        log.info(`  ${MARK.WARN}  ${vault.name}: .mcp-start.js missing`);
-        log.info(`    Hint: vaultkit update ${vault.name}`);
-        continue;
-      }
-
-      const onDiskHash = await vault.sha256OfLauncher();
-
-      if (!vault.expectedHash) {
-        log.info(`  ${MARK.WARN}  ${vault.name}: no pinned hash (legacy registration)`);
-        log.info(`    Hint: vaultkit update ${vault.name}`);
-        continue;
-      }
-
-      if (vault.expectedHash !== onDiskHash) {
-        const classification = classifyLauncherSha(onDiskHash, vault.expectedHash);
-        if (classification === 'historical') {
-          const label = historicalVersionLabel(onDiskHash) ?? 'a prior version';
-          log.info(`  ${MARK.WARN}  ${vault.name}: hash mismatch — outdated after upgrade (was ${label})`);
-          log.info(`    Pinned:  ${vault.expectedHash}`);
-          log.info(`    On-disk: ${onDiskHash}`);
-          log.info(`    Hint: vaultkit update --all`);
-        } else {
-          log.info(`  ${MARK.FAIL}  ${vault.name}: hash mismatch — SHA matches no known vaultkit version (possible tampering)`);
-          log.info(`    Pinned:  ${vault.expectedHash}`);
-          log.info(`    On-disk: ${onDiskHash}`);
-          log.info(`    Inspect: ${vault.launcherPath}`);
-          log.info(`    Re-trust: vaultkit verify ${vault.name}`);
-          issues++;
-        }
-        continue;
-      }
-
-      if (!vault.isVaultLike()) {
-        log.info(`  ${MARK.WARN}  ${vault.name}: vault layout incomplete`);
-        log.info(`    Hint: vaultkit update ${vault.name}`);
-        continue;
-      }
-
-      log.info(`  ${MARK.OK}   ${vault.name} (${vault.dir})`);
-      log.info(`         ${vault.expectedHash}`);
-      const schemaSuffix = vault.schemaVersion === null ? '(legacy — re-run vaultkit update to backfill)' : `v${vault.schemaVersion}`;
-      log.info(`         schema: ${schemaSuffix}`);
+      issues += await checkVaultRecord(record, log);
     }
 
     // Show non-vault MCP servers (other tools the user has registered,
