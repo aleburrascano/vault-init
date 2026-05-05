@@ -55,7 +55,7 @@ export async function run(options: McpServerOptions): Promise<void> {
 
   const log: DiagnosticLog = options.silent === true ? silentLog : stderrLog;
 
-  const vaults = await getAllVaults();
+  const vaults = await getAllVaults(options.cfgPath);
   const current = resolveCurrentVault(vaults, vaultDir);
   log.debug(`bound to vault "${current.name}" at ${current.dir}`);
 
