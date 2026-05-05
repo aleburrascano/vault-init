@@ -1,15 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { arrayLogger } from '../helpers/logger.js';
 
 /**
- * S4 wiring tests: setup.ts registers (or repins) the vaultkit-search
- * MCP after the prereq checks. These tests are independent of the
- * existing setup.test.ts cases (which predate the search MCP) so we
- * can pin the new behavior without modifying that file's tightly-
- * scoped existing assertions.
+ * Phase 4 migration tests: setup.ts step 6 cleans up the legacy
+ * `vaultkit-search` MCP registration plus the byte-pinned
+ * `~/.vaultkit/search-launcher.js` from pre-2.8 vaultkit. Search is
+ * now folded into the per-vault MCP server (per ADR-0011).
+ *
+ * Replaces the previous setup-search tests that asserted the old
+ * register / repin behavior. The legacy code path (registering a
+ * second global MCP) doesn't exist anymore in setup.ts.
  */
 
 vi.mock('@inquirer/prompts', () => ({ confirm: vi.fn(), input: vi.fn() }));
@@ -49,14 +52,6 @@ afterEach(() => {
   rmSync(homeOverride, { recursive: true, force: true });
 });
 
-/**
- * Configure the execa mock to handle every call setup makes:
- *   - gh auth status → authed with the requested scopes
- *   - git config user.name / user.email → already set
- *   - claude mcp add/remove/list → succeed silently (returns 0)
- * Tests can inspect `vi.mocked(execa).mock.calls` afterwards to
- * verify which MCP-related argv shapes were passed.
- */
 function mockHealthyExeca(): void {
   vi.mocked(execa).mockImplementation((async (_cmd: string, args?: readonly string[]) => {
     if (args?.[0] === 'auth' && args?.[1] === 'status') {
@@ -81,8 +76,16 @@ function mcpArgvCalls(): ReadonlyArray<readonly string[]> {
   return out;
 }
 
-describe('setup wires the vaultkit-search MCP', () => {
-  it('registers vaultkit-search via `claude mcp add` when not previously registered', async () => {
+function makeLegacyLauncher(): string {
+  const dir = join(homeOverride, '.vaultkit');
+  mkdirSync(dir, { recursive: true });
+  const launcher = join(dir, 'search-launcher.js');
+  writeFileSync(launcher, '// stale launcher bytes\n', 'utf8');
+  return launcher;
+}
+
+describe('setup cleans up legacy vaultkit-search state (Phase 4 migration)', () => {
+  it('removes the legacy MCP registration via `claude mcp remove` when present', async () => {
     vi.mocked(findTool).mockImplementation(async (name: string) => {
       if (name === 'gh') return '/usr/bin/gh';
       if (name === 'claude') return '/usr/bin/claude';
@@ -90,33 +93,7 @@ describe('setup wires the vaultkit-search MCP', () => {
     });
     mockHealthyExeca();
 
-    // Empty cfg → vaultkit-search not registered yet
-    writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
-
-    const { run } = await import('../../src/commands/setup.js');
-    const lines: string[] = [];
-    const issues = await run({ cfgPath, skipInstallCheck: true, log: arrayLogger(lines) });
-
-    expect(issues).toBe(0);
-    const mcpCalls = mcpArgvCalls();
-    // Exactly one mcp invocation, and it must be `add`
-    const addCall = mcpCalls.find(args => args[1] === 'add');
-    expect(addCall).toBeDefined();
-    expect(addCall).toContain('vaultkit-search');
-    expect(addCall?.some(a => a.startsWith('--expected-sha256='))).toBe(true);
-
-    expect(lines.some(l => /\+ ok\s+vaultkit-search:\s+registered$/.test(l))).toBe(true);
-  });
-
-  it('repins vaultkit-search when already registered (idempotent)', async () => {
-    vi.mocked(findTool).mockImplementation(async (name: string) => {
-      if (name === 'gh') return '/usr/bin/gh';
-      if (name === 'claude') return '/usr/bin/claude';
-      return null;
-    });
-    mockHealthyExeca();
-
-    // Pre-existing entry → repin path
+    // Pre-existing legacy entry → cleanup path
     writeFileSync(
       cfgPath,
       JSON.stringify({
@@ -132,26 +109,66 @@ describe('setup wires the vaultkit-search MCP', () => {
 
     const { run } = await import('../../src/commands/setup.js');
     const lines: string[] = [];
-    await run({ cfgPath, skipInstallCheck: true, log: arrayLogger(lines) });
+    const issues = await run({ cfgPath, skipInstallCheck: true, log: arrayLogger(lines) });
 
-    const mcpCalls = mcpArgvCalls();
-    // Repin = remove + add. Both must be present.
-    expect(mcpCalls.some(a => a[1] === 'remove' && a.includes('vaultkit-search'))).toBe(true);
-    expect(mcpCalls.some(a => a[1] === 'add' && a.includes('vaultkit-search'))).toBe(true);
-
-    expect(lines.some(l => /\+ ok\s+vaultkit-search:\s+registered \(re-pinned\)/.test(l))).toBe(true);
+    expect(issues).toBe(0);
+    const calls = mcpArgvCalls();
+    expect(calls.some((a) => a[1] === 'remove' && a.includes('vaultkit-search'))).toBe(true);
+    expect(calls.some((a) => a[1] === 'add')).toBe(false);
+    expect(lines.some((l) => /legacy registration removed/.test(l))).toBe(true);
   });
 
-  it('skips MCP registration silently when claude CLI is missing', async () => {
+  it('no-ops silently when vaultkit-search is not registered', async () => {
+    vi.mocked(findTool).mockImplementation(async (name: string) => {
+      if (name === 'gh') return '/usr/bin/gh';
+      if (name === 'claude') return '/usr/bin/claude';
+      return null;
+    });
+    mockHealthyExeca();
+
+    // No vaultkit-search entry
+    writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
+
+    const { run } = await import('../../src/commands/setup.js');
+    const lines: string[] = [];
+    const issues = await run({ cfgPath, skipInstallCheck: true, log: arrayLogger(lines) });
+
+    expect(issues).toBe(0);
+    // No mcp calls at all when nothing to clean up
+    expect(mcpArgvCalls()).toHaveLength(0);
+    expect(lines.some((l) => /vaultkit-search/.test(l))).toBe(false);
+  });
+
+  it('deletes ~/.vaultkit/search-launcher.js when present', async () => {
+    vi.mocked(findTool).mockImplementation(async (name: string) => {
+      if (name === 'gh') return '/usr/bin/gh';
+      if (name === 'claude') return '/usr/bin/claude';
+      return null;
+    });
+    mockHealthyExeca();
+    const launcher = makeLegacyLauncher();
+    expect(existsSync(launcher)).toBe(true);
+
+    writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
+
+    const { run } = await import('../../src/commands/setup.js');
+    const lines: string[] = [];
+    await run({ cfgPath, skipInstallCheck: true, log: arrayLogger(lines) });
+
+    expect(existsSync(launcher)).toBe(false);
+    expect(lines.some((l) => /removed legacy launcher/.test(l))).toBe(true);
+  });
+
+  it('still cleans up the launcher file when claude CLI is missing', async () => {
     vi.mocked(findTool).mockImplementation(async (name: string) => {
       if (name === 'gh') return '/usr/bin/gh';
       if (name === 'claude') return null;
       return null;
     });
-    // Mock confirm to refuse the install prompt
     const { confirm } = await import('@inquirer/prompts');
     vi.mocked(confirm).mockResolvedValue(false);
     mockHealthyExeca();
+    const launcher = makeLegacyLauncher();
 
     writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
 
@@ -160,25 +177,39 @@ describe('setup wires the vaultkit-search MCP', () => {
     const issues = await run({ cfgPath, log: arrayLogger(lines) });
 
     expect(issues).toBe(0);
-    // No mcp calls at all when claude is missing
+    // Launcher gone even though claude was missing → MCP cleanup skipped
+    expect(existsSync(launcher)).toBe(false);
+    // No mcp invocations because claude is unavailable
     expect(mcpArgvCalls()).toHaveLength(0);
-    // The launcher is still pre-installed so a future claude install
-    // can register against the same bytes.
-    const { existsSync } = await import('node:fs');
-    const { searchLauncherPath } = await import('../../src/lib/search-mcp.js');
-    expect(existsSync(searchLauncherPath())).toBe(true);
   });
 
-  it('logs a warning but does not increment issues when MCP registration fails', async () => {
+  it('does not delete ~/.vaultkit-search.db (the per-vault MCP server still reads it)', async () => {
     vi.mocked(findTool).mockImplementation(async (name: string) => {
       if (name === 'gh') return '/usr/bin/gh';
       if (name === 'claude') return '/usr/bin/claude';
       return null;
     });
-    // Make `claude mcp add` fail. Other execa calls succeed.
+    mockHealthyExeca();
+    const dbPath = join(homeOverride, '.vaultkit-search.db');
+    writeFileSync(dbPath, 'simulated SQLite bytes', 'utf8');
+
+    writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
+
+    const { run } = await import('../../src/commands/setup.js');
+    await run({ cfgPath, skipInstallCheck: true, log: arrayLogger([]) });
+
+    expect(existsSync(dbPath)).toBe(true);
+  });
+
+  it('logs a warning but does not increment issues when legacy MCP removal fails', async () => {
+    vi.mocked(findTool).mockImplementation(async (name: string) => {
+      if (name === 'gh') return '/usr/bin/gh';
+      if (name === 'claude') return '/usr/bin/claude';
+      return null;
+    });
     vi.mocked(execa).mockImplementation((async (cmd: string, args?: readonly string[]) => {
-      if (cmd === '/usr/bin/claude' && args?.[1] === 'add') {
-        throw new Error('fake mcp add failure');
+      if (cmd === '/usr/bin/claude' && args?.[1] === 'remove') {
+        throw new Error('fake mcp remove failure');
       }
       if (args?.[0] === 'auth' && args?.[1] === 'status') {
         return { exitCode: 0, stdout: '', stderr: "Token scopes: 'repo', 'workflow'" };
@@ -188,14 +219,21 @@ describe('setup wires the vaultkit-search MCP', () => {
       return { exitCode: 0, stdout: '', stderr: '' };
     }) as never);
 
-    writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
+    writeFileSync(
+      cfgPath,
+      JSON.stringify({
+        mcpServers: {
+          'vaultkit-search': { command: 'node', args: ['/old/path.js'] },
+        },
+      }),
+      'utf8',
+    );
 
     const { run } = await import('../../src/commands/setup.js');
     const lines: string[] = [];
     const issues = await run({ cfgPath, skipInstallCheck: true, log: arrayLogger(lines) });
 
-    // Issues count stays at 0 — search is value-add, not critical-path.
-    expect(issues).toBe(0);
-    expect(lines.some(l => /! warn\s+vaultkit-search:/.test(l))).toBe(true);
+    expect(issues).toBe(0); // search cleanup is best-effort; not a setup blocker
+    expect(lines.some((l) => /legacy cleanup failed/.test(l))).toBe(true);
   });
 });

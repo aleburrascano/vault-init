@@ -1,12 +1,12 @@
+import { existsSync, unlinkSync } from 'node:fs';
 import { confirm } from '@inquirer/prompts';
 import { ConsoleLogger } from '../lib/logger.js';
 import { checkNode, ensureGh, ensureGhAuth, ensureGitConfig } from '../lib/prereqs.js';
 import { findOrInstallClaude } from '../lib/mcp.js';
 import {
-  runSearchMcpAdd,
-  runSearchMcpRepin,
   isSearchMcpRegistered,
-  installSearchLauncher,
+  runSearchMcpRemove,
+  searchLauncherPath,
   SEARCH_MCP_NAME,
 } from '../lib/search-mcp.js';
 import { isVaultkitError } from '../lib/errors.js';
@@ -93,39 +93,35 @@ export async function run({ cfgPath, skipInstallCheck = false, log = new Console
     log.info('  ! warn  claude: not installed — MCP registration will be skipped on `vaultkit init`');
   }
 
-  // 6. vaultkit-search MCP. Registered once globally (not per-vault) so
-  //    cross-vault BM25 search "just works" after setup. Idempotent on
-  //    re-run: register if absent; repin if a vaultkit upgrade changed
-  //    the launcher template SHA. Skip silently when claude CLI is
-  //    missing — the launcher is a vaultkit-internal concern that the
-  //    user can't act on without claude.
-  if (claudePath) {
+  // 6. Legacy vaultkit-search MCP cleanup (one-time migration per ADR-0011).
+  //    Pre-2.8 vaultkit registered a separate global `vaultkit-search` MCP
+  //    plus a byte-pinned `~/.vaultkit/search-launcher.js`. As of 2.8,
+  //    search is folded into the per-vault MCP server (`vaultkit mcp-server`,
+  //    spawned by the per-vault launcher), so this state is now obsolete.
+  //
+  //    `~/.vaultkit-search.db` STAYS — every per-vault MCP server reads it,
+  //    so the index data is still load-bearing. Only the registration entry
+  //    and launcher copy go.
+  //
+  //    Idempotent: missing state is a no-op. Best-effort throughout —
+  //    cleanup failure logs a warning but doesn't block setup.
+  if (claudePath && isSearchMcpRegistered(cfgPath)) {
     try {
-      if (isSearchMcpRegistered(cfgPath)) {
-        // Already registered. Repin in case the launcher template SHA
-        // drifted in this vaultkit upgrade (idempotent — same template
-        // bytes produce the same pin, no-op for unchanged installs).
-        await runSearchMcpRepin(claudePath);
-        log.info(`  + ok   ${SEARCH_MCP_NAME}: registered (re-pinned)`);
-      } else {
-        await runSearchMcpAdd(claudePath);
-        log.info(`  + ok   ${SEARCH_MCP_NAME}: registered`);
-      }
+      await runSearchMcpRemove(claudePath);
+      log.info(`  + ok   ${SEARCH_MCP_NAME}: legacy registration removed (search is now folded into per-vault MCP)`);
     } catch (err) {
-      // Best-effort. Search is value-add, not critical-path — a failure
-      // here shouldn't block the rest of setup.
       const msg = isVaultkitError(err) ? err.message : (err as Error).message;
-      log.info(`  ! warn  ${SEARCH_MCP_NAME}: ${msg}`);
+      log.info(`  ! warn  ${SEARCH_MCP_NAME}: legacy cleanup failed: ${msg}`);
     }
-  } else {
-    // Install the launcher even without claude so a future
-    // `claude mcp add` (manual or post-claude-install) can pin against
-    // the same bytes.
-    try {
-      await installSearchLauncher();
-    } catch {
-      // Best-effort — silent.
+  }
+  try {
+    const legacyLauncher = searchLauncherPath();
+    if (existsSync(legacyLauncher)) {
+      unlinkSync(legacyLauncher);
+      log.info(`  + ok   removed legacy launcher at ${legacyLauncher}`);
     }
+  } catch {
+    // Best-effort — silent.
   }
 
   log.info('');
