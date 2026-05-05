@@ -46,6 +46,26 @@ paths:
 - Catch blocks: `err` is `unknown`; narrow via `as { message?: string }` (or similar) at the access site, not via type assertion at the catch.
 - Avoid `any`. If absolutely necessary, leave a comment explaining why.
 
+## Structural code style
+
+- **Guard clauses over nesting.** When the "negative/early" branch is short
+  (return, throw, continue), use a guard clause rather than a nested if-block.
+  See `bin/vaultkit.ts:shouldPrintSetupHint` and `src/commands/doctor.ts:checkVaultRecord`.
+- **Max nesting depth: 3 levels.** At 4+ levels, extract the inner logic to a
+  named async helper. The function name replaces any comment above the block.
+  Recent extractions: `detectUpstreamDrift` in `src/commands/verify.ts`,
+  `checkVaultRecord` in `src/commands/doctor.ts`, `initGitRepo` /
+  `createGitHubRepo` / `indexNewVault` in `src/commands/init.ts`.
+- **Typed constants, not `enum` keyword.** For domain-meaningful string values,
+  use `const X = [...] as const` + `type X = typeof X[number]` (see
+  `PUBLISH_MODES` and `MARK` in `src/lib/constants.ts`, `GH_FAILURE_KINDS` in
+  `src/lib/gh-retry.ts`, `DESTROY_STATUSES` in `src/commands/destroy.ts`).
+  Never use the TypeScript `enum` keyword — it compiles to a runtime object
+  and is harder to type-narrow.
+- **Array-driven loops over repeated try/catch blocks.** When N checks share
+  the same run → log-ok / log-fail shape, define a `*Check` interface and loop
+  once (see `SetupCheck` in `src/commands/setup.ts`).
+
 ## Templates (lib/mcp-start.js.tmpl, lib/deploy.yml.tmpl)
 
 - The launcher template stays as raw JavaScript — every existing user vault SHA-256-verifies its bytes. **Never edit `lib/mcp-start.js.tmpl` casually.**
