@@ -1,6 +1,6 @@
 # Contributing to vaultkit
 
-Thanks for your interest. vaultkit is intentionally small — a TypeScript codebase under [`bin/`](./bin/), [`src/`](./src/), and [`tests/`](./tests/) that compiles to `dist/` at publish time. Five runtime dependencies (`commander`, `execa`, `@inquirer/prompts`, `@mozilla/readability`, `jsdom` — the latter two used only by `vaultkit refresh` for non-git source diffs, and dynamically imported so they load only when refresh is invoked); ESM only; Node ≥22. Keep contributions in that spirit: minimal deps, no framework lock-in, every commit independently shippable.
+Thanks for your interest. vaultkit is intentionally small — a TypeScript codebase under [`bin/`](./bin/), [`src/`](./src/), and [`tests/`](./tests/) that compiles to `dist/` at publish time. Five runtime dependencies (`commander`, `execa`, `@inquirer/prompts`, `@mozilla/readability`, `jsdom` — the latter two used only by `vaultkit refresh` for non-git source diffs, and dynamically imported so they load only when refresh is invoked); ESM only; Node ≥22.13 (required for `node:sqlite`). Keep contributions in that spirit: minimal deps, no framework lock-in, every commit independently shippable.
 
 ## Local setup
 

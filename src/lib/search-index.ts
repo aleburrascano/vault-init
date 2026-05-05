@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { homedir } from 'node:os';
@@ -9,11 +9,16 @@ import { join } from 'node:path';
  * schema, upsert/delete operations, and BM25-ranked queries. Used by:
  *
  *  - `src/lib/search-indexer.ts` — walks vaults and populates the index
- *  - `lib/search-launcher.js.tmpl` — the byte-immutable MCP server that
+ *  - `src/commands/mcp-server.ts` — the per-vault MCP server that
  *    answers `vk_search` queries by calling `query()` here
  *  - `vaultkit init`/`update`/`pull`/`destroy`/`disconnect` — wire the
  *    indexer into the lifecycle so the index stays current without
  *    user action
+ *
+ * Backed by Node's built-in `node:sqlite` (Node ≥22.13). Same SQLite,
+ * same FTS5, same BM25 ranking as the previous `better-sqlite3` build —
+ * the only difference is zero install footprint because SQLite ships
+ * with Node itself. See ADR-0011 for the rationale.
  *
  * **BM25 weighting**: title 5x, tags 3x, body 1x. A query like "token
  * optimization" against a vault containing a note titled "Token
@@ -21,9 +26,9 @@ import { join } from 'node:path';
  * mentions "optimization" — that's the failure mode this whole module
  * exists to fix.
  *
- * **Why FTS5, not embeddings**: see ADR-0010. tl;dr: keyword + title
- * weighting handles ~80% of natural-language queries, costs zero
- * dependencies beyond SQLite, and matches Obsidian's structural
+ * **Why FTS5, not embeddings**: see ADR-0010 (kept relevant by ADR-0011).
+ * tl;dr: keyword + title weighting handles ~80% of natural-language
+ * queries, costs zero dependencies, and matches Obsidian's structural
  * vocabulary (titles, tags) instead of flattening notes into RAG-style
  * vector blobs.
  */
@@ -70,7 +75,7 @@ export interface SearchHit {
 }
 
 export interface QueryOptions {
-  /** Restrict to one vault. Omit for cross-vault search. */
+  /** Restrict to one vault. Omit (or pass `'*'`) for cross-vault search. */
   vault?: string;
   /** Max hits returned. Default 5; cap at 50 to keep payloads sane. */
   topK?: number;
@@ -82,9 +87,9 @@ export interface QueryOptions {
  * lock the file on Windows).
  */
 export class SearchIndex {
-  private db: Database.Database;
+  private db: DatabaseSync;
 
-  constructor(db: Database.Database) {
+  constructor(db: DatabaseSync) {
     this.db = db;
     this.ensureSchema();
   }
@@ -158,14 +163,18 @@ export class SearchIndex {
    * `term*` prefix syntax. Special characters in the query are
    * pre-escaped so a user query like `auth (required)` doesn't fail
    * with a syntax error — see `_sanitizeQuery`.
+   *
+   * Pass `opts.vault === '*'` (or omit `opts.vault`) for cross-vault
+   * search. Pass any other string to scope to that vault.
    */
   query(rawQuery: string, opts: QueryOptions = {}): SearchHit[] {
     const sanitized = _sanitizeQuery(rawQuery);
     if (sanitized.length === 0) return [];
     const topK = Math.min(opts.topK ?? 5, 50);
-    const vaultClause = opts.vault ? 'AND vault = ?' : '';
+    const scoped = opts.vault !== undefined && opts.vault !== '*';
+    const vaultClause = scoped ? 'AND vault = ?' : '';
     const params: unknown[] = [sanitized];
-    if (opts.vault) params.push(opts.vault);
+    if (scoped) params.push(opts.vault);
     params.push(topK);
 
     // bm25(notes, 5, 3, 1) → title 5x, tags 3x, body 1x.
@@ -190,7 +199,7 @@ export class SearchIndex {
     `;
 
     try {
-      const rows = this.db.prepare(sql).all(...params) as SearchHit[];
+      const rows = this.db.prepare(sql).all(...(params as never[])) as unknown as SearchHit[];
       return rows;
     } catch (err) {
       // FTS5 syntax errors surface as "fts5: syntax error near …".
@@ -261,11 +270,12 @@ export function openSearchIndex(dbPath?: string): SearchIndex {
   if (path !== ':memory:') {
     mkdirSync(dirname(path), { recursive: true });
   }
-  const db = new Database(path);
-  // WAL mode for better concurrency between the indexer and the
-  // launcher (both can hold the DB open). Skipped for in-memory DBs.
+  const db = new DatabaseSync(path);
+  // WAL mode for better concurrency between the indexer (writer) and
+  // multiple per-vault MCP server processes (readers). Skipped for
+  // in-memory DBs since journal modes don't apply there.
   if (path !== ':memory:') {
-    db.pragma('journal_mode = WAL');
+    db.exec('PRAGMA journal_mode = WAL');
   }
   return new SearchIndex(db);
 }
