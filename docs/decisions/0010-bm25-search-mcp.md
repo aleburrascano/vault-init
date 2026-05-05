@@ -1,9 +1,10 @@
 # ADR-0010: BM25 search MCP shipped with vaultkit
 
-**Status**: Accepted
+**Status**: Superseded by [ADR-0011](0011-vaultkit-mcp-replaces-obsidian-mcp-pro.md)
 **Date**: 2026-05-04
 **Related rules**: [.claude/rules/architecture.md](../../.claude/rules/architecture.md), [.claude/rules/domain-language.md](../../.claude/rules/domain-language.md)
 **Supersedes**: nothing — first concrete commitment to vault search.
+**Superseded by**: [ADR-0011](0011-vaultkit-mcp-replaces-obsidian-mcp-pro.md). The 2-week-later re-examination found the footprint was 3.5x heavier than estimated (24 MB vs. 7 MB) and that `node:sqlite` is no longer experimental-flag-gated as this ADR claimed. The new shape folds search into the per-vault MCP server vaultkit now owns end-to-end, drops `obsidian-mcp-pro` entirely, and brings net deps down to zero for the search story.
 
 ## Context
 

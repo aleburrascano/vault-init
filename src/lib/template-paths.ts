@@ -63,17 +63,3 @@ export function getClaudeSettingsTemplate(): string {
   return join(SCRIPT_DIR, '../../lib/claude-settings.json.tmpl');
 }
 
-/**
- * Absolute path to the byte-immutable search launcher template
- * (`lib/search-launcher.js.tmpl`). Mirrors `getLauncherTemplate()` for
- * the per-vault launcher: the bytes are SHA-pinned in the user's
- * `~/.claude.json#mcpServers.vaultkit-search` entry, so changes to
- * this file are a release-coordination event (per ADR-0010, same
- * shape as ADR-0001's invariant for the per-vault launcher).
- *
- * Used by `src/lib/search-mcp.ts:installSearchLauncher` to copy the
- * template into `~/.vaultkit/search-launcher.js` on `vaultkit setup`.
- */
-export function getSearchLauncherTemplate(): string {
-  return join(SCRIPT_DIR, '../../lib/search-launcher.js.tmpl');
-}

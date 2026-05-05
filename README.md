@@ -20,7 +20,7 @@ vaultkit help
 
 `vaultkit setup` walks through every prerequisite in one go (node 22+, gh CLI, gh auth with `repo` + `workflow` scopes, git config, claude CLI). It's idempotent — re-run any time. The `delete_repo` scope is requested separately on the first `vaultkit destroy` so you're never asked up front to authorize a destructive permission you may never use.
 
-Setup also registers `vaultkit-search`, a global MCP that gives Claude BM25-ranked search across every vaultkit-managed vault (cross-vault, no per-vault setup). Title hits weight 5x — so a query like *"token optimization"* against a note titled *"Token Efficiency"* still finds it, even when the body never says "optimization". See [ADR-0010](docs/decisions/0010-bm25-search-mcp.md) for the design rationale.
+Each vault registers as one MCP server backed by vaultkit's own `mcp-server` daemon (see [ADR-0011](docs/decisions/0011-vaultkit-mcp-replaces-obsidian-mcp-pro.md)) — six tools tuned for Claude (`vk_search`, `vk_list_notes`, `vk_get_note`, `vk_get_tags`, `vk_search_by_tag`, `vk_recent_notes`). `vk_search` uses SQLite FTS5 + BM25 with title hits weighted 5x, so a query like *"token optimization"* against a note titled *"Token Efficiency"* finds it even when the body never says "optimization". Pass `vault: "*"` to any tool for cross-vault scope. The search engine is Node 22.13+'s built-in `node:sqlite` — zero npm dependency for the search story.
 
 **Updating**: `npm update -g @aleburrascano/vaultkit` to pull a new release; re-run `vaultkit setup` after major versions to re-check prerequisites and `vaultkit doctor` to flag any vault whose pinned launcher hash has drifted.
 
@@ -52,7 +52,7 @@ A 60-second path from install to "Claude knows my notes":
    echo "Powerhouse of the cell." >> ~/vaults/my-wiki/wiki/concepts/mitochondria.md
    ```
 
-4. **Open Claude Code in any project** and ask: *"What do I know about mitochondria?"* — Claude calls `mcp__my-wiki__search_notes`, finds your note, answers.
+4. **Open Claude Code in any project** and ask: *"What do I know about mitochondria?"* — Claude calls `mcp__my-wiki__vk_search`, finds your note via BM25, answers.
 
 That's it. Push to GitHub when you want teammates' Claude Code sessions to see the same content (`cd ~/vaults/my-wiki && git add -A && git commit -m "first note" && git push`).
 
@@ -217,7 +217,7 @@ Multiple wikis are available simultaneously under their own MCP namespaces:
 
 `vaultkit connect` clones a vault and registers its `.mcp-start.js` as a Claude Code MCP server. That script runs automatically with your **full user permissions** on every Claude Code session start — equivalent to adding the vault author to your system PATH.
 
-The launcher itself is small (~70 lines — see [`lib/mcp-start.js.tmpl`](./lib/mcp-start.js.tmpl) for the canonical bytes). On startup it does a SHA-256 self-check, runs a guarded `git fetch`, and then spawns [`obsidian-mcp-pro`](https://www.npmjs.com/package/obsidian-mcp-pro) via `npx` — that's the package that exposes the `search_notes` / `get_note` / etc. tools to Claude Code. Trust thus extends to: vaultkit itself, the per-vault launcher (SHA-pinned), the vault's git history, and `obsidian-mcp-pro`.
+The launcher itself is small (~70 lines — see [`lib/mcp-start.js.tmpl`](./lib/mcp-start.js.tmpl) for the canonical bytes). On startup it does a SHA-256 self-check, runs a guarded `git fetch`, and then spawns `vaultkit mcp-server --vault-dir <path>` — vaultkit's own MCP daemon ([src/commands/mcp-server.ts](./src/commands/mcp-server.ts)) which exposes the `vk_search` / `vk_get_note` / `vk_list_notes` / `vk_get_tags` / `vk_search_by_tag` / `vk_recent_notes` tools to Claude Code (see [ADR-0011](docs/decisions/0011-vaultkit-mcp-replaces-obsidian-mcp-pro.md) for the engine and tool decisions). Trust thus extends to: vaultkit itself, the per-vault launcher (SHA-pinned), and the vault's git history.
 
 The trust chain on every Claude Code session start, end-to-end:
 
