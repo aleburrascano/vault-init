@@ -133,6 +133,46 @@ async function registerMcpForVault(vaultDir: string, name: string, skipInstallCh
   return false;
 }
 
+async function initGitRepo(vaultDir: string, name: string, log: Logger): Promise<void> {
+  log.info('[3/6] Committing initial files...');
+  await gitInit(vaultDir);
+  await setDefaultBranch(vaultDir, 'main');
+  await gitAdd(vaultDir, '.');
+  await gitCommit(vaultDir, `chore: initialize ${name}`);
+}
+
+/**
+ * Creates the GitHub repo. Intentionally does NOT also call `addRemote`:
+ * the rollback bookkeeping in `run()` flips `createdRepo = true` between
+ * the two calls so that a local-side `addRemote` failure still triggers
+ * `deleteRepo` in the catch — bundling them would orphan the just-created
+ * GitHub repo.
+ */
+async function createGitHubRepo(
+  name: string,
+  repoVisibility: 'public' | 'private',
+  log: Logger,
+): Promise<void> {
+  log.info(`[4/6] Creating GitHub repo: ${name} (${repoVisibility})...`);
+  await createRepo(name, { visibility: repoVisibility });
+}
+
+async function indexNewVault(name: string, vaultDir: string, log: Logger): Promise<void> {
+  try {
+    const idx = openSearchIndex();
+    try {
+      const result = await indexVault(name, vaultDir, idx);
+      if (result.added > 0) {
+        log.info(`  Search: indexed ${result.added} note${result.added === 1 ? '' : 's'} into vaultkit-search.`);
+      }
+    } finally {
+      idx.close();
+    }
+  } catch (err) {
+    log.warn(`  Search: indexing failed — ${(err as Error).message}. Run 'vaultkit update ${name}' to retry.`);
+  }
+}
+
 function printDoneSummary(name: string, githubUser: string, vaultDir: string, publishMode: PublishMode, baseUrl: string, log: Logger): void {
   log.info('');
   log.info('Done.');
@@ -206,17 +246,12 @@ export async function run(
     }
 
     // [3/6] Git init + initial commit
-    log.info('[3/6] Committing initial files...');
-    await gitInit(vaultDir);
-    await setDefaultBranch(vaultDir, 'main');
-    await gitAdd(vaultDir, '.');
-    await gitCommit(vaultDir, `chore: initialize ${name}`);
+    await initGitRepo(vaultDir, name, log);
 
     // [4/6] GitHub repo. Flip createdRepo BEFORE addRemote so a local-side
     // failure (stale remote, perms) still triggers deleteRepo in rollback —
     // otherwise the just-created GitHub repo orphans.
-    log.info(`[4/6] Creating GitHub repo: ${name} (${repoVisibility})...`);
-    await createRepo(name, { visibility: repoVisibility });
+    await createGitHubRepo(name, repoVisibility, log);
     createdRepo = true;
     await addRemote(vaultDir, 'origin', repoCloneUrl(githubUser, name));
 
@@ -240,19 +275,7 @@ export async function run(
     // failures here don't block init or trigger rollback (search is
     // value-add, not critical-path; user can run `vaultkit update`
     // later to retry).
-    try {
-      const idx = openSearchIndex();
-      try {
-        const result = await indexVault(name, vaultDir, idx);
-        if (result.added > 0) {
-          log.info(`  Search: indexed ${result.added} note${result.added === 1 ? '' : 's'} into vaultkit-search.`);
-        }
-      } finally {
-        idx.close();
-      }
-    } catch (err) {
-      log.warn(`  Search: indexing failed — ${(err as Error).message}. Run 'vaultkit update ${name}' to retry.`);
-    }
+    await indexNewVault(name, vaultDir, log);
 
     printDoneSummary(name, githubUser, vaultDir, publishMode, baseUrl, log);
 
