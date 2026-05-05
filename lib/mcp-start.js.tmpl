@@ -101,15 +101,18 @@ if (process.platform === 'win32') {
   process.env.PATH = nodeDir + ';' + (process.env.PATH || '');
 }
 
-const r = spawnSync('npx', ['-y', 'obsidian-mcp-pro'], {
+// 7. Spawn vaultkit's own MCP server (replaces obsidian-mcp-pro per ADR-0011).
+// Goes through npx so it resolves the globally-installed vaultkit binary
+// regardless of PATH quirks. The --vault-dir arg tells the server which
+// vault to bind to; the registry has the canonical name keyed by this dir.
+const r = spawnSync('npx', ['vaultkit', 'mcp-server', '--vault-dir', VAULT_DIR], {
   stdio: 'inherit',
   shell: process.platform === 'win32',
-  env: { ...process.env, OBSIDIAN_VAULT_PATH: VAULT_DIR },
 });
 if (r.error) {
   abort([
     'Failed to start MCP server: ' + r.error.message,
-    'Check your Node.js installation and restart Claude Code.',
+    'Check that vaultkit is installed: npm i -g @aleburrascano/vaultkit',
   ]);
 }
 process.exit(r.status ?? 1);
