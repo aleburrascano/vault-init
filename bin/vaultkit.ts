@@ -6,6 +6,7 @@ import { Command } from 'commander';
 import { isVaultkitError, EXIT_CODES } from '../src/lib/errors.js';
 import { ConsoleLogger } from '../src/lib/logger.js';
 import { checkForUpdate } from '../src/lib/update-check.js';
+import { checkPostUpgrade } from '../src/lib/post-upgrade-check.js';
 import { gateOrSkip } from '../src/lib/prereqs.js';
 import type { PublishMode } from '../src/lib/constants.js';
 
@@ -29,7 +30,9 @@ async function wrap(fn: () => Promise<void>, commandName: string, args: string[]
     await gateOrSkip(commandName, new ConsoleLogger());
     await fn();
     auditLog(commandName, args, 0, start);
-    checkForUpdate(pkg.version, new ConsoleLogger());
+    const notifyLog = new ConsoleLogger();
+    checkForUpdate(pkg.version, notifyLog);
+    await checkPostUpgrade(pkg.version, undefined, notifyLog).catch(() => { /* best-effort */ });
     if (verbose) console.error(`[debug] ${commandName} ok (${Date.now() - start}ms)`);
   } catch (err) {
     const exitCode = isVaultkitError(err) ? EXIT_CODES[err.code] : 1;
