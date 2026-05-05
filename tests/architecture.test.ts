@@ -39,6 +39,18 @@ const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
  * populated, then drain it.
  */
 const EXCEPTIONS: Record<string, string[]> = {
+  'rmSync-without-isVaultLike': [
+    // init.ts's rollback rmSync is guarded by `createdDir && existsSync(vaultDir)` — the
+    // command just created the directory moments earlier. isVaultLike() may return false if
+    // init fails before writing the vault marker files, which would block legitimate rollback.
+    'src/commands/init.ts',
+  ],
+  'rmSync-without-registry-path': [
+    // init.ts computes vaultDir as path.join(vaultsRoot, name) — a validated name under the
+    // vaults root, not a registry lookup (the vault doesn't exist yet at init time). The
+    // rollback rmSync is safe: vaultDir was determined by the command itself, not raw user input.
+    'src/commands/init.ts',
+  ],
 };
 
 async function readSourceFiles(pattern: string): Promise<Array<{ path: string; text: string }>> {
@@ -317,6 +329,135 @@ describe('architecture: inter-command imports', () => {
       expect.fail(
         `Command files importing from sibling command files. Extract the\n` +
         `shared logic to a lib and have both commands call it.\n\n` +
+        `Violations:\n${msg}`,
+      );
+    }
+  });
+});
+
+describe('architecture: isVaultLike guard before directory deletion', () => {
+  it('every command using rmSync also guards with isVaultLike', async () => {
+    // Commands that delete directory trees must call isVaultLike (or vault.isVaultLike())
+    // before proceeding — prevents rm-ing an arbitrary path if vault resolution returns
+    // something unexpected. Invariant from security-invariants.md.
+    const files = await readSourceFiles('src/commands/*.ts');
+    const violations: string[] = [];
+    for (const { path, text } of files) {
+      if (isExempt('rmSync-without-isVaultLike', path)) continue;
+      if (!/\brmSync\s*\(/.test(text)) continue;
+      if (!/\bisVaultLike\b/.test(text)) violations.push(path);
+    }
+    if (violations.length > 0) {
+      expect.fail(
+        `Command files calling rmSync without an isVaultLike guard:\n` +
+        `  ${violations.join('\n  ')}\n` +
+        `Per security-invariants.md, isVaultLike (or vault.isVaultLike()) must be checked\n` +
+        `before any directory deletion. If the rmSync is rolling back a directory the command\n` +
+        `itself just created, add the file to EXCEPTIONS['rmSync-without-isVaultLike']\n` +
+        `in tests/architecture.test.ts with a reason.`,
+      );
+    }
+  });
+});
+
+describe('architecture: vault path from registry before deletion', () => {
+  it('every command using rmSync resolves the path through the registry', async () => {
+    // Vault dirs for destructive ops must come from the MCP registry
+    // (Vault.tryFromName / Vault.requireFromName / getVaultDir), never raw user input or
+    // filesystem fallbacks. Invariant from security-invariants.md.
+    const files = await readSourceFiles('src/commands/*.ts');
+    const violations: string[] = [];
+    for (const { path, text } of files) {
+      if (isExempt('rmSync-without-registry-path', path)) continue;
+      if (!/\brmSync\s*\(/.test(text)) continue;
+      const hasRegistryLookup = /\bVault\.(?:tryFromName|requireFromName)\b|\bgetVaultDir\b/.test(text);
+      if (!hasRegistryLookup) violations.push(path);
+    }
+    if (violations.length > 0) {
+      expect.fail(
+        `Command files calling rmSync without a registry path lookup:\n` +
+        `  ${violations.join('\n  ')}\n` +
+        `Vault directories for destructive operations must come from the MCP registry\n` +
+        `(Vault.tryFromName / Vault.requireFromName / getVaultDir), not raw user input.\n` +
+        `If the rmSync rolls back a directory the command just created, add the file to\n` +
+        `EXCEPTIONS['rmSync-without-registry-path'] in tests/architecture.test.ts.`,
+      );
+    }
+  });
+});
+
+describe('architecture: SearchIndex closed after use', () => {
+  it('every command that opens a SearchIndex also closes it', async () => {
+    // openSearchIndex() returns a SQLite-backed object that must be closed to flush WAL
+    // frames and release the file lock. A missing close() causes resource leaks in long-
+    // running processes and write-lock contention in tests. Canonical pattern: try/finally
+    // with index.close() in the finally block — see pull.ts.
+    const files = await readSourceFiles('src/commands/*.ts');
+    const violations: string[] = [];
+    for (const { path, text } of files) {
+      if (isExempt('searchindex-not-closed', path)) continue;
+      if (!/\bopenSearchIndex\s*\(/.test(text)) continue;
+      if (!/\.close\s*\(\)/.test(text)) violations.push(path);
+    }
+    if (violations.length > 0) {
+      expect.fail(
+        `Command files that open a SearchIndex without calling .close():\n` +
+        `  ${violations.join('\n  ')}\n` +
+        `Wrap openSearchIndex() in try/finally and call index.close() in the finally block.\n` +
+        `Add to EXCEPTIONS['searchindex-not-closed'] only if the lifecycle is managed externally.`,
+      );
+    }
+  });
+});
+
+describe('architecture: catch blocks do not rethrow as plain Error', () => {
+  it('command catch blocks that rethrow use VaultkitError, not plain Error', async () => {
+    // Rethrowing inside a catch block with `throw new Error(...)` loses the VaultkitErrorCode
+    // and maps to exit code 1 (unknown), breaking the documented exit-code contract for
+    // scripted callers. Inside a catch, either re-throw the original `err` or wrap it in
+    // `throw new VaultkitError(code, message)`. Plain `throw new Error(...)` belongs only
+    // at top-level validation where no error code is being discarded.
+    const files = await readSourceFiles('src/commands/*.ts');
+    const violations: Array<{ path: string; line: number; text: string }> = [];
+
+    for (const { path, text } of files) {
+      if (isExempt('catch-rethrows-plain-error', path)) continue;
+      const lines = text.split('\n');
+      let inCatch = false;
+      let braceDepth = 0;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i] ?? '';
+        if (!inCatch && /}\s*catch\s*\(/.test(line)) {
+          inCatch = true;
+          // Find the `{` that opens the catch body (after the `catch (...)` clause).
+          const catchKeyIdx = line.indexOf('catch');
+          const openBrace = line.indexOf('{', catchKeyIdx);
+          braceDepth = openBrace >= 0 ? 1 : 0;
+          continue; // Don't scan the catch-header line for throw
+        }
+        if (inCatch) {
+          for (const ch of line) {
+            if (ch === '{') braceDepth++;
+            else if (ch === '}') braceDepth--;
+          }
+          if (braceDepth > 0 && /\bthrow new Error\s*\(/.test(line)) {
+            violations.push({ path, line: i + 1, text: line.trim() });
+          }
+          if (braceDepth <= 0) {
+            inCatch = false;
+            braceDepth = 0;
+          }
+        }
+      }
+    }
+
+    if (violations.length > 0) {
+      const msg = violations.map((v) => `${v.path}:${v.line}  ${v.text}`).join('\n');
+      expect.fail(
+        `Catch blocks rethrowing as plain Error — use VaultkitError with an appropriate\n` +
+        `error code so wrap() maps to a distinct exit code. Plain Error exits as 1 (unknown),\n` +
+        `indistinguishable from an unexpected crash for scripted callers.\n\n` +
         `Violations:\n${msg}`,
       );
     }
