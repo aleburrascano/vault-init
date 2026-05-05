@@ -21,41 +21,13 @@ import type { ToolContext } from './context.js';
 export function vkSearchDefinition(ctx: ToolContext): ToolDefinition {
   return {
     name: 'vk_search',
-    title: 'Search vault notes (BM25)',
-    description: [
-      'Full-text search across vaultkit-managed Obsidian vault notes using',
-      'SQLite FTS5 + BM25 ranking. Title hits weight 5x, tags 3x, body 1x —',
-      'so a query like "token optimization" against a note titled',
-      '"Token Efficiency" still ranks the title-bearing note highly even',
-      'when the body never mentions "optimization".',
-      '',
-      'Multi-token queries are OR-joined: any partial match returns, with',
-      'full matches ranked highest. Use this for natural-language queries.',
-      '',
-      `Defaults to searching the current vault ("${ctx.current.name}"). Pass`,
-      '`vault: "*"` to search across every registered vault, or a specific',
-      'vault name to scope to that one.',
-    ].join('\n'),
+    description: 'BM25 full-text search in vault notes. vault: name or * for all vaults.',
     inputSchema: {
       type: 'object',
       properties: {
-        query: {
-          type: 'string',
-          description: 'Search query in plain words (e.g. "eventual consistency saga").',
-          minLength: 1,
-        },
-        vault: {
-          type: 'string',
-          description:
-            'Vault name to scope to. Omit for current vault. Pass "*" for cross-vault.',
-        },
-        top_k: {
-          type: 'integer',
-          description: 'Maximum hits to return (default 5, max 50).',
-          minimum: 1,
-          maximum: 50,
-          default: 5,
-        },
+        query: { type: 'string' },
+        vault: { type: 'string' },
+        top_k: { type: 'integer' },
       },
       required: ['query'],
     },

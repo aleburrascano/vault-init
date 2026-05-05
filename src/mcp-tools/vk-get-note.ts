@@ -22,28 +22,12 @@ import { join } from 'node:path';
 export function vkGetNoteDefinition(ctx: ToolContext): ToolDefinition {
   return {
     name: 'vk_get_note',
-    title: 'Read a vault note',
-    description: [
-      'Read a markdown note by vault-relative path. Returns the frontmatter,',
-      "an outline of the note's headings, and the body separately so Claude",
-      'can pull only the parts that fit the current context.',
-      '',
-      `Defaults to reading from the current vault ("${ctx.current.name}").`,
-      'Pass `vault` to scope to a different registered vault. The path is',
-      'always vault-relative (e.g. "wiki/concepts/Foo.md").',
-    ].join('\n'),
+    description: 'Read a vault note by path. Returns frontmatter, outline, and body.',
     inputSchema: {
       type: 'object',
       properties: {
-        path: {
-          type: 'string',
-          description: 'Vault-relative path to the note (e.g. "wiki/concepts/Foo.md").',
-          minLength: 1,
-        },
-        vault: {
-          type: 'string',
-          description: 'Vault name. Omit for the current vault.',
-        },
+        path: { type: 'string' },
+        vault: { type: 'string' },
       },
       required: ['path'],
     },

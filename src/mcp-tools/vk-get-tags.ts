@@ -12,24 +12,11 @@ import type { ToolContext } from './context.js';
 export function vkGetTagsDefinition(ctx: ToolContext): ToolDefinition {
   return {
     name: 'vk_get_tags',
-    title: 'List vault tags',
-    description: [
-      'Enumerate every distinct tag present in the indexed notes. Returns a',
-      'sorted list (case-insensitive) preserving first-seen casing.',
-      '',
-      `Defaults to the current vault ("${ctx.current.name}"). Pass`,
-      '`vault: "*"` to enumerate across every registered vault, or a specific',
-      'vault name to scope to that one. Use this before `vk_search_by_tag` to',
-      'discover which tags are available.',
-    ].join('\n'),
+    description: 'List all tags in vault. vault: name or * for all vaults.',
     inputSchema: {
       type: 'object',
       properties: {
-        vault: {
-          type: 'string',
-          description:
-            'Vault name to scope to. Omit for current vault. Pass "*" for cross-vault.',
-        },
+        vault: { type: 'string' },
       },
     },
     handler: async (args): Promise<ToolResult> => {

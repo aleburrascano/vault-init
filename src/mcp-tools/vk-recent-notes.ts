@@ -18,31 +18,12 @@ import { statSync } from 'node:fs';
 export function vkRecentNotesDefinition(ctx: ToolContext): ToolDefinition {
   return {
     name: 'vk_recent_notes',
-    title: 'List recently modified notes',
-    description: [
-      'Return the most recently modified markdown notes in scope, sorted by',
-      'filesystem mtime descending (newest first). Useful for "what did I',
-      'work on recently" questions or resuming a session.',
-      '',
-      `Defaults to the current vault ("${ctx.current.name}"). Pass`,
-      '`vault: "*"` for cross-vault, or a specific vault name. Optional',
-      '`limit` caps the result set (default 10, max 100).',
-    ].join('\n'),
+    description: 'List recently modified notes sorted by mtime. vault: name or * for all vaults.',
     inputSchema: {
       type: 'object',
       properties: {
-        vault: {
-          type: 'string',
-          description:
-            'Vault name to scope to. Omit for current vault. Pass "*" for cross-vault.',
-        },
-        limit: {
-          type: 'integer',
-          description: 'Maximum notes to return (default 10, max 100).',
-          minimum: 1,
-          maximum: 100,
-          default: 10,
-        },
+        vault: { type: 'string' },
+        limit: { type: 'integer' },
       },
     },
     handler: async (args): Promise<ToolResult> => {

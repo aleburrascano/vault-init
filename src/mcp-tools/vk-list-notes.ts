@@ -19,37 +19,13 @@ import { resolveVaults, type ToolContext } from './context.js';
 export function vkListNotesDefinition(ctx: ToolContext): ToolDefinition {
   return {
     name: 'vk_list_notes',
-    title: 'List vault notes',
-    description: [
-      'Enumerate every markdown note under a vault. Returns paths relative',
-      'to the vault root, sorted alphabetically. Skips Git, Obsidian, and',
-      'vaultkit-internal directories.',
-      '',
-      `Defaults to the current vault ("${ctx.current.name}"). Pass`,
-      '`vault: "*"` for cross-vault enumeration, or a specific vault name to',
-      'scope to that one. Optional `prefix` filters by path prefix (e.g.',
-      '"wiki/" to skip the raw mirror, or "wiki/concepts/" to scope further).',
-      'Optional `limit` caps the result set.',
-    ].join('\n'),
+    description: 'List markdown notes in vault. vault: name or * for all vaults.',
     inputSchema: {
       type: 'object',
       properties: {
-        vault: {
-          type: 'string',
-          description:
-            'Vault name to scope to. Omit for current vault. Pass "*" for cross-vault.',
-        },
-        prefix: {
-          type: 'string',
-          description: 'Optional path prefix filter (e.g. "wiki/").',
-        },
-        limit: {
-          type: 'integer',
-          description: 'Maximum notes to return (default 100, max 1000).',
-          minimum: 1,
-          maximum: 1000,
-          default: 100,
-        },
+        vault: { type: 'string' },
+        prefix: { type: 'string' },
+        limit: { type: 'integer' },
       },
     },
     handler: async (args): Promise<ToolResult> => {

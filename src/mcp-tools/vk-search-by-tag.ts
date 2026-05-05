@@ -17,36 +17,13 @@ import type { ToolContext } from './context.js';
 export function vkSearchByTagDefinition(ctx: ToolContext): ToolDefinition {
   return {
     name: 'vk_search_by_tag',
-    title: 'List notes by tag',
-    description: [
-      'Return every note tagged with the given tag. Useful when the LLM',
-      'has asked the user about a topic and wants to enumerate the related',
-      'notes deterministically (vs. relying on BM25 ranking).',
-      '',
-      `Defaults to scoping by the current vault ("${ctx.current.name}").`,
-      'Pass `vault: "*"` for cross-vault, or a specific vault name to scope',
-      'to that one. Tag match is case-insensitive and exact-on-token.',
-    ].join('\n'),
+    description: 'Find notes by tag (case-insensitive, exact match). vault: name or * for all vaults.',
     inputSchema: {
       type: 'object',
       properties: {
-        tag: {
-          type: 'string',
-          description: 'Tag to look up (e.g. "ai", "auth").',
-          minLength: 1,
-        },
-        vault: {
-          type: 'string',
-          description:
-            'Vault name to scope to. Omit for current vault. Pass "*" for cross-vault.',
-        },
-        limit: {
-          type: 'integer',
-          description: 'Maximum notes to return (default 50, max 200).',
-          minimum: 1,
-          maximum: 200,
-          default: 50,
-        },
+        tag: { type: 'string' },
+        vault: { type: 'string' },
+        limit: { type: 'integer' },
       },
       required: ['tag'],
     },
