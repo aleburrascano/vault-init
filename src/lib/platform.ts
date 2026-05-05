@@ -64,7 +64,6 @@ export async function findTool(name: string): Promise<string | null> {
     if (name === 'gh') {
       const candidates = [
         join(process.env.PROGRAMFILES ?? 'C:\\Program Files', 'GitHub CLI', 'gh.exe'),
-        'C:\\Program Files\\GitHub CLI\\gh.exe',
         join(process.env.LOCALAPPDATA ?? '', 'Microsoft', 'WinGet', 'Links', 'gh.exe'),
       ];
       for (const p of candidates) {

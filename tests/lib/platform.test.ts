@@ -64,6 +64,10 @@ describe('vaultsRoot', () => {
 });
 
 describe('isWindows', () => {
+  let origPlatform: NodeJS.Platform;
+  beforeEach(() => { origPlatform = process.platform; });
+  afterEach(() => { Object.defineProperty(process, 'platform', { value: origPlatform, writable: true }); });
+
   it('returns a boolean', async () => {
     const { isWindows } = await import('../../src/lib/platform.js');
     expect(typeof isWindows()).toBe('boolean');
@@ -158,13 +162,16 @@ describe('vaultsRoot — env var edge cases', () => {
 describe('findTool', () => {
   let tmp: string;
   let origEnv: NodeJS.ProcessEnv;
+  let origPlatform: NodeJS.Platform;
 
   beforeEach(() => {
     origEnv = { ...process.env };
+    origPlatform = process.platform;
     tmp = mkdtempSync(join(tmpdir(), 'vk-platform-test-'));
   });
   afterEach(() => {
     process.env = origEnv;
+    Object.defineProperty(process, 'platform', { value: origPlatform, writable: true });
     rmSync(tmp, { recursive: true, force: true });
   });
 
