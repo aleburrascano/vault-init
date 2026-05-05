@@ -30,6 +30,17 @@ export interface SetupOptions extends RunOptions {
 }
 
 /**
+ * One step of `vaultkit setup` whose failure mode is "throw, increment
+ * issues, log `${MARK.FAIL}`". Steps that need to keep a side-value
+ * (e.g. `ghPath` for downstream checks) or whose failure is `! warn`
+ * rather than `x fail` (e.g. claude CLI) stay inline below.
+ */
+interface SetupCheck {
+  label: string;
+  run: () => Promise<void>;
+}
+
+/**
  * One-time post-install onboarding. Walks the user through every
  * prerequisite vaultkit needs across all of its commands, fixing what
  * it can in place. Idempotent — safe to re-run.
@@ -72,23 +83,27 @@ export async function run({ cfgPath, skipInstallCheck = false, log = new Console
     return ++issues;
   }
 
-  // 3. gh auth + base scopes (`repo` + `workflow` cover init / push / pull / visibility / Pages).
-  try {
-    await ensureGhAuth({ ghPath, log, scopes: ['repo', 'workflow'] });
-    log.info(`  ${MARK.OK}   gh auth: repo, workflow scopes granted`);
-  } catch (err) {
-    const msg = isVaultkitError(err) ? err.message : (err as Error).message;
-    log.info(`  ${MARK.FAIL}  gh auth: ${msg}`);
-    issues++;
-  }
-
-  // 4. git config
-  try {
-    await ensureGitConfig();
-    log.info(`  ${MARK.OK}   git config: user.name and user.email set`);
-  } catch (err) {
-    log.info(`  ${MARK.FAIL}  git config: ${(err as Error).message}`);
-    issues++;
+  // 3 + 4. Throw-or-pass checks: gh auth + base scopes (covers init /
+  //        push / pull / visibility / Pages) and git config.
+  const checks: SetupCheck[] = [
+    {
+      label: 'gh auth: repo, workflow scopes granted',
+      run: () => ensureGhAuth({ ghPath, log, scopes: ['repo', 'workflow'] }),
+    },
+    {
+      label: 'git config: user.name and user.email set',
+      run: () => ensureGitConfig(),
+    },
+  ];
+  for (const check of checks) {
+    try {
+      await check.run();
+      log.info(`  ${MARK.OK}   ${check.label}`);
+    } catch (err) {
+      const msg = isVaultkitError(err) ? err.message : (err as Error).message;
+      log.info(`  ${MARK.FAIL}  ${check.label.split(':')[0]}: ${msg}`);
+      issues++;
+    }
   }
 
   // 5. claude CLI (recommended — vault MCP registration depends on it).
