@@ -3,7 +3,7 @@ import { Vault, sha256 } from '../lib/vault.js';
 import { findTool } from '../lib/platform.js';
 import { runMcpRepin, manualMcpRepinCommands } from '../lib/mcp.js';
 import { fetch as gitFetch, hasUpstream, diffFileNames, diff as gitDiff, pull } from '../lib/git.js';
-import { ConsoleLogger } from '../lib/logger.js';
+import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
 import { LABELS } from '../lib/messages.js';
 import { classifyLauncherSha, historicalVersionLabel } from '../lib/launcher-history.js';
@@ -11,6 +11,26 @@ import type { CommandModule, RunOptions } from '../types.js';
 
 export interface VerifyOptions extends RunOptions {
   yes?: boolean;
+}
+
+/**
+ * Returns true when the upstream tracking branch carries a different
+ * `.mcp-start.js` (and only that file) than HEAD. Side-effects: a
+ * `git fetch` and the diff output written to `log`. No-op when the
+ * vault has no git repo or no configured upstream.
+ */
+async function detectUpstreamDrift(vault: Vault, log: Logger): Promise<boolean> {
+  if (!vault.hasGitRepo()) return false;
+  await gitFetch(vault.dir);
+  if (!await hasUpstream(vault.dir)) return false;
+  const diffFiles = await diffFileNames(vault.dir, 'HEAD..@{u}', ['.mcp-start.js']);
+  if (diffFiles.length !== 1 || diffFiles[0] !== '.mcp-start.js') return false;
+  log.info('Upstream has a different .mcp-start.js — diff:');
+  log.info('----------------------------------------');
+  log.info(await gitDiff(vault.dir, 'HEAD..@{u}', ['.mcp-start.js']));
+  log.info('----------------------------------------');
+  log.info('');
+  return true;
 }
 
 export async function run(
@@ -33,22 +53,7 @@ export async function run(
   log.info(`On-disk SHA-256: ${onDisk}`);
   log.info('');
 
-  // Check for upstream drift
-  let upstreamDrift = false;
-  if (vault.hasGitRepo()) {
-    await gitFetch(vault.dir);
-    if (await hasUpstream(vault.dir)) {
-      const diffFiles = await diffFileNames(vault.dir, 'HEAD..@{u}', ['.mcp-start.js']);
-      if (diffFiles.length === 1 && diffFiles[0] === '.mcp-start.js') {
-        upstreamDrift = true;
-        log.info('Upstream has a different .mcp-start.js — diff:');
-        log.info('----------------------------------------');
-        log.info(await gitDiff(vault.dir, 'HEAD..@{u}', ['.mcp-start.js']));
-        log.info('----------------------------------------');
-        log.info('');
-      }
-    }
-  }
+  const upstreamDrift = await detectUpstreamDrift(vault, log);
 
   // Comparison is on-disk hash vs registered (pinned) hash, NOT vs the
   // canonical template hash. See `.claude/rules/security-invariants.md`
