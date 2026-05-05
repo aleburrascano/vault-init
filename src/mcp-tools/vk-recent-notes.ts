@@ -4,7 +4,7 @@ import {
   validateOptionalString,
 } from '../lib/json-rpc-validator.js';
 import { resolveVaults, type ToolContext } from './context.js';
-import { _walkMarkdown } from '../lib/search-indexer.js';
+import { walkMarkdown } from '../lib/vault-walk.js';
 import { statSync } from 'node:fs';
 
 /**
@@ -64,7 +64,7 @@ export function vkRecentNotesDefinition(ctx: ToolContext): ToolDefinition {
 
       const all: Array<{ vault: string; path: string; mtimeMs: number }> = [];
       for (const v of vaults) {
-        for (const entry of _walkMarkdown(v.dir)) {
+        for (const entry of walkMarkdown(v.dir)) {
           let mtimeMs: number;
           try {
             mtimeMs = statSync(entry.full).mtimeMs;

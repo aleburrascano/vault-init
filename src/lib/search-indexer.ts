@@ -1,7 +1,8 @@
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, posix, basename, extname } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { posix, basename, extname } from 'node:path';
 import { parseFrontmatter } from './freshness/sources.js';
 import type { ISearchIndex, IndexRecord } from './search-index.js';
+import { walkMarkdown } from './vault-walk.js';
 
 /**
  * Walks a vaultkit-managed vault directory and (re-)populates the
@@ -20,16 +21,6 @@ import type { ISearchIndex, IndexRecord } from './search-index.js';
  * and complexity — defer until a real perf signal appears.
  */
 
-/** Vault subdirectories that should NOT be walked. */
-const SKIP_DIRS = new Set([
-  '.git',
-  '.obsidian',
-  '.github',
-  'node_modules',
-  '.vaultkit',          // reserved for future vaultkit-local state
-  '.smart-env',         // Smart Connections plugin's embedding cache
-  'wiki/_freshness',    // freshness reports — stale by design, not search content
-]);
 
 export interface IndexResult {
   /** Records added: present in the new walk but not in the previous index. */
@@ -63,7 +54,7 @@ export async function indexVault(
   let updated = 0;
   const seenPaths = new Set<string>();
 
-  for (const file of _walkMarkdown(vaultDir)) {
+  for (const file of walkMarkdown(vaultDir)) {
     let content: string;
     try {
       content = readFileSync(file.full, 'utf8');
@@ -105,39 +96,11 @@ export function removeVaultFromIndex(vaultName: string, index: ISearchIndex): nu
 }
 
 /**
- * Walk the vault tree, yielding every `.md` file's absolute and
- * vault-relative path. Skips directories in `SKIP_DIRS` (case-
- * sensitive match against the directory name). Path components use
- * forward slashes in the relative path so the index is portable
- * across Windows and Unix.
- *
- * Exposed for tests; not part of the public API.
+ * Re-exported from `vault-walk.ts` under the `_` prefix for backward
+ * compatibility with `tests/lib/search-indexer.test.ts`. New code should
+ * import `walkMarkdown` directly from `../lib/vault-walk.js`.
  */
-export function* _walkMarkdown(
-  rootDir: string,
-  currentRel: string = '',
-): Generator<{ rel: string; full: string }> {
-  let entries;
-  try {
-    entries = readdirSync(currentRel ? join(rootDir, currentRel) : rootDir, {
-      withFileTypes: true,
-    });
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    const childRelNative = currentRel ? join(currentRel, entry.name) : entry.name;
-    const childRel = childRelNative.split(/[\\/]/).join('/');  // normalize to forward slash
-    if (entry.isDirectory()) {
-      // Match against either the bare directory name OR the rel path
-      // (so 'wiki/_freshness' is filterable).
-      if (SKIP_DIRS.has(entry.name) || SKIP_DIRS.has(childRel)) continue;
-      yield* _walkMarkdown(rootDir, childRelNative);
-    } else if (entry.isFile() && entry.name.endsWith('.md')) {
-      yield { rel: childRel, full: join(rootDir, childRelNative) };
-    }
-  }
-}
+export { walkMarkdown as _walkMarkdown } from './vault-walk.js';
 
 /**
  * Build an `IndexRecord` from a markdown file's content. Title comes

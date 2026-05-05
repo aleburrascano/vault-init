@@ -3,7 +3,7 @@ import {
   validateOptionalInteger,
   validateOptionalString,
 } from '../lib/json-rpc-validator.js';
-import { _walkMarkdown } from '../lib/search-indexer.js';
+import { walkMarkdown } from '../lib/vault-walk.js';
 import { resolveVaults, type ToolContext } from './context.js';
 
 /**
@@ -72,7 +72,7 @@ export function vkListNotesDefinition(ctx: ToolContext): ToolDefinition {
 
       const collected: Array<{ vault: string; path: string }> = [];
       for (const v of vaults) {
-        for (const entry of _walkMarkdown(v.dir)) {
+        for (const entry of walkMarkdown(v.dir)) {
           if (prefix !== undefined && !entry.rel.startsWith(prefix)) continue;
           collected.push({ vault: v.name, path: entry.rel });
           if (collected.length >= limit) break;
