@@ -20,6 +20,8 @@ vaultkit help
 
 `vaultkit setup` walks through every prerequisite in one go (node 22+, gh CLI, gh auth with `repo` + `workflow` scopes, git config, claude CLI). It's idempotent — re-run any time. The `delete_repo` scope is requested separately on the first `vaultkit destroy` so you're never asked up front to authorize a destructive permission you may never use.
 
+Setup also registers `vaultkit-search`, a global MCP that gives Claude BM25-ranked search across every vaultkit-managed vault (cross-vault, no per-vault setup). Title hits weight 5x — so a query like *"token optimization"* against a note titled *"Token Efficiency"* still finds it, even when the body never says "optimization". See [ADR-0010](docs/decisions/0010-bm25-search-mcp.md) for the design rationale.
+
 **Updating**: `npm update -g @aleburrascano/vaultkit` to pull a new release; re-run `vaultkit setup` after major versions to re-check prerequisites and `vaultkit doctor` to flag any vault whose pinned launcher hash has drifted.
 
 ## What you'd use this for

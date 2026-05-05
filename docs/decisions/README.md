@@ -24,6 +24,7 @@ Format: [Michael Nygard's template](https://cognitect.com/blog/2011/11/15/docume
 | [ADR-0007](0007-git-cli-acl-via-src-lib-git.md) | Git CLI Anti-Corruption Layer via `src/lib/git.ts` | Accepted |
 | [ADR-0008](0008-module-imports-as-dependency-wiring.md) | Module-level imports as the dependency-wiring strategy | Accepted |
 | [ADR-0009](0009-bootstrap-gate-at-dispatch-layer.md) | Bootstrap gate at the dispatch layer | Accepted |
+| [ADR-0010](0010-bm25-search-mcp.md) | BM25 search MCP shipped with vaultkit | Accepted |
 
 ## When to add an ADR
 
