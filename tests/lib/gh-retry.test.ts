@@ -15,7 +15,7 @@ vi.mock('../../src/lib/platform.js', async (importOriginal) => {
 
 import { execa } from 'execa';
 import { findTool } from '../../src/lib/platform.js';
-import { gh, ghJson } from '../../src/lib/gh-retry.js';
+import { gh, ghJson } from '../../src/lib/github/gh-retry.js';
 import { VaultkitError, isVaultkitError } from '../../src/lib/errors.js';
 
 beforeEach(() => {

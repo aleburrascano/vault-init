@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Readable, Writable } from 'node:stream';
-import { McpStdioServer, silentLog, type ToolDefinition } from '../../src/lib/mcp-stdio.js';
+import { McpStdioServer, silentLog, type ToolDefinition } from '../../src/lib/mcp/mcp-stdio.js';
 
 interface JsonRpcReply {
   jsonrpc?: string;

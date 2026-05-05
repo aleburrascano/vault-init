@@ -5,7 +5,7 @@
  * Claude's tool-selection bias correlates weakly with position.
  */
 
-import type { ToolDefinition } from '../lib/mcp-stdio.js';
+import type { ToolDefinition } from '../lib/mcp/mcp-stdio.js';
 import type { ToolContext } from './context.js';
 import { vkSearchDefinition } from './vk-search.js';
 import { vkListNotesDefinition } from './vk-list-notes.js';

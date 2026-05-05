@@ -1,8 +1,8 @@
 import { resolve, basename } from 'node:path';
 import { isVaultLike } from '../lib/vault.js';
 import { getAllVaults } from '../lib/registry.js';
-import { openSearchIndex } from '../lib/search-index.js';
-import { McpStdioServer, stderrLog, silentLog, type DiagnosticLog } from '../lib/mcp-stdio.js';
+import { openSearchIndex } from '../lib/search/search-index.js';
+import { McpStdioServer, stderrLog, silentLog, type DiagnosticLog } from '../lib/mcp/mcp-stdio.js';
 import { buildToolList, type ToolContext, type VaultRef } from '../mcp-tools/index.js';
 import { VaultkitError } from '../lib/errors.js';
 import type { CommandModule, RunOptions } from '../types.js';

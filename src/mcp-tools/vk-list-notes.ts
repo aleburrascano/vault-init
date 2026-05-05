@@ -1,9 +1,9 @@
-import type { ToolDefinition, ToolResult } from '../lib/mcp-stdio.js';
+import type { ToolDefinition, ToolResult } from '../lib/mcp/mcp-stdio.js';
 import {
   validateOptionalInteger,
   validateOptionalString,
-} from '../lib/json-rpc-validator.js';
-import { walkMarkdown } from '../lib/vault-walk.js';
+} from '../lib/mcp/json-rpc-validator.js';
+import { walkMarkdown } from '../lib/search/vault-walk.js';
 import { resolveVaults, type ToolContext } from './context.js';
 
 /**

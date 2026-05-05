@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { posix, basename, extname } from 'node:path';
-import { parseFrontmatter } from './freshness/sources.js';
+import { parseFrontmatter } from '../freshness/sources.js';
 import { openSearchIndex, type ISearchIndex, type IndexRecord, type SearchIndex } from './search-index.js';
 import { walkMarkdown } from './vault-walk.js';
 
@@ -125,7 +125,7 @@ export async function withSearchIndex<T>(
 /**
  * Re-exported from `vault-walk.ts` under the `_` prefix for backward
  * compatibility with `tests/lib/search-indexer.test.ts`. New code should
- * import `walkMarkdown` directly from `../lib/vault-walk.js`.
+ * import `walkMarkdown` directly from `../lib/search/vault-walk.js`.
  */
 export { walkMarkdown as _walkMarkdown } from './vault-walk.js';
 

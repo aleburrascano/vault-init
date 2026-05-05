@@ -75,7 +75,7 @@ liveDescribe('live: disconnect removes local dir, keeps GitHub repo', { timeout:
       // A previous test (e.g. our own disconnect) left the fixture
       // unregistered. Re-clone from the still-extant GitHub repo to
       // restore the baseline. No GitHub WRITE — clone is read-only.
-      const { getCurrentUser } = await import('../../src/lib/github-auth.js');
+      const { getCurrentUser } = await import('../../src/lib/github/github-auth.js');
       const user = await getCurrentUser();
       const { run: connectRun } = await import('../../src/commands/connect.js');
       await connectRun(`${user}/${fixtureName}`, { skipMcp: true, log: silent });
@@ -93,8 +93,8 @@ liveDescribe('live: disconnect removes local dir, keeps GitHub repo', { timeout:
     expect(existsSync(dirBefore as string)).toBe(false);
     expect(await getVaultDir(fixtureName)).toBeNull();
 
-    const { repoExists } = await import('../../src/lib/github-repo.js');
-    const { getCurrentUser } = await import('../../src/lib/github-auth.js');
+    const { repoExists } = await import('../../src/lib/github/github-repo.js');
+    const { getCurrentUser } = await import('../../src/lib/github/github-auth.js');
     const user = await getCurrentUser();
     expect(await repoExists(`${user}/${fixtureName}`)).toBe(true);
   });

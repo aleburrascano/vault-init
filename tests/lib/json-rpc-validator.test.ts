@@ -4,7 +4,7 @@ import {
   validateOptionalString,
   validateOptionalInteger,
   ValidationError,
-} from '../../src/lib/json-rpc-validator.js';
+} from '../../src/lib/mcp/json-rpc-validator.js';
 
 describe('validateString', () => {
   it('returns the value when present and a string', () => {

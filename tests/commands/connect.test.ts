@@ -427,7 +427,7 @@ liveDescribe('live: connect clones real GitHub repo', { timeout: 90_000 }, () =>
 
   it('clones repo and registers vault', async () => {
     const fixtureName = getFixtureName();
-    const { getCurrentUser } = await import('../../src/lib/github-auth.js');
+    const { getCurrentUser } = await import('../../src/lib/github/github-auth.js');
     const user = await getCurrentUser();
     const repoSlug = `${user}/${fixtureName}`;
 

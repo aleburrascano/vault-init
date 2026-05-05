@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { confirm } from '@inquirer/prompts';
 import { ConsoleLogger } from '../lib/logger.js';
 import { checkNode, ensureGh, ensureGhAuth, ensureGitConfig } from '../lib/prereqs.js';
-import { findOrInstallClaude, runMcpRemove } from '../lib/mcp.js';
+import { findOrInstallClaude, runMcpRemove } from '../lib/mcp/mcp.js';
 import { getAllMcpServerNames } from '../lib/registry.js';
 import { isVaultkitError } from '../lib/errors.js';
 import { PROMPTS } from '../lib/messages.js';

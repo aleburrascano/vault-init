@@ -95,7 +95,7 @@ describe('architecture: gh CLI Anti-Corruption Layer', () => {
       expect.fail(
         `Found raw \`execa('gh', ...)\` calls in command files. Route through one of\n` +
         `the github-* facades (createRepo / setRepoVisibility / enablePages / etc.) or\n` +
-        `import { ghJson } from '../lib/gh-retry.js' for ad-hoc API calls.\n` +
+        `import { ghJson } from '../lib/github/gh-retry.js' for ad-hoc API calls.\n` +
         `If a follow-up is genuinely required, add the file path to\n` +
         `EXCEPTIONS['gh-bypass-execa'] in tests/architecture.test.ts with a reason.\n\n` +
         `Violations:\n${msg}`,
@@ -142,11 +142,11 @@ describe('architecture: gh CLI Anti-Corruption Layer', () => {
     }
   });
 
-  it('no file outside src/lib/mcp.ts spawns `claude mcp` via execa', async () => {
+  it('no file outside src/lib/mcp/mcp.ts spawns `claude mcp` via execa', async () => {
     const files = await readSourceFiles('src/**/*.ts');
     const violations: string[] = [];
     for (const { path, text } of files) {
-      if (path === 'src/lib/mcp.ts') continue;
+      if (path === 'src/lib/mcp/mcp.ts') continue;
       // Match: execa(<anything>, [..., 'mcp', ...]) where <anything>
       // could be 'claude', a variable named claudePath, etc.
       // Conservative pattern — match the literal `'mcp'` arg in an

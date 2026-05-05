@@ -7,8 +7,8 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { openSearchIndex, type SearchIndex } from '../../src/lib/search-index.js';
-import { indexVault, removeVaultFromIndex } from '../../src/lib/search-indexer.js';
+import { openSearchIndex, type SearchIndex } from '../../src/lib/search/search-index.js';
+import { indexVault, removeVaultFromIndex } from '../../src/lib/search/search-indexer.js';
 
 /**
  * S5 wiring tests: the `vaultkit-search` index is kept current across

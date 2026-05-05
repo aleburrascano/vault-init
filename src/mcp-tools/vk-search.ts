@@ -1,9 +1,9 @@
-import type { ToolDefinition, ToolResult } from '../lib/mcp-stdio.js';
+import type { ToolDefinition, ToolResult } from '../lib/mcp/mcp-stdio.js';
 import {
   validateOptionalInteger,
   validateOptionalString,
   validateString,
-} from '../lib/json-rpc-validator.js';
+} from '../lib/mcp/json-rpc-validator.js';
 import type { ToolContext } from './context.js';
 
 /**

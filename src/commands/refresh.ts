@@ -5,7 +5,7 @@ import { VAULT_DIRS } from '../lib/constants.js';
 import { VaultkitError } from '../lib/errors.js';
 import { compareSource } from '../lib/text-compare.js';
 import { findTool } from '../lib/platform.js';
-import { getCommitsSince } from '../lib/github-repo.js';
+import { getCommitsSince } from '../lib/github/github-repo.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import {
   loadSources,

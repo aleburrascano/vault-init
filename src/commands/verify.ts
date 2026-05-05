@@ -1,7 +1,7 @@
 import { confirm } from '@inquirer/prompts';
 import { Vault, sha256 } from '../lib/vault.js';
 import { findTool } from '../lib/platform.js';
-import { runMcpRepin, manualMcpRepinCommands } from '../lib/mcp.js';
+import { runMcpRepin, manualMcpRepinCommands } from '../lib/mcp/mcp.js';
 import { fetch as gitFetch, hasUpstream, diffFileNames, diff as gitDiff, pull } from '../lib/git.js';
 import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';

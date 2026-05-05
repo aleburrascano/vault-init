@@ -1,7 +1,7 @@
 import { execa } from 'execa';
-import { findTool, npmGlobalBin, isWindows } from './platform.js';
-import { CURRENT_SCHEMA_VERSION } from './breaking-changes.js';
-import type { Logger } from './logger.js';
+import { findTool, npmGlobalBin, isWindows } from '../platform.js';
+import { CURRENT_SCHEMA_VERSION } from '../breaking-changes.js';
+import type { Logger } from '../logger.js';
 
 /**
  * Single source of truth for the `claude mcp add` argv shape. Every

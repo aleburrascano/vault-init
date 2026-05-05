@@ -12,7 +12,7 @@
  * not FTS5 ranking accuracy.
  */
 
-import type { ISearchIndex, IndexRecord, QueryOptions, SearchHit, NoteRef } from '../../src/lib/search-index.js';
+import type { ISearchIndex, IndexRecord, QueryOptions, SearchHit, NoteRef } from '../../src/lib/search/search-index.js';
 
 export class FakeSearchIndex implements ISearchIndex {
   private records: IndexRecord[] = [];

@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { silent } from '../helpers/logger.js';
 
-vi.mock('../../src/lib/gh-retry.js', async (importOriginal) => {
-  const real = await importOriginal<typeof import('../../src/lib/gh-retry.js')>();
+vi.mock('../../src/lib/github/gh-retry.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/lib/github/gh-retry.js')>();
   return { ...real, ghJson: vi.fn(), gh: vi.fn() };
 });
 vi.mock('../../src/lib/text-compare.js', async (importOriginal) => {
@@ -17,7 +17,7 @@ vi.mock('../../src/lib/platform.js', async (importOriginal) => {
   return { ...real, findTool: vi.fn() };
 });
 
-import { ghJson } from '../../src/lib/gh-retry.js';
+import { ghJson } from '../../src/lib/github/gh-retry.js';
 import { compareSource } from '../../src/lib/text-compare.js';
 import { findTool } from '../../src/lib/platform.js';
 

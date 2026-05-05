@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { getAllVaults } from '../lib/registry.js';
 import { pull } from '../lib/git.js';
-import { openSearchIndex, type ISearchIndex } from '../lib/search-index.js';
-import { indexVault } from '../lib/search-indexer.js';
+import { openSearchIndex, type ISearchIndex } from '../lib/search/search-index.js';
+import { indexVault } from '../lib/search/search-indexer.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { LABELS } from '../lib/messages.js';
 import type { CommandModule, RunOptions } from '../types.js';

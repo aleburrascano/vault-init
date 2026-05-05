@@ -4,7 +4,7 @@ import { confirm } from '@inquirer/prompts';
 import { Vault, sha256, isVaultLike } from '../lib/vault.js';
 import { addToRegistry } from '../lib/registry.js';
 import { findTool, vaultsRoot } from '../lib/platform.js';
-import { findOrInstallClaude, runMcpAdd, manualMcpAddCommand } from '../lib/mcp.js';
+import { findOrInstallClaude, runMcpAdd, manualMcpAddCommand } from '../lib/mcp/mcp.js';
 import { clone } from '../lib/git.js';
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';

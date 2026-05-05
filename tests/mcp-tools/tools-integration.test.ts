@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { openSearchIndex, type SearchIndex } from '../../src/lib/search-index.js';
-import { indexVault } from '../../src/lib/search-indexer.js';
+import { openSearchIndex, type SearchIndex } from '../../src/lib/search/search-index.js';
+import { indexVault } from '../../src/lib/search/search-indexer.js';
 import { buildToolList, type ToolContext, type VaultRef } from '../../src/mcp-tools/index.js';
 
 /**

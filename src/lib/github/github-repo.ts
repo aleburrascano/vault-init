@@ -18,8 +18,8 @@
  */
 
 import { ghJson, gh } from './gh-retry.js';
-import { pollUntil } from './poll.js';
-import type { GhRepoResponse, GhRepoInfo, Visibility } from '../types.js';
+import { pollUntil } from '../poll.js';
+import type { GhRepoResponse, GhRepoInfo, Visibility } from '../../types.js';
 
 // ── Pure JSON parser (exported for unit tests) ────────────────────────────────
 

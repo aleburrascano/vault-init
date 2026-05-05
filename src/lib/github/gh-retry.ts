@@ -1,6 +1,6 @@
 import { execa } from 'execa';
-import { findTool } from './platform.js';
-import { VaultkitError } from './errors.js';
+import { findTool } from '../platform.js';
+import { VaultkitError } from '../errors.js';
 
 /**
  * Anti-Corruption Layer for the `gh` CLI surface — the retry / classification

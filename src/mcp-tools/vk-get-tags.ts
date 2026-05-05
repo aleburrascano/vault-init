@@ -1,5 +1,5 @@
-import type { ToolDefinition, ToolResult } from '../lib/mcp-stdio.js';
-import { validateOptionalString } from '../lib/json-rpc-validator.js';
+import type { ToolDefinition, ToolResult } from '../lib/mcp/mcp-stdio.js';
+import { validateOptionalString } from '../lib/mcp/json-rpc-validator.js';
 import type { ToolContext } from './context.js';
 
 /**

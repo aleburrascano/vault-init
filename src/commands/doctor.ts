@@ -1,7 +1,7 @@
 import { getAllVaults, getAllMcpServerNames } from '../lib/registry.js';
 import { Vault } from '../lib/vault.js';
 import { findTool } from '../lib/platform.js';
-import { isAuthenticated } from '../lib/github-auth.js';
+import { isAuthenticated } from '../lib/github/github-auth.js';
 import { getConfig } from '../lib/git.js';
 import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { LABELS } from '../lib/messages.js';

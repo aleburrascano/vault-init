@@ -10,7 +10,7 @@
  * real `~/.claude.json` / `~/.vaultkit-search.db`.
  */
 
-import type { ISearchIndex } from '../lib/search-index.js';
+import type { ISearchIndex } from '../lib/search/search-index.js';
 
 export interface VaultRef {
   /** Vault name as it appears in `~/.claude.json#mcpServers`. */

@@ -1,8 +1,8 @@
-import type { ToolDefinition, ToolResult } from '../lib/mcp-stdio.js';
+import type { ToolDefinition, ToolResult } from '../lib/mcp/mcp-stdio.js';
 import {
   validateOptionalString,
   validateString,
-} from '../lib/json-rpc-validator.js';
+} from '../lib/mcp/json-rpc-validator.js';
 import { resolveVaults, type ToolContext } from './context.js';
 import { parseFrontmatter } from '../lib/freshness/sources.js';
 import { readFile } from 'node:fs/promises';

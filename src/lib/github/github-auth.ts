@@ -15,11 +15,11 @@
  */
 
 import { execa } from 'execa';
-import { findTool } from './platform.js';
-import { VaultkitError } from './errors.js';
+import { findTool } from '../platform.js';
+import { VaultkitError } from '../errors.js';
 import { gh, ghJson } from './gh-retry.js';
-import type { Logger } from './logger.js';
-import type { GhUserResponse } from '../types.js';
+import type { Logger } from '../logger.js';
+import type { GhUserResponse } from '../../types.js';
 
 // ── Pure JSON parsers (exported for unit tests) ───────────────────────────────
 

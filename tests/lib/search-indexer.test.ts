@@ -7,8 +7,8 @@ import {
   removeVaultFromIndex,
   _walkMarkdown,
   _buildRecord,
-} from '../../src/lib/search-indexer.js';
-import { openSearchIndex, type SearchIndex } from '../../src/lib/search-index.js';
+} from '../../src/lib/search/search-indexer.js';
+import { openSearchIndex, type SearchIndex } from '../../src/lib/search/search-index.js';
 
 let tmp: string;
 let index: SearchIndex;

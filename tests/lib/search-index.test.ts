@@ -4,7 +4,7 @@ import {
   openSearchIndex,
   defaultSearchDbPath,
   _sanitizeQuery,
-} from '../../src/lib/search-index.js';
+} from '../../src/lib/search/search-index.js';
 
 let index: SearchIndex;
 

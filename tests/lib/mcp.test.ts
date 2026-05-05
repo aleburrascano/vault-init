@@ -23,7 +23,7 @@ import {
   manualMcpRemoveCommand,
   manualMcpRepinCommands,
   findOrInstallClaude,
-} from '../../src/lib/mcp.js';
+} from '../../src/lib/mcp/mcp.js';
 import { findTool, npmGlobalBin } from '../../src/lib/platform.js';
 
 beforeEach(() => {
