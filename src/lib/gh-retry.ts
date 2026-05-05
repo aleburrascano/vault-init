@@ -66,7 +66,8 @@ export function _parseGhIncludeOutput(raw: string): {
   return { headers, body, status };
 }
 
-export type GhFailureKind = 'transient' | 'rate_limited' | 'auth_flagged' | 'fatal';
+export const GH_FAILURE_KINDS = ['transient', 'rate_limited', 'auth_flagged', 'fatal'] as const;
+export type GhFailureKind = typeof GH_FAILURE_KINDS[number];
 
 export interface GhFailureClassification {
   kind: GhFailureKind;
