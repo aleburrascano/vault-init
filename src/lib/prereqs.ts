@@ -163,7 +163,7 @@ export async function ensureGitConfig({ nameOpt, emailOpt }: EnsureGitConfigOpti
  * Exported as a `Set<string>` so callers can also `SETUP_BYPASS.has(name)`
  * directly when needed (e.g. the architecture fitness function).
  */
-export const SETUP_BYPASS: ReadonlySet<string> = new Set(['setup', 'doctor']);
+export const SETUP_BYPASS: ReadonlySet<string> = new Set(['setup', 'doctor', 'mcp-server']);
 
 /**
  * Apply the bootstrap gate for a command, or skip if the command is in

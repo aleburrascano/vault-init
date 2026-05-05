@@ -55,7 +55,7 @@ export const COMMANDS_THAT_MUST_BE_GATED = [
   'visibility',
 ] as const;
 
-export const BYPASS = ['setup', 'doctor'] as const;
+export const BYPASS = ['setup', 'doctor', 'mcp-server'] as const;
 
 beforeEach(() => {
   vi.mocked(execa).mockReset();
@@ -94,10 +94,11 @@ describe('bootstrap gate: bypass commands run unconditionally', () => {
     expect(vi.mocked(findTool)).not.toHaveBeenCalled();
   });
 
-  it('SETUP_BYPASS exposes exactly setup + doctor (no drift)', () => {
+  it('SETUP_BYPASS exposes exactly setup + doctor + mcp-server (no drift)', () => {
     expect(SETUP_BYPASS.has('setup')).toBe(true);
     expect(SETUP_BYPASS.has('doctor')).toBe(true);
-    expect(SETUP_BYPASS.size).toBe(2);
+    expect(SETUP_BYPASS.has('mcp-server')).toBe(true);
+    expect(SETUP_BYPASS.size).toBe(3);
   });
 });
 

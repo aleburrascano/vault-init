@@ -239,6 +239,90 @@ export class SearchIndex {
   }
 
   /**
+   * Distinct tag values currently indexed, optionally scoped to one
+   * vault. Used by the `vk_get_tags` MCP tool. Empty array if no tags
+   * are present (or the index is empty). Tags are stored as a single
+   * space/comma-separated string per note (`tag-a tag-b`); this method
+   * splits them back out and dedupes case-insensitively.
+   *
+   * Pass `'*'` (or omit `vault`) for cross-vault. Otherwise scopes
+   * to the named vault.
+   */
+  listTags(vault?: string): string[] {
+    const scoped = vault !== undefined && vault !== '*';
+    const sql = scoped
+      ? 'SELECT tags FROM notes WHERE vault = ? AND tags <> \'\''
+      : 'SELECT tags FROM notes WHERE tags <> \'\'';
+    const rows = (
+      scoped ? this.db.prepare(sql).all(vault) : this.db.prepare(sql).all()
+    ) as Array<{ tags: string }>;
+    const seen = new Map<string, string>(); // lowercase → canonical (first-seen) form
+    for (const r of rows) {
+      for (const tok of r.tags.split(/[\s,]+/)) {
+        const trimmed = tok.trim();
+        if (!trimmed) continue;
+        const lower = trimmed.toLowerCase();
+        if (!seen.has(lower)) seen.set(lower, trimmed);
+      }
+    }
+    return [...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  }
+
+  /**
+   * Find notes carrying the given tag, scoped optionally to one vault.
+   * Returns up to `topK` notes (default 50). Used by the
+   * `vk_search_by_tag` MCP tool. Tag matching is case-insensitive and
+   * exact-on-token (i.e. tag "ai" doesn't match a note tagged
+   * "ai-research"). Empty array if no notes are tagged.
+   *
+   * Pass `vault: '*'` (or undefined) for cross-vault. Otherwise scopes
+   * to the named vault.
+   */
+  notesByTag(tag: string, opts: { vault?: string; topK?: number } = {}): Array<{
+    vault: string;
+    path: string;
+    title: string;
+  }> {
+    const scoped = opts.vault !== undefined && opts.vault !== '*';
+    const topK = Math.min(opts.topK ?? 50, 200);
+    // Use FTS5 MATCH on the `tags` column with the quoted tag — this
+    // tokenizes correctly and respects the unicode61 tokenizer's
+    // case-folding. Stripping the tag's special chars first (we expect
+    // simple alphanumeric tags but defend against punctuation).
+    const safeTag = tag.replace(/["()*+\-:^]/g, '').trim();
+    if (!safeTag) return [];
+    const matchExpr = `tags : "${safeTag}"`;
+    const params: unknown[] = [matchExpr];
+    let where = 'notes MATCH ?';
+    if (scoped) {
+      where += ' AND vault = ?';
+      params.push(opts.vault);
+    }
+    params.push(topK);
+    const sql = `
+      SELECT vault, path, title
+      FROM notes
+      WHERE ${where}
+      ORDER BY title
+      LIMIT ?
+    `;
+    try {
+      return this.db.prepare(sql).all(...(params as never[])) as Array<{
+        vault: string;
+        path: string;
+        title: string;
+      }>;
+    } catch (err) {
+      // Same fallback as `query()` — surface bad-input as empty results.
+      const msg = (err as { message?: string })?.message ?? '';
+      if (/fts5: syntax/i.test(msg) || /no such column/i.test(msg)) {
+        return [];
+      }
+      throw err;
+    }
+  }
+
+  /**
    * Total indexed note count, optionally scoped to one vault. Used
    * mostly by tests and the `get_index_status` future tool.
    */

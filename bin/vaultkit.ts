@@ -243,6 +243,32 @@ vaultkit upgrade or when 'vaultkit verify' reports drift.
   });
 
 program
+  .command('mcp-server')
+  .description('Per-vault MCP server (long-running daemon — invoked by the launcher, not directly)')
+  .requiredOption('--vault-dir <path>', "vault directory this server is bound to")
+  .option('--expected-sha256 <hex>', '(ignored here; verified by launcher before invoking)')
+  .addHelpText('after', `
+Examples:
+  $ vaultkit mcp-server --vault-dir ~/vaults/my-wiki   # not for direct human use
+  $ vaultkit mcp-server --vault-dir . --expected-sha256=...
+
+Speaks newline-delimited JSON-RPC 2.0 over stdio (the MCP transport
+Claude Code uses). Spawned automatically by the byte-immutable per-vault
+launcher (.mcp-start.js) on every Claude Code session start. Replaces
+'npx obsidian-mcp-pro <vault-dir>' as the launcher's spawn target.
+
+Exposes 6 tools tuned for Claude: vk_search, vk_list_notes, vk_get_note,
+vk_get_tags, vk_search_by_tag, vk_recent_notes. Search uses Node's built-in
+node:sqlite (FTS5 + BM25) against the shared ~/.vaultkit-search.db index.
+`)
+  .action(async (opts: { vaultDir: string; expectedSha256?: string }) => {
+    await wrap(async () => {
+      const { run } = await import('../src/commands/mcp-server.js');
+      await run({ vaultDir: opts.vaultDir });
+    }, 'mcp-server', ['--vault-dir', opts.vaultDir]);
+  });
+
+program
   .command('refresh [name]')
   .description('Check sources for upstream changes and write a freshness report')
   .option('--vault-dir <path>', 'operate on this directory instead of a registered vault (CI mode)')
