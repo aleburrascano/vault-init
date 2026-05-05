@@ -6,6 +6,7 @@ import { fetch as gitFetch, hasUpstream, diffFileNames, diff as gitDiff, pull } 
 import { ConsoleLogger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
 import { LABELS } from '../lib/messages.js';
+import { classifyLauncherSha, historicalVersionLabel } from '../lib/launcher-history.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 export interface VerifyOptions extends RunOptions {
@@ -74,9 +75,18 @@ export async function run(
     finalHash = await sha256(vault.launcherPath);
     log.info(`  Pulled. New on-disk SHA-256: ${finalHash}`);
   } else {
-    log.info('On-disk launcher does not match the pinned hash.');
-    log.info('Inspect the file before trusting it:');
-    log.info(`  cat "${vault.launcherPath}"`);
+    const classification = pinned ? classifyLauncherSha(onDisk, pinned) : 'unknown';
+    if (classification === 'historical') {
+      const label = historicalVersionLabel(onDisk) ?? 'a prior version';
+      log.info(`On-disk launcher is outdated after a vaultkit upgrade (was ${label}).`);
+      log.info('This is expected after upgrading — the launcher template changed in a release.');
+      log.info('Re-pinning to the on-disk hash will accept the older launcher; if you want the');
+      log.info(`current template instead, run 'vaultkit update ${name}' (or 'vaultkit update --all').`);
+    } else {
+      log.info('On-disk launcher does not match the pinned hash.');
+      log.info('Inspect the file before trusting it:');
+      log.info(`  cat "${vault.launcherPath}"`);
+    }
     log.info('');
     const ok = yes || await confirm({ message: `Re-pin the on-disk SHA-256 (${onDisk})?`, default: false });
     if (!ok) { log.info(LABELS.ABORTED); return; }

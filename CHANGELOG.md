@@ -5,6 +5,7 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 ## [Unreleased]
 
 ### Added
+- **Launcher SHA-mismatch disambiguation in `doctor` and `verify`.** When a vault's on-disk launcher doesn't match its pinned SHA, `vaultkit doctor` and `vaultkit verify` now classify the on-disk SHA against `src/lib/launcher-history.ts:HISTORICAL_LAUNCHER_SHAS` and emit two distinct outcomes: a known prior version (e.g. v1.3.0 / v1.4.1 / pre-2.8.0) prints "outdated after upgrade — run `vaultkit update --all`" as a `! warn` (recoverable); an unknown SHA prints "possible tampering — inspect / re-trust" as an `x fail` (security event). Replaces the previous single message that conflated upgrade drift with a security event. The byte-immutable launcher template (`lib/mcp-start.js.tmpl`) is unchanged — disambiguation lives entirely in the CLI surfaces.
 - **`vaultkit update --all` bulk migration.** Iterates every registered vault and migrates each one in a single pass, printing a per-vault `+ ok` / `x fail` summary. The single-vault `vaultkit update <name>` path is unchanged. Cuts the per-vault migration burden after a breaking-change release (e.g. the 2.8.0 launcher template change) from N commands to 1, and eliminates the "I migrated `main` but forgot `notes`" partial-migration class. Internally the per-vault flow was extracted into a private `updateOneVault` helper so the loop and the single-vault path share one code path.
 
 ## [2.8.0] - 2026-05-05

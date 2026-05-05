@@ -252,6 +252,46 @@ describe('D-10: hash mismatch', () => {
   });
 });
 
+// ── D-10b: hash mismatch — historical SHA (outdated after upgrade) ────────────
+
+describe('D-10b: hash mismatch — historical SHA', () => {
+  it('warns (not fails) and points at vaultkit update --all', async () => {
+    // Write known content to the launcher and inject its SHA into the
+    // historical table at runtime. Avoids depending on cross-platform
+    // git text-conversion quirks that shift template byte hashes between
+    // CRLF/LF working-tree configurations.
+    const vaultDir = join(tmp, 'OutdatedVault');
+    mkdirSync(vaultDir, { recursive: true });
+    const launcherContent = '// pretend pre-2.8.0 launcher';
+    writeFileSync(join(vaultDir, '.mcp-start.js'), launcherContent, 'utf8');
+
+    const { createHash } = await import('node:crypto');
+    const onDiskSha = createHash('sha256').update(launcherContent).digest('hex');
+
+    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/launcher-history.js');
+    HISTORICAL_LAUNCHER_SHAS[onDiskSha] = 'pre-2.8.0';
+
+    try {
+      const cfgPath = join(tmp, '.claude.json');
+      writeCfg(cfgPath, { OutdatedVault: { dir: vaultDir, hash: 'b'.repeat(64) } });
+      mockAllToolsFound();
+      mockGhAuth(true);
+
+      const { issues, lines } = await runDoctor(cfgPath);
+
+      expect(lines.some(l => /hash mismatch/i.test(l))).toBe(true);
+      expect(lines.some(l => /outdated after upgrade/i.test(l))).toBe(true);
+      expect(lines.some(l => /pre-2\.8\.0/i.test(l))).toBe(true);
+      expect(lines.some(l => /vaultkit update --all/i.test(l))).toBe(true);
+      // Historical mismatch is a warn, not a fail — does NOT increment
+      // the issue count, so doctor exits 0 if everything else is ok.
+      expect(issues).toBe(0);
+    } finally {
+      delete HISTORICAL_LAUNCHER_SHAS[onDiskSha];
+    }
+  });
+});
+
 // ── D-11: no pinned hash (legacy registration) ────────────────────────────────
 
 describe('D-11: no pinned hash (legacy)', () => {

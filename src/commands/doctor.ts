@@ -5,6 +5,7 @@ import { isAuthenticated } from '../lib/github-auth.js';
 import { getConfig } from '../lib/git.js';
 import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { LABELS } from '../lib/messages.js';
+import { classifyLauncherSha, historicalVersionLabel } from '../lib/launcher-history.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 async function checkTool(name: string, required: boolean, log: Logger): Promise<boolean> {
@@ -98,11 +99,21 @@ export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {
       }
 
       if (vault.expectedHash !== onDiskHash) {
-        log.info(`  x fail  ${vault.name}: hash mismatch`);
-        log.info(`    Pinned:  ${vault.expectedHash}`);
-        log.info(`    On-disk: ${onDiskHash}`);
-        log.info(`    Hint: vaultkit verify ${vault.name}`);
-        issues++;
+        const classification = classifyLauncherSha(onDiskHash, vault.expectedHash);
+        if (classification === 'historical') {
+          const label = historicalVersionLabel(onDiskHash) ?? 'a prior version';
+          log.info(`  ! warn  ${vault.name}: hash mismatch — outdated after upgrade (was ${label})`);
+          log.info(`    Pinned:  ${vault.expectedHash}`);
+          log.info(`    On-disk: ${onDiskHash}`);
+          log.info(`    Hint: vaultkit update --all`);
+        } else {
+          log.info(`  x fail  ${vault.name}: hash mismatch — SHA matches no known vaultkit version (possible tampering)`);
+          log.info(`    Pinned:  ${vault.expectedHash}`);
+          log.info(`    On-disk: ${onDiskHash}`);
+          log.info(`    Inspect: ${vault.launcherPath}`);
+          log.info(`    Re-trust: vaultkit verify ${vault.name}`);
+          issues++;
+        }
         continue;
       }
 

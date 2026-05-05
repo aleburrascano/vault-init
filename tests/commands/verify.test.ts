@@ -140,6 +140,38 @@ describe('V-5: hash mismatch, user aborts', () => {
   });
 });
 
+// ── V-5b: hash mismatch — historical SHA shows causal context ───────────────
+
+describe('V-5b: hash mismatch — historical SHA', () => {
+  it('prefaces the re-pin prompt with "outdated after upgrade" causal context', async () => {
+    const vaultDir = join(tmp, 'OutdatedVault');
+    mkdirSync(vaultDir, { recursive: true });
+    const launcherContent = '// pretend pre-2.8.0 launcher';
+    writeFileSync(join(vaultDir, '.mcp-start.js'), launcherContent, 'utf8');
+    const onDiskSha = computeHash(launcherContent);
+
+    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/launcher-history.js');
+    HISTORICAL_LAUNCHER_SHAS[onDiskSha] = 'pre-2.8.0';
+
+    try {
+      const cfgPath = join(tmp, '.claude.json');
+      writeCfg(cfgPath, { OutdatedVault: { dir: vaultDir, hash: 'b'.repeat(64) } });
+
+      mockNoGit();
+      vi.mocked(confirm).mockResolvedValueOnce(false);
+
+      const lines = await runVerify('OutdatedVault', cfgPath);
+
+      expect(lines.some(l => /outdated after a vaultkit upgrade/i.test(l))).toBe(true);
+      expect(lines.some(l => /pre-2\.8\.0/i.test(l))).toBe(true);
+      expect(lines.some(l => /vaultkit update --all/i.test(l))).toBe(true);
+      expect(lines.some(l => /aborted/i.test(l))).toBe(true);
+    } finally {
+      delete HISTORICAL_LAUNCHER_SHAS[onDiskSha];
+    }
+  });
+});
+
 // ── V-6: hash mismatch — user confirms re-pin, claude found ──────────────────
 
 describe('V-6: hash mismatch, user confirms re-pin', () => {
