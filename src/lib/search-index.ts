@@ -218,6 +218,18 @@ export class SearchIndex {
   }
 
   /**
+   * Return the indexed paths for a vault, sorted ascending. Used by
+   * `search-indexer.ts` to compute the added/updated/removed breakdown
+   * during a re-index pass. Empty array if the vault isn't indexed.
+   */
+  listPaths(vault: string): string[] {
+    const rows = this.db
+      .prepare('SELECT path FROM notes WHERE vault = ? ORDER BY path')
+      .all(vault) as Array<{ path: string }>;
+    return rows.map(r => r.path);
+  }
+
+  /**
    * Total indexed note count, optionally scoped to one vault. Used
    * mostly by tests and the `get_index_status` future tool.
    */
