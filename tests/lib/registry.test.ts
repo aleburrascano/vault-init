@@ -50,16 +50,16 @@ describe('getAllVaults', () => {
     expect(await getAllVaults(cfg)).toEqual([]);
   });
 
-  it('returns a vault with pinned hash', async () => {
+  it('returns a vault with pinned hash and null schemaVersion (legacy entries)', async () => {
     const dir = '/home/user/vaults/MyVault';
     const cfg = writeCfg({ mcpServers: { MyVault: vaultEntry(dir, 'abc123') } });
-    expect(await getAllVaults(cfg)).toEqual([{ name: 'MyVault', dir, hash: 'abc123' }]);
+    expect(await getAllVaults(cfg)).toEqual([{ name: 'MyVault', dir, hash: 'abc123', schemaVersion: null }]);
   });
 
   it('returns a vault with null hash when no --expected-sha256 arg', async () => {
     const dir = '/home/user/vaults/MyVault';
     const cfg = writeCfg({ mcpServers: { MyVault: vaultEntry(dir, null) } });
-    expect(await getAllVaults(cfg)).toEqual([{ name: 'MyVault', dir, hash: null }]);
+    expect(await getAllVaults(cfg)).toEqual([{ name: 'MyVault', dir, hash: null, schemaVersion: null }]);
   });
 
   it('sorts vaults by name', async () => {

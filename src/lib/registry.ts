@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { claudeJsonPath } from './platform.js';
 import { VaultkitError } from './errors.js';
+import { CURRENT_SCHEMA_VERSION } from './breaking-changes.js';
 import type { ClaudeConfig, McpServerEntry, VaultRecord } from '../types.js';
 
 function parseConfig(cfgPath: string): ClaudeConfig | null {
@@ -31,10 +32,17 @@ function extractVaultEntry(name: string, server: McpServerEntry | undefined): Va
   const scriptArg = args.find((a): a is string => typeof a === 'string' && a.endsWith('.mcp-start.js'));
   if (!scriptArg) return null;
   const hashArg = args.find((a): a is string => typeof a === 'string' && a.startsWith('--expected-sha256='));
+  const schemaArg = args.find((a): a is string => typeof a === 'string' && a.startsWith('--schema-version='));
+  let schemaVersion: number | null = null;
+  if (schemaArg) {
+    const parsed = parseInt(schemaArg.slice('--schema-version='.length), 10);
+    if (Number.isFinite(parsed)) schemaVersion = parsed;
+  }
   return {
     name,
     dir: dirname(scriptArg),
     hash: hashArg ? hashArg.slice('--expected-sha256='.length) : null,
+    schemaVersion,
   };
 }
 
@@ -82,6 +90,19 @@ export async function getExpectedHash(name: string, cfgPath: string = claudeJson
   return entry?.hash ?? null;
 }
 
+/**
+ * Returns the full {@link VaultRecord} for a single registered vault, or
+ * `null` if the name isn't in the registry. Preferred over the per-field
+ * `getVaultDir` / `getExpectedHash` getters when a caller needs more than
+ * one field — one parse + one extract instead of N independent reads.
+ */
+export async function getVaultRecord(name: string, cfgPath: string = claudeJsonPath()): Promise<VaultRecord | null> {
+  const config = parseConfig(cfgPath);
+  if (!config) return null;
+  const server = config.mcpServers?.[name];
+  return extractVaultEntry(name, server);
+}
+
 export async function removeFromRegistry(name: string, cfgPath: string = claudeJsonPath()): Promise<void> {
   const config = parseConfig(cfgPath);
   if (!config?.mcpServers) return;
@@ -99,6 +120,7 @@ export async function addToRegistry(
   if (!config.mcpServers) config.mcpServers = {};
   const args: string[] = [launcherPath];
   if (hash) args.push(`--expected-sha256=${hash}`);
+  args.push(`--schema-version=${CURRENT_SCHEMA_VERSION}`);
   config.mcpServers[name] = { command: 'node', args };
   writeFileSync(cfgPath, JSON.stringify(config, null, 2), 'utf8');
 }

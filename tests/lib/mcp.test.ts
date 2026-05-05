@@ -34,7 +34,8 @@ beforeEach(() => {
 });
 
 describe('runMcpAdd — security invariant', () => {
-  it('always passes --expected-sha256=<hash> to claude mcp add', async () => {
+  it('always passes --expected-sha256=<hash> and --schema-version=<n> to claude mcp add', async () => {
+    const { CURRENT_SCHEMA_VERSION } = await import('../../src/lib/breaking-changes.js');
     await runMcpAdd('/path/to/claude', 'MyVault', '/vaults/MyVault/.mcp-start.js', 'abc123');
     expect(vi.mocked(execa)).toHaveBeenCalledWith(
       '/path/to/claude',
@@ -42,6 +43,7 @@ describe('runMcpAdd — security invariant', () => {
         'mcp', 'add', '--scope', 'user',
         'MyVault', '--', 'node', '/vaults/MyVault/.mcp-start.js',
         '--expected-sha256=abc123',
+        `--schema-version=${CURRENT_SCHEMA_VERSION}`,
       ],
     );
   });
@@ -105,10 +107,11 @@ describe('runMcpRepin', () => {
 });
 
 describe('manualMcpAddCommand', () => {
-  it('produces a copy-pasteable command matching the runMcpAdd argv', () => {
+  it('produces a copy-pasteable command matching the runMcpAdd argv', async () => {
+    const { CURRENT_SCHEMA_VERSION } = await import('../../src/lib/breaking-changes.js');
     const cmd = manualMcpAddCommand('MyVault', '/vaults/MyVault/.mcp-start.js', 'abc123');
     expect(cmd).toBe(
-      'claude mcp add --scope user MyVault -- node "/vaults/MyVault/.mcp-start.js" --expected-sha256=abc123',
+      `claude mcp add --scope user MyVault -- node "/vaults/MyVault/.mcp-start.js" --expected-sha256=abc123 --schema-version=${CURRENT_SCHEMA_VERSION}`,
     );
   });
 
@@ -125,10 +128,11 @@ describe('manualMcpRemoveCommand', () => {
 });
 
 describe('manualMcpRepinCommands', () => {
-  it('returns matching remove and add commands', () => {
+  it('returns matching remove and add commands', async () => {
+    const { CURRENT_SCHEMA_VERSION } = await import('../../src/lib/breaking-changes.js');
     const { remove, add } = manualMcpRepinCommands('MyVault', '/p/.mcp-start.js', 'hash');
     expect(remove).toBe('claude mcp remove MyVault --scope user');
-    expect(add).toBe('claude mcp add --scope user MyVault -- node "/p/.mcp-start.js" --expected-sha256=hash');
+    expect(add).toBe(`claude mcp add --scope user MyVault -- node "/p/.mcp-start.js" --expected-sha256=hash --schema-version=${CURRENT_SCHEMA_VERSION}`);
   });
 });
 

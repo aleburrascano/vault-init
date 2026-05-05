@@ -1,5 +1,6 @@
 import { execa } from 'execa';
 import { findTool, npmGlobalBin, isWindows } from './platform.js';
+import { CURRENT_SCHEMA_VERSION } from './breaking-changes.js';
 import type { Logger } from './logger.js';
 
 /**
@@ -18,6 +19,7 @@ export async function runMcpAdd(
     'mcp', 'add', '--scope', 'user',
     name, '--', 'node', launcherPath,
     `--expected-sha256=${hash}`,
+    `--schema-version=${CURRENT_SCHEMA_VERSION}`,
   ]);
 }
 
@@ -56,7 +58,7 @@ export async function runMcpRepin(
  * registration is identical to what vaultkit would have done.
  */
 export function manualMcpAddCommand(name: string, launcherPath: string, hash: string): string {
-  return `claude mcp add --scope user ${name} -- node "${launcherPath}" --expected-sha256=${hash}`;
+  return `claude mcp add --scope user ${name} -- node "${launcherPath}" --expected-sha256=${hash} --schema-version=${CURRENT_SCHEMA_VERSION}`;
 }
 
 /**

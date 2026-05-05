@@ -125,6 +125,8 @@ export async function run({ cfgPath, log = new ConsoleLogger() }: RunOptions = {
 
       log.info(`  + ok   ${vault.name} (${vault.dir})`);
       log.info(`         ${vault.expectedHash}`);
+      const schemaSuffix = vault.schemaVersion === null ? '(legacy — re-run vaultkit update to backfill)' : `v${vault.schemaVersion}`;
+      log.info(`         schema: ${schemaSuffix}`);
     }
 
     // Show non-vault MCP servers (other tools the user has registered,

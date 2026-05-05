@@ -21,6 +21,13 @@ export interface VaultRecord {
   name: string;
   dir: string;
   hash: string | null;
+  /**
+   * Schema version pinned at registration time. `null` for legacy
+   * entries written before the schema-version mechanism shipped — those
+   * vaults are treated as version 0 by `migrationsNeeded` (so every
+   * recorded migration applies, surfacing them as needing an update).
+   */
+  schemaVersion: number | null;
 }
 
 // ─── Command runtime options ────────────────────────────────────────────
