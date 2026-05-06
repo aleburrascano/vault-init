@@ -6,7 +6,7 @@ import { fetch as gitFetch, hasUpstream, diffFileNames, diff as gitDiff, pull } 
 import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
 import { LABELS } from '../lib/messages.js';
-import { classifyLauncherSha, historicalVersionLabel } from '../lib/launcher-history.js';
+import { classifyLauncherSha, historicalVersionLabel } from '../lib/notices/launcher-history.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 export interface VerifyOptions extends RunOptions {

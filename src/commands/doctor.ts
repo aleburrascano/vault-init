@@ -5,7 +5,7 @@ import { isAuthenticated } from '../lib/github/github-auth.js';
 import { getConfig } from '../lib/git.js';
 import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { LABELS } from '../lib/messages.js';
-import { classifyLauncherSha, historicalVersionLabel } from '../lib/launcher-history.js';
+import { classifyLauncherSha, historicalVersionLabel } from '../lib/notices/launcher-history.js';
 import { MARK } from '../lib/constants.js';
 import type { CommandModule, RunOptions, VaultRecord } from '../types.js';
 

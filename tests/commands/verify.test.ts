@@ -150,7 +150,7 @@ describe('V-5b: hash mismatch — historical SHA', () => {
     writeFileSync(join(vaultDir, '.mcp-start.js'), launcherContent, 'utf8');
     const onDiskSha = computeHash(launcherContent);
 
-    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/launcher-history.js');
+    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/notices/launcher-history.js');
     HISTORICAL_LAUNCHER_SHAS[onDiskSha] = 'pre-2.8.0';
 
     try {

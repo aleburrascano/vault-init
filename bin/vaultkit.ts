@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { isVaultkitError, EXIT_CODES } from '../src/lib/errors.js';
 import { ConsoleLogger } from '../src/lib/logger.js';
-import { checkForUpdate } from '../src/lib/update-check.js';
-import { checkPostUpgrade } from '../src/lib/post-upgrade-check.js';
-import { preflightLauncherCheck, preflightAllVaults } from '../src/lib/preflight-launcher.js';
+import { checkForUpdate } from '../src/lib/notices/update-check.js';
+import { checkPostUpgrade } from '../src/lib/notices/post-upgrade-check.js';
+import { preflightLauncherCheck, preflightAllVaults } from '../src/lib/notices/preflight-launcher.js';
 import { gateOrSkip } from '../src/lib/prereqs.js';
 import type { PublishMode } from '../src/lib/constants.js';
 

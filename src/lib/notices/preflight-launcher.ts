@@ -1,7 +1,7 @@
-import { Vault } from './vault.js';
-import { getAllVaults } from './registry.js';
+import { Vault } from '../vault.js';
+import { getAllVaults } from '../registry.js';
 import { classifyLauncherSha, historicalVersionLabel } from './launcher-history.js';
-import type { Logger } from './logger.js';
+import type { Logger } from '../logger.js';
 
 /**
  * Pre-flight launcher SHA check for a single named vault. Fires from

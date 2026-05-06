@@ -268,7 +268,7 @@ describe('D-10b: hash mismatch — historical SHA', () => {
     const { createHash } = await import('node:crypto');
     const onDiskSha = createHash('sha256').update(launcherContent).digest('hex');
 
-    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/launcher-history.js');
+    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/notices/launcher-history.js');
     HISTORICAL_LAUNCHER_SHAS[onDiskSha] = 'pre-2.8.0';
 
     try {

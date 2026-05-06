@@ -3,7 +3,7 @@ import {
   HISTORICAL_LAUNCHER_SHAS,
   classifyLauncherSha,
   historicalVersionLabel,
-} from '../../src/lib/launcher-history.js';
+} from '../../src/lib/notices/launcher-history.js';
 
 describe('classifyLauncherSha', () => {
   it('returns match when on-disk equals expected', () => {

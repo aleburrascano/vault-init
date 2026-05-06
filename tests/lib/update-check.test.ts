@@ -13,7 +13,7 @@ vi.mock('node:os', async (importOriginal) => {
   return { ...real, homedir: () => home };
 });
 
-import { _isNewer, checkForUpdate } from '../../src/lib/update-check.js';
+import { _isNewer, checkForUpdate } from '../../src/lib/notices/update-check.js';
 import { homedir } from 'node:os';
 
 const CACHE_PATH = join(homedir(), '.vaultkit-update-check.json');

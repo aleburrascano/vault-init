@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { arrayLogger } from '../helpers/logger.js';
 import { writeCfg } from '../helpers/registry.js';
-import { preflightLauncherCheck, preflightAllVaults } from '../../src/lib/preflight-launcher.js';
+import { preflightLauncherCheck, preflightAllVaults } from '../../src/lib/notices/preflight-launcher.js';
 
 let tmp: string;
 
@@ -70,7 +70,7 @@ describe('preflightLauncherCheck (single vault)', () => {
     mkdirSync(vaultDir, { recursive: true });
     const onDiskSha = writeLauncherAndComputeSha(vaultDir, '// pretend pre-2.8.0 launcher');
 
-    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/launcher-history.js');
+    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/notices/launcher-history.js');
     HISTORICAL_LAUNCHER_SHAS[onDiskSha] = 'pre-2.8.0';
 
     try {
@@ -152,7 +152,7 @@ describe('preflightAllVaults (multi-vault)', () => {
     const onDiskA = writeLauncherAndComputeSha(v1Dir, '// stale launcher A');
     const onDiskB = writeLauncherAndComputeSha(v2Dir, '// stale launcher B');
 
-    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/launcher-history.js');
+    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/notices/launcher-history.js');
     HISTORICAL_LAUNCHER_SHAS[onDiskA] = 'pre-2.8.0';
     HISTORICAL_LAUNCHER_SHAS[onDiskB] = 'pre-2.8.0';
 
@@ -184,7 +184,7 @@ describe('preflightAllVaults (multi-vault)', () => {
     const onDiskA = writeLauncherAndComputeSha(v1Dir, '// historical launcher');
     writeLauncherAndComputeSha(v2Dir, '// unknown content');
 
-    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/launcher-history.js');
+    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/notices/launcher-history.js');
     HISTORICAL_LAUNCHER_SHAS[onDiskA] = 'pre-2.8.0';
 
     try {

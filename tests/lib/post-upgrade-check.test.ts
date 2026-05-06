@@ -15,7 +15,7 @@ vi.mock('node:os', async (importOriginal) => {
   return { ...real, homedir: () => home };
 });
 
-import { checkPostUpgrade, _CACHE_PATH } from '../../src/lib/post-upgrade-check.js';
+import { checkPostUpgrade, _CACHE_PATH } from '../../src/lib/notices/post-upgrade-check.js';
 
 let tmp: string;
 
@@ -91,7 +91,7 @@ describe('checkPostUpgrade', () => {
 
     // Inject the on-disk SHA into the historical table so classify
     // returns 'historical' regardless of platform line-ending quirks.
-    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/launcher-history.js');
+    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/notices/launcher-history.js');
     HISTORICAL_LAUNCHER_SHAS[onDiskSha] = 'pre-2.9.0';
 
     try {

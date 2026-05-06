@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { request } from 'node:https';
-import type { Logger } from './logger.js';
+import type { Logger } from '../logger.js';
 
 const CACHE_PATH = join(homedir(), '.vaultkit-update-check.json');
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
