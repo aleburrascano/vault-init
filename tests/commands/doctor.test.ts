@@ -596,20 +596,21 @@ describe('D-FIX-1: --no-fix is diagnose-only', () => {
       mockAllToolsFound();
       mockGhAuth(true);
 
-      // Spy on update.run; expectation is "never called" with --no-fix.
-      const updateMod = await import('../../src/commands/update.js');
-      const updateSpy = vi.spyOn(updateMod, 'run').mockResolvedValue(undefined);
+      // Spy on launcher-repair.refreshLauncher; expectation is "never
+      // called" with --no-fix (the diagnose-only path).
+      const repair = await import('../../src/lib/launcher-repair.js');
+      const refreshSpy = vi.spyOn(repair, 'refreshLauncher').mockResolvedValue(undefined);
 
       const { run } = await import('../../src/commands/doctor.js');
       const lines: string[] = [];
       await run(undefined, { cfgPath, fix: false, log: arrayLogger(lines) });
 
-      expect(updateSpy).not.toHaveBeenCalled();
+      expect(refreshSpy).not.toHaveBeenCalled();
       // Critical: doctor's diagnostic output should explicitly tell the
       // user how to repair (the "Re-run with --fix" message), per the
       // 3.0 UX principle.
       expect(lines.some(l => /Re-run with --fix/i.test(l))).toBe(true);
-      updateSpy.mockRestore();
+      refreshSpy.mockRestore();
     } finally {
       delete HISTORICAL_LAUNCHER_SHAS[onDiskSha];
     }
@@ -618,8 +619,8 @@ describe('D-FIX-1: --no-fix is diagnose-only', () => {
 
 // ── D-FIX-2: --fix dispatches to update.run for historical drift ─────────────
 
-describe('D-FIX-2: --fix on historical drift calls update', () => {
-  it('classifies historical drift and dispatches to update.run with skipConfirm', async () => {
+describe('D-FIX-2: --fix on historical drift calls refreshLauncher', () => {
+  it('classifies historical drift and dispatches to launcher-repair.refreshLauncher', async () => {
     // Same fixture as D-FIX-1 — historical drift on one vault.
     const vaultDir = join(tmp, 'NeedsUpdate');
     mkdirSync(vaultDir, { recursive: true });
@@ -636,19 +637,16 @@ describe('D-FIX-2: --fix on historical drift calls update', () => {
       mockAllToolsFound();
       mockGhAuth(true);
 
-      const updateMod = await import('../../src/commands/update.js');
-      const updateSpy = vi.spyOn(updateMod, 'run').mockResolvedValue(undefined);
+      const repair = await import('../../src/lib/launcher-repair.js');
+      const refreshSpy = vi.spyOn(repair, 'refreshLauncher').mockResolvedValue(undefined);
 
       const { run } = await import('../../src/commands/doctor.js');
       await run(undefined, { cfgPath, fix: true, log: arrayLogger([]) });
 
-      expect(updateSpy).toHaveBeenCalledTimes(1);
-      const callArgs = updateSpy.mock.calls[0];
-      expect(callArgs?.[0]).toBe('NeedsUpdate');
-      // skipConfirm: true bypasses update's per-vault PROCEED prompt so
-      // a single doctor invocation covers every vault non-interactively.
-      expect((callArgs?.[1] as { skipConfirm?: boolean })?.skipConfirm).toBe(true);
-      updateSpy.mockRestore();
+      expect(refreshSpy).toHaveBeenCalledTimes(1);
+      const vaultArg = refreshSpy.mock.calls[0]?.[0] as { name?: string } | undefined;
+      expect(vaultArg?.name).toBe('NeedsUpdate');
+      refreshSpy.mockRestore();
     } finally {
       delete HISTORICAL_LAUNCHER_SHAS[onDiskSha];
     }
@@ -668,18 +666,18 @@ describe('D-FIX-3: --fix refuses unknown drift without --force', () => {
     mockAllToolsFound();
     mockGhAuth(true);
 
-    const verifyMod = await import('../../src/commands/verify.js');
-    const verifySpy = vi.spyOn(verifyMod, 'run').mockResolvedValue(undefined);
+    const repair = await import('../../src/lib/launcher-repair.js');
+    const repinSpy = vi.spyOn(repair, 'repinToOnDisk').mockResolvedValue(undefined);
 
     const { run } = await import('../../src/commands/doctor.js');
     const lines: string[] = [];
     const issues = await run(undefined, { cfgPath, fix: true, log: arrayLogger(lines) });
 
-    // verify.run is the only path that re-pins to on-disk for unknown
+    // repinToOnDisk is the only path that accepts an unknown launcher
     // SHA — must NOT fire without --force (security posture).
-    expect(verifySpy).not.toHaveBeenCalled();
+    expect(repinSpy).not.toHaveBeenCalled();
     expect(lines.some(l => /skipped.*unknown launcher SHA|--force/i.test(l))).toBe(true);
     expect(issues).toBeGreaterThan(0);
-    verifySpy.mockRestore();
+    repinSpy.mockRestore();
   });
 });

@@ -9,6 +9,7 @@ import { LABELS } from '../lib/messages.js';
 import { classifyLauncherSha, historicalVersionLabel } from '../lib/notices/launcher-history.js';
 import { MARK } from '../lib/constants.js';
 import { VaultkitError } from '../lib/errors.js';
+import { refreshLauncher, repinToOnDisk } from '../lib/launcher-repair.js';
 import type { CommandModule, RunOptions, VaultRecord } from '../types.js';
 
 export interface DoctorOptions extends RunOptions {
@@ -137,11 +138,13 @@ async function fixVault(
     case 'no-pin':
     case 'historical-drift':
     case 'layout-gap': {
-      // update.run() handles re-template + missing-file write + commit/push + re-pin.
-      // skipConfirm bypasses the PROCEED prompt so a single doctor invocation
-      // covers every flagged vault without per-vault confirmation.
-      const { run: updateRun } = await import('./update.js');
-      await updateRun(plan.name, { skipConfirm: true, ...(opts.cfgPath !== undefined && { cfgPath: opts.cfgPath }), log: opts.log });
+      // refreshLauncher (the former update.ts:updateOneVault) handles
+      // re-template + missing-file write + commit/push + re-pin. Doctor's
+      // outer prompt covers confirmation, so we always skip the per-vault
+      // PROCEED prompt by calling refreshLauncher directly (no
+      // skipConfirm flag — the function never prompts).
+      const vault = await Vault.requireFromName(plan.name, opts.cfgPath);
+      await refreshLauncher(vault, opts.log);
       return true;
     }
     case 'unknown-drift': {
@@ -149,10 +152,12 @@ async function fixVault(
         opts.log.warn(`  ${plan.name}: skipped (unknown launcher SHA — re-run with --force to accept on-disk and re-pin)`);
         return false;
       }
-      // verify.run() with yes:true re-pins to whatever's on disk. Acceptable
-      // when the user has explicitly opted in via --force.
-      const { run: verifyRun } = await import('./verify.js');
-      await verifyRun(plan.name, { yes: true, ...(opts.cfgPath !== undefined && { cfgPath: opts.cfgPath }), log: opts.log });
+      // repinToOnDisk (the former verify.ts:run) re-pins MCP to the
+      // on-disk SHA, optionally pulling upstream first if it carries a
+      // different launcher. Acceptable when the user has explicitly
+      // opted in via --force.
+      const vault = await Vault.requireFromName(plan.name, opts.cfgPath);
+      await repinToOnDisk(vault, opts.log);
       return true;
     }
   }
