@@ -6,7 +6,7 @@ import { addToRegistry } from '../lib/registry.js';
 import { findTool, vaultsRoot } from '../lib/platform.js';
 import { findOrInstallClaude, runMcpAdd, manualMcpAddCommand } from '../lib/mcp/mcp.js';
 import { clone } from '../lib/git.js';
-import { ConsoleLogger } from '../lib/logger.js';
+import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
 import { VAULT_FILES } from '../lib/constants.js';
 import { PROMPTS } from '../lib/messages.js';
@@ -14,6 +14,76 @@ import type { CommandModule, RunOptions } from '../types.js';
 
 export interface ConnectOptions extends RunOptions {
   skipMcp?: boolean;
+}
+
+/**
+ * Print the load-bearing trust notice the user reads before deciding
+ * whether to register a cloned vault as an MCP server. The launcher
+ * runs with full user permissions on every Claude Code session, so the
+ * file path + SHA-256 must be visible at confirm time.
+ */
+function printLauncherTrustNotice(launcherPath: string, hash: string, log: Logger): void {
+  log.info('');
+  log.info('This vault\'s .mcp-start.js will run with your full user permissions on every');
+  log.info('Claude Code session start. Only connect vaults from authors you trust.');
+  log.info('');
+  log.info(`  File:    ${launcherPath}`);
+  log.info(`  SHA-256: ${hash}`);
+  log.info('');
+}
+
+/**
+ * Drive the post-clone registration flow: skipMcp (registry-only),
+ * user-declined (clone retained, MCP skipped), claude-not-installed
+ * (clone retained, manual command surfaced), or full registration.
+ * Centralizes every "what happens when we try to register" outcome so
+ * `run()` is just clone + this call.
+ */
+async function registerVaultAsMcp(
+  name: string,
+  vaultDir: string,
+  launcherPath: string,
+  hash: string,
+  cfgPath: string | undefined,
+  skipMcp: boolean,
+  repo: string,
+  log: Logger,
+): Promise<void> {
+  if (skipMcp) {
+    await addToRegistry(name, launcherPath, hash, cfgPath);
+    log.info('');
+    log.info(`Done. ${name} registered (MCP CLI skipped).`);
+    log.info(`  Vault: ${vaultDir}`);
+    return;
+  }
+
+  const confirmed = await confirm({ message: PROMPTS.REGISTER_AS_MCP, default: false });
+  if (!confirmed) {
+    log.info('');
+    log.info(`MCP registration skipped. Vault cloned to: ${vaultDir}`);
+    log.info(`To register later, re-run: vaultkit connect ${repo}`);
+    return;
+  }
+
+  log.info('');
+  const claudePath = await findOrInstallClaude({
+    log,
+    promptInstall: () => confirm({ message: PROMPTS.INSTALL_CLAUDE, default: false }),
+  });
+
+  if (claudePath) {
+    log.info(`Registering MCP server: ${name}`);
+    await runMcpAdd(claudePath, name, launcherPath, hash);
+    log.info('');
+    log.info(`Done. ${name} is now available in Claude Code.`);
+    log.info(`  Vault: ${vaultDir}`);
+    return;
+  }
+
+  log.info('');
+  log.warn('Claude Code CLI not installed — MCP registration skipped.');
+  log.info(`  Once installed, run:`);
+  log.info(`  ${manualMcpAddCommand(name, launcherPath, hash)}`);
 }
 
 export function _normalizeInput(input: string): { repo: string; name: string } {
@@ -81,50 +151,8 @@ export async function run(
     // the one making the trust call; vaultkit surfaces the SHA + path so they
     // can `cat` the launcher before confirming.
     const hash = await sha256(launcherPath);
-
-    log.info('');
-    log.info('This vault\'s .mcp-start.js will run with your full user permissions on every');
-    log.info('Claude Code session start. Only connect vaults from authors you trust.');
-    log.info('');
-    log.info(`  File:    ${launcherPath}`);
-    log.info(`  SHA-256: ${hash}`);
-    log.info('');
-
-    if (skipMcp) {
-      await addToRegistry(name, join(vaultDir, VAULT_FILES.LAUNCHER), hash, cfgPath);
-      log.info('');
-      log.info(`Done. ${name} registered (MCP CLI skipped).`);
-      log.info(`  Vault: ${vaultDir}`);
-      return;
-    }
-
-    const confirmed = await confirm({ message: PROMPTS.REGISTER_AS_MCP, default: false });
-    if (!confirmed) {
-      log.info('');
-      log.info(`MCP registration skipped. Vault cloned to: ${vaultDir}`);
-      log.info(`To register later, re-run: vaultkit connect ${repo}`);
-      return;
-    }
-
-    log.info('');
-    const claudePath = await findOrInstallClaude({
-      log,
-      promptInstall: () => confirm({ message: PROMPTS.INSTALL_CLAUDE, default: false }),
-    });
-
-    if (claudePath) {
-      log.info(`Registering MCP server: ${name}`);
-      await runMcpAdd(claudePath, name, launcherPath, hash);
-      log.info('');
-      log.info(`Done. ${name} is now available in Claude Code.`);
-      log.info(`  Vault: ${vaultDir}`);
-      return;
-    }
-
-    log.info('');
-    log.warn('Claude Code CLI not installed — MCP registration skipped.');
-    log.info(`  Once installed, run:`);
-    log.info(`  ${manualMcpAddCommand(name, launcherPath, hash)}`);
+    printLauncherTrustNotice(launcherPath, hash, log);
+    await registerVaultAsMcp(name, vaultDir, launcherPath, hash, cfgPath, skipMcp, repo, log);
   } catch (err) {
     if (existsSync(vaultDir)) {
       log.info('');
