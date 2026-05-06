@@ -43,9 +43,9 @@ The driving observation: vaultkit's developer hit real UX pain after 2.8.0 — h
 - **Internal hint strings migrated** — every `Hint: run vaultkit X` line in user-facing output (errors, notices, MCP tool descriptions) now points at the 3.0 command names. Includes `src/commands/{list,init,connect,setup}.ts`, `src/lib/notices/{post-upgrade-check,preflight-launcher}.ts`, `src/mcp-tools/{vk-list-notes,vk-search}.ts` (the last two ship to the LLM at `tools/list` time, so they shape Claude's hints to the user inside MCP sessions).
 - **Help-text "WHEN SOMETHING'S WRONG" category** collapses from 3 entries (`doctor`, `update`, `verify`) to 1 (`doctor`).
 
-### Deferred to a follow-up
+### Internal — launcher-repair extraction
 
-The plan called for deleting `src/commands/{verify,update,disconnect,destroy,backup}.ts` and their test files in this commit, but doctor's `--fix` path currently calls `update.run` and `verify.run` via dynamic import. Properly removing those files requires extracting their orchestration into a new `src/lib/launcher-repair.ts` module first — substantial work that would balloon this release commit. The files stay in the repo through 3.x; the user-facing aliases dispatch through them. A 3.0.x maintenance release will do the extraction + deletion before the 4.0 cutover.
+The per-vault repair orchestration was hoisted out of the now-deleted `src/commands/update.ts` and `verify.ts` into a single `src/lib/launcher-repair.ts` module. Two clean entry points: `refreshLauncher(vault, log)` (re-template + restore + commit/push) and `repinToOnDisk(vault, log)` (optional pull + re-pin to on-disk SHA). Doctor calls them directly via static import instead of the prior dynamic-import indirection through other command files. This was the "deferred to a follow-up" item from the initial 3.0 plan — completed in the same release. The deleted command files: `verify.ts`, `update.ts`, `disconnect.ts`, `destroy.ts`, `backup.ts` (and their test files). Their behavior is preserved through the deprecation aliases in `bin/vaultkit.ts` which dispatch directly to the new commands (`doctor`, `remove`) — no source file remains for the old commands.
 
 
 

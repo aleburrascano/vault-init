@@ -1042,9 +1042,10 @@ liveDescribe('live: init creates real GitHub repo', { timeout: 60_000 }, () => {
   }, 60_000);
 
   afterAll(async () => {
-    try { await restoreReal(); } catch { /* don't let mock-restore failures skip the destroy below */ }
-    const { run } = await import('../../src/commands/destroy.js');
-    await run(LIVE_VAULT, { skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: silent }).catch(() => {});
+    try { await restoreReal(); } catch { /* don't let mock-restore failures skip the cleanup below */ }
+    // 3.0: `destroy` was merged into `remove --delete-repo`.
+    const { run } = await import('../../src/commands/remove.js');
+    await run(LIVE_VAULT, { deleteRepo: true, skipConfirm: true, skipMcp: true, confirmName: LIVE_VAULT, log: silent }).catch(() => {});
   }, 60_000);
 
   it('creates the GitHub repo', async () => {

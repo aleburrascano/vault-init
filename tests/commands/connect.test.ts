@@ -418,8 +418,9 @@ liveDescribe('live: connect clones real GitHub repo', { timeout: 90_000 }, () =>
     const { getVaultDir } = await import('../../src/lib/registry.js');
     const stillRegistered = (await getVaultDir(fixtureName)) !== null;
     if (stillRegistered) {
-      const { run: disconnectRun } = await import('../../src/commands/disconnect.js');
-      await disconnectRun(fixtureName, {
+      // 3.0: `disconnect` was merged into `remove` (default mode).
+      const { run: removeRun } = await import('../../src/commands/remove.js');
+      await removeRun(fixtureName, {
         skipConfirm: true, skipMcp: true, confirmName: fixtureName, log: silent,
       });
     }

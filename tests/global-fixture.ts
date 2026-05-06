@@ -39,8 +39,10 @@ export async function setup(): Promise<void> {
 export async function teardown(): Promise<void> {
   if (process.platform === 'win32') return;
   if (!process.env.VAULTKIT_LIVE_FIXTURE_NAME) return;
-  const { run: destroyRun } = await import('../src/commands/destroy.js');
-  await destroyRun(fixtureName, {
+  // 3.0: `destroy` was merged into `remove --delete-repo`.
+  const { run: removeRun } = await import('../src/commands/remove.js');
+  await removeRun(fixtureName, {
+    deleteRepo: true,
     skipConfirm: true,
     skipMcp: true,
     confirmName: fixtureName,
