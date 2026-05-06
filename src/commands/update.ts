@@ -10,7 +10,7 @@ import { openSearchIndex } from '../lib/search/search-index.js';
 import { indexVault } from '../lib/search/search-indexer.js';
 import { add, commit, pushOrPr, getStagedFiles } from '../lib/git.js';
 import { getAllVaults } from '../lib/registry.js';
-import { ConsoleLogger } from '../lib/logger.js';
+import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
 import { PROMPTS, LABELS } from '../lib/messages.js';
 import { VAULT_FILES } from '../lib/constants.js';
@@ -21,6 +21,178 @@ import {
   renderWikiStyleSection,
 } from '../lib/vault-templates.js';
 import type { CommandModule, RunOptions } from '../types.js';
+
+interface UpdatePlan {
+  beforeHash: string;
+  tmplHash: string;
+  launcherWillChange: boolean;
+  missing: string[];
+}
+
+async function detectUpdateChanges(vault: Vault): Promise<UpdatePlan> {
+  const beforeHash = vault.hasLauncher() ? await vault.sha256OfLauncher() : '';
+  const tmplHash = await sha256(getLauncherTemplate());
+  const launcherWillChange = beforeHash !== tmplHash;
+  const missing = detectLayoutGaps(vault.dir);
+  return { beforeHash, tmplHash, launcherWillChange, missing };
+}
+
+function printUpdatePlan(plan: UpdatePlan, log: Logger): void {
+  log.info('');
+  if (plan.launcherWillChange) {
+    log.info(`  ${VAULT_FILES.LAUNCHER}: ${plan.beforeHash || '(missing)'} → ${plan.tmplHash}`);
+  } else {
+    log.info(`  ${VAULT_FILES.LAUNCHER}: up to date (${plan.beforeHash})`);
+  }
+  if (plan.missing.length > 0) {
+    log.info(`  Missing layout files (${plan.missing.length}):`);
+    for (const f of plan.missing) log.info(`    - ${f}`);
+  } else {
+    log.info('  Layout: complete.');
+  }
+  if (!plan.launcherWillChange && plan.missing.length === 0) {
+    log.info('');
+    log.info('Already up to date. Re-pinning MCP registration anyway (idempotent).');
+  }
+}
+
+/**
+ * Apply the launcher copy + missing-layout writes. Returns the new
+ * launcher SHA (always recomputed — even when the template equals the
+ * existing on-disk hash, copying ensures a corrupt prior copy is fixed)
+ * and the list of layout files added.
+ */
+async function applyLauncherAndLayout(
+  vault: Vault,
+  missing: string[],
+): Promise<{ afterHash: string; added: string[] }> {
+  copyFileSync(getLauncherTemplate(), vault.launcherPath);
+  const afterHash = await vault.sha256OfLauncher();
+  writeLayoutFiles(vault.dir, { name: vault.name, siteUrl: '' }, missing);
+  return { afterHash, added: [...missing] };
+}
+
+/**
+ * Merge the wiki-style policy section into existing CLAUDE.md. No-op if
+ * CLAUDE.md is in the just-written `missing` list (renderClaudeMd
+ * already includes the marker-wrapped section). Returns true iff the
+ * file was actually written, so caller knows to stage it.
+ */
+function mergeWikiStyleClaudeMd(
+  vault: Vault,
+  missing: string[],
+  log: Logger,
+): boolean {
+  const claudeMdPath = join(vault.dir, VAULT_FILES.CLAUDE_MD);
+  if (!existsSync(claudeMdPath) || missing.includes(VAULT_FILES.CLAUDE_MD)) return false;
+  const existing = readFileSync(claudeMdPath, 'utf8');
+  const result = mergeManagedSection(
+    existing,
+    WIKI_STYLE_SECTION_ID,
+    renderWikiStyleSection(),
+    WIKI_STYLE_HEADING,
+  );
+  if (result.merged !== existing && (result.action === 'replaced' || result.action === 'appended')) {
+    writeFileSync(claudeMdPath, result.merged);
+    const verb = result.action === 'replaced' ? 'updated' : 'appended';
+    log.info(`  ${VAULT_FILES.CLAUDE_MD}: "${WIKI_STYLE_HEADING}" section ${verb}.`);
+    return true;
+  }
+  if (result.action === 'manual') {
+    log.warn(`  ${VAULT_FILES.CLAUDE_MD}: existing "${WIKI_STYLE_HEADING}" heading found without vaultkit markers.`);
+    log.info('  vaultkit will not overwrite a hand-edited section. To opt into managed merges, replace your section with:');
+    log.info('');
+    const snippet = renderManagedSection(WIKI_STYLE_SECTION_ID, renderWikiStyleSection());
+    for (const line of snippet.split('\n')) log.info(`    ${line}`);
+    log.info('');
+  }
+  return false;
+}
+
+/**
+ * Best-effort vault re-index. Failures are logged as warnings — search
+ * is value-add, not critical-path; the rest of update should still run.
+ */
+async function reindexUpdatedVault(vault: Vault, log: Logger): Promise<void> {
+  try {
+    const idx = openSearchIndex();
+    try {
+      await indexVault(vault.name, vault.dir, idx);
+    } finally {
+      idx.close();
+    }
+  } catch (err) {
+    log.warn(`  Search: re-index failed — ${(err as Error).message}.`);
+  }
+}
+
+async function repinMcp(vault: Vault, afterHash: string, log: Logger): Promise<void> {
+  const claudePath = await findTool('claude');
+  if (claudePath) {
+    log.info(`Re-pinning MCP registration with SHA-256 ${afterHash}...`);
+    await runMcpRepin(claudePath, vault.name, vault.launcherPath, afterHash);
+    return;
+  }
+  const manual = manualMcpRepinCommands(vault.name, vault.launcherPath, afterHash);
+  log.warn('Claude Code not found — MCP re-registration skipped.');
+  log.info(`  Once installed, run:`);
+  log.info(`    ${manual.remove}`);
+  log.info(`    ${manual.add}`);
+}
+
+interface UpdateChanges {
+  launcherChanged: boolean;
+  added: string[];
+  claudeMdMerged: boolean;
+}
+
+/**
+ * Stage the changed files, build a commit message that names what
+ * actually changed, and push (or open a PR if direct push is blocked).
+ */
+async function commitAndPushUpdate(
+  vault: Vault,
+  changes: UpdateChanges,
+  log: Logger,
+): Promise<void> {
+  const filesToStage: string[] = [];
+  if (changes.launcherChanged) filesToStage.push(VAULT_FILES.LAUNCHER);
+  filesToStage.push(...changes.added);
+  if (changes.claudeMdMerged) filesToStage.push(VAULT_FILES.CLAUDE_MD);
+
+  await add(vault.dir, filesToStage);
+
+  const staged = await getStagedFiles(vault.dir);
+  if (staged.length === 0) {
+    log.info('  Nothing staged — skipping commit.');
+    log.info('Done. Restart Claude Code to apply.');
+    return;
+  }
+
+  let commitMsg: string;
+  if (changes.launcherChanged && changes.added.length > 0) {
+    commitMsg = 'chore: update .mcp-start.js + restore standard layout files';
+  } else if (changes.launcherChanged) {
+    commitMsg = 'chore: update .mcp-start.js to latest vaultkit version';
+  } else {
+    commitMsg = 'chore: restore standard vaultkit layout files';
+  }
+
+  await commit(vault.dir, commitMsg);
+  log.info('');
+
+  const pushResult = await pushOrPr(vault.dir, {
+    branchPrefix: 'vaultkit-update',
+    prTitle: commitMsg,
+    prBody: 'Brings the vault up to the current vaultkit standard.',
+  });
+
+  if (pushResult.mode === 'direct') {
+    log.info('Done. Restart Claude Code to apply the update.');
+  } else {
+    log.info(`Done. Changes will take effect after the PR (branch: ${pushResult.branch}) is merged.`);
+  }
+}
 
 export interface UpdateOptions extends RunOptions {
   skipConfirm?: boolean;
@@ -110,32 +282,8 @@ async function updateOneVault(
 
   log.info(`Updating ${vault.name} at ${vault.dir}...`);
 
-  // Launcher refresh detection
-  const beforeHash = vault.hasLauncher() ? await vault.sha256OfLauncher() : '';
-  const tmplHash = await sha256(getLauncherTemplate());
-  const launcherWillChange = beforeHash !== tmplHash;
-
-  // Layout-repair detection
-  const missing = detectLayoutGaps(vault.dir);
-
-  // Summary
-  log.info('');
-  if (launcherWillChange) {
-    log.info(`  ${VAULT_FILES.LAUNCHER}: ${beforeHash || '(missing)'} → ${tmplHash}`);
-  } else {
-    log.info(`  ${VAULT_FILES.LAUNCHER}: up to date (${beforeHash})`);
-  }
-  if (missing.length > 0) {
-    log.info(`  Missing layout files (${missing.length}):`);
-    for (const f of missing) log.info(`    - ${f}`);
-  } else {
-    log.info('  Layout: complete.');
-  }
-
-  if (!launcherWillChange && missing.length === 0) {
-    log.info('');
-    log.info('Already up to date. Re-pinning MCP registration anyway (idempotent).');
-  }
+  const plan = await detectUpdateChanges(vault);
+  printUpdatePlan(plan, log);
 
   if (!skipConfirm) {
     log.info('');
@@ -144,71 +292,12 @@ async function updateOneVault(
     log.info('');
   }
 
-  // Apply: copy launcher
-  copyFileSync(getLauncherTemplate(), vault.launcherPath);
-  const afterHash = await vault.sha256OfLauncher();
+  const { afterHash, added } = await applyLauncherAndLayout(vault, plan.missing);
+  const claudeMdMerged = mergeWikiStyleClaudeMd(vault, plan.missing, log);
+  await reindexUpdatedVault(vault, log);
+  await repinMcp(vault, afterHash, log);
 
-  // Apply: create missing layout files
-  writeLayoutFiles(vault.dir, { name: vault.name, siteUrl: '' }, missing);
-  const added = [...missing];
-
-  // Apply: merge the wiki-style section into existing CLAUDE.md (no-op if
-  // CLAUDE.md was just freshly created via writeLayoutFiles above — that
-  // path already includes the marker-wrapped section via renderClaudeMd).
-  let claudeMdMerged = false;
-  const claudeMdPath = join(vault.dir, VAULT_FILES.CLAUDE_MD);
-  if (existsSync(claudeMdPath) && !missing.includes(VAULT_FILES.CLAUDE_MD)) {
-    const existing = readFileSync(claudeMdPath, 'utf8');
-    const result = mergeManagedSection(
-      existing,
-      WIKI_STYLE_SECTION_ID,
-      renderWikiStyleSection(),
-      WIKI_STYLE_HEADING,
-    );
-    if (result.merged !== existing && (result.action === 'replaced' || result.action === 'appended')) {
-      writeFileSync(claudeMdPath, result.merged);
-      claudeMdMerged = true;
-      const verb = result.action === 'replaced' ? 'updated' : 'appended';
-      log.info(`  ${VAULT_FILES.CLAUDE_MD}: "${WIKI_STYLE_HEADING}" section ${verb}.`);
-    } else if (result.action === 'manual') {
-      log.warn(`  ${VAULT_FILES.CLAUDE_MD}: existing "${WIKI_STYLE_HEADING}" heading found without vaultkit markers.`);
-      log.info('  vaultkit will not overwrite a hand-edited section. To opt into managed merges, replace your section with:');
-      log.info('');
-      const snippet = renderManagedSection(WIKI_STYLE_SECTION_ID, renderWikiStyleSection());
-      for (const line of snippet.split('\n')) log.info(`    ${line}`);
-      log.info('');
-    }
-  }
-
-  // Re-index vault for vaultkit-search MCP. Runs after layout
-  // reconcile + CLAUDE.md merge so any newly-added files are picked
-  // up. Best-effort — failures here don't block the rest of update
-  // (search is value-add, not critical-path).
-  try {
-    const idx = openSearchIndex();
-    try {
-      await indexVault(vault.name, vault.dir, idx);
-    } finally {
-      idx.close();
-    }
-  } catch (err) {
-    log.warn(`  Search: re-index failed — ${(err as Error).message}.`);
-  }
-
-  // Re-pin MCP
-  const claudePath = await findTool('claude');
-  if (claudePath) {
-    log.info(`Re-pinning MCP registration with SHA-256 ${afterHash}...`);
-    await runMcpRepin(claudePath, vault.name, vault.launcherPath, afterHash);
-  } else {
-    const manual = manualMcpRepinCommands(vault.name, vault.launcherPath, afterHash);
-    log.warn('Claude Code not found — MCP re-registration skipped.');
-    log.info(`  Once installed, run:`);
-    log.info(`    ${manual.remove}`);
-    log.info(`    ${manual.add}`);
-  }
-
-  const launcherChanged = afterHash !== beforeHash;
+  const launcherChanged = afterHash !== plan.beforeHash;
   if (!launcherChanged && added.length === 0 && !claudeMdMerged) {
     log.info('');
     log.info('  Nothing to commit.');
@@ -216,44 +305,7 @@ async function updateOneVault(
     return;
   }
 
-  // Commit
-  const filesToStage: string[] = [];
-  if (launcherChanged) filesToStage.push(VAULT_FILES.LAUNCHER);
-  filesToStage.push(...added);
-  if (claudeMdMerged) filesToStage.push(VAULT_FILES.CLAUDE_MD);
-
-  await add(vault.dir, filesToStage);
-
-  const staged = await getStagedFiles(vault.dir);
-  if (staged.length === 0) {
-    log.info('  Nothing staged — skipping commit.');
-    log.info('Done. Restart Claude Code to apply.');
-    return;
-  }
-
-  let commitMsg: string;
-  if (launcherChanged && added.length > 0) {
-    commitMsg = 'chore: update .mcp-start.js + restore standard layout files';
-  } else if (launcherChanged) {
-    commitMsg = 'chore: update .mcp-start.js to latest vaultkit version';
-  } else {
-    commitMsg = 'chore: restore standard vaultkit layout files';
-  }
-
-  await commit(vault.dir, commitMsg);
-  log.info('');
-
-  const pushResult = await pushOrPr(vault.dir, {
-    branchPrefix: 'vaultkit-update',
-    prTitle: commitMsg,
-    prBody: 'Brings the vault up to the current vaultkit standard.',
-  });
-
-  if (pushResult.mode === 'direct') {
-    log.info('Done. Restart Claude Code to apply the update.');
-  } else {
-    log.info(`Done. Changes will take effect after the PR (branch: ${pushResult.branch}) is merged.`);
-  }
+  await commitAndPushUpdate(vault, { launcherChanged, added, claudeMdMerged }, log);
 }
 
 // Compile-time check: `run` matches the CommandModule contract.
