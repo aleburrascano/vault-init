@@ -2,7 +2,7 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { confirm } from '@inquirer/prompts';
-import { ConsoleLogger } from '../lib/logger.js';
+import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { checkNode, ensureGh, ensureGhAuth, ensureGitConfig } from '../lib/prereqs.js';
 import { findOrInstallClaude, runMcpRemove } from '../lib/mcp/mcp.js';
 import { getAllMcpServerNames } from '../lib/registry.js';
@@ -38,6 +38,62 @@ export interface SetupOptions extends RunOptions {
 interface SetupCheck {
   label: string;
   run: () => Promise<void>;
+}
+
+/**
+ * One-time migration cleanup for the pre-2.8 `vaultkit-search` MCP and
+ * its byte-pinned `~/.vaultkit/search-launcher.js`. As of 2.8 search is
+ * folded into the per-vault MCP server (see ADR-0011), so this state is
+ * obsolete. `~/.vaultkit-search.db` STAYS — every per-vault MCP server
+ * still reads it; only the registration entry and launcher copy go.
+ *
+ * Idempotent: missing state is a no-op. Best-effort throughout — every
+ * cleanup failure becomes a warn (or silent) so setup can still
+ * complete and report whatever else is wrong.
+ */
+async function cleanupLegacySearchMcp(
+  claudePath: string | null,
+  cfgPath: string | undefined,
+  log: Logger,
+): Promise<void> {
+  // registry.ts is the sole reader of `~/.claude.json` (architecture
+  // fitness function in tests/architecture.test.ts enforces no other
+  // module does the path resolution). Best-effort: a corrupt registry
+  // surfaces as an empty list here, and we no-op the cleanup.
+  let serverNames: string[] = [];
+  try {
+    serverNames = await getAllMcpServerNames(cfgPath);
+  } catch {
+    // Best-effort — silent.
+  }
+  if (claudePath && serverNames.includes(LEGACY_SEARCH_MCP_NAME)) {
+    try {
+      await runMcpRemove(claudePath, LEGACY_SEARCH_MCP_NAME);
+      log.info(`  ${MARK.OK}   ${LEGACY_SEARCH_MCP_NAME}: legacy registration removed (search is now folded into per-vault MCP)`);
+    } catch (err) {
+      const msg = isVaultkitError(err) ? err.message : (err as Error).message;
+      log.info(`  ${MARK.WARN}  ${LEGACY_SEARCH_MCP_NAME}: legacy cleanup failed: ${msg}`);
+    }
+  }
+  try {
+    const legacyLauncher = legacySearchLauncherPath();
+    if (existsSync(legacyLauncher)) {
+      unlinkSync(legacyLauncher);
+      log.info(`  ${MARK.OK}   removed legacy launcher at ${legacyLauncher}`);
+    }
+  } catch {
+    // Best-effort — silent.
+  }
+}
+
+function printSetupSummary(issues: number, log: Logger): void {
+  log.info('');
+  if (issues === 0) {
+    log.info('Setup complete. You can now run any vaultkit command.');
+    log.info('Note: the delete_repo scope will be requested on first `vaultkit destroy` (not granted preemptively).');
+  } else {
+    log.info(`${issues} issue(s) above need to be resolved before vaultkit can run smoothly.`);
+  }
 }
 
 /**
@@ -120,53 +176,9 @@ export async function run({ cfgPath, skipInstallCheck = false, log = new Console
   }
 
   // 6. Legacy vaultkit-search MCP cleanup (one-time migration per ADR-0011).
-  //    Pre-2.8 vaultkit registered a separate global `vaultkit-search` MCP
-  //    plus a byte-pinned `~/.vaultkit/search-launcher.js`. As of 2.8,
-  //    search is folded into the per-vault MCP server (`vaultkit mcp-server`,
-  //    spawned by the per-vault launcher), so this state is now obsolete.
-  //
-  //    `~/.vaultkit-search.db` STAYS — every per-vault MCP server reads it,
-  //    so the index data is still load-bearing. Only the registration entry
-  //    and launcher copy go.
-  //
-  //    Idempotent: missing state is a no-op. Best-effort throughout —
-  //    cleanup failure logs a warning but doesn't block setup.
-  // Use registry.ts as the sole reader of `~/.claude.json` (architecture
-  // fitness function in tests/architecture.test.ts enforces no other module
-  // does the path resolution). Best-effort: a corrupt registry surfaces as
-  // an empty list here, and we no-op the cleanup.
-  let serverNames: string[] = [];
-  try {
-    serverNames = await getAllMcpServerNames(cfgPath);
-  } catch {
-    // Best-effort — silent.
-  }
-  if (claudePath && serverNames.includes(LEGACY_SEARCH_MCP_NAME)) {
-    try {
-      await runMcpRemove(claudePath, LEGACY_SEARCH_MCP_NAME);
-      log.info(`  ${MARK.OK}   ${LEGACY_SEARCH_MCP_NAME}: legacy registration removed (search is now folded into per-vault MCP)`);
-    } catch (err) {
-      const msg = isVaultkitError(err) ? err.message : (err as Error).message;
-      log.info(`  ${MARK.WARN}  ${LEGACY_SEARCH_MCP_NAME}: legacy cleanup failed: ${msg}`);
-    }
-  }
-  try {
-    const legacyLauncher = legacySearchLauncherPath();
-    if (existsSync(legacyLauncher)) {
-      unlinkSync(legacyLauncher);
-      log.info(`  ${MARK.OK}   removed legacy launcher at ${legacyLauncher}`);
-    }
-  } catch {
-    // Best-effort — silent.
-  }
+  await cleanupLegacySearchMcp(claudePath, cfgPath, log);
 
-  log.info('');
-  if (issues === 0) {
-    log.info('Setup complete. You can now run any vaultkit command.');
-    log.info('Note: the delete_repo scope will be requested on first `vaultkit destroy` (not granted preemptively).');
-  } else {
-    log.info(`${issues} issue(s) above need to be resolved before vaultkit can run smoothly.`);
-  }
+  printSetupSummary(issues, log);
   return issues;
 }
 
