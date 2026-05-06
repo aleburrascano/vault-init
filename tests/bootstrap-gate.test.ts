@@ -41,15 +41,21 @@ import { isVaultkitError } from '../src/lib/errors.js';
  * removing a command — the architecture fitness function asserts the
  * union of these two lists matches the on-disk command set.
  */
+// Includes both new (3.0) names AND the deprecated 3.x aliases —
+// commander treats each alias as its own command, so the gate must
+// fire for the alias name too. The `pull` / `status` rows fall out
+// when the aliases are deleted in 4.0.
 export const COMMANDS_THAT_MUST_BE_GATED = [
   'backup',
   'connect',
   'destroy',
   'disconnect',
   'init',
+  'list',
   'pull',
   'refresh',
   'status',
+  'sync',
   'update',
   'verify',
   'visibility',

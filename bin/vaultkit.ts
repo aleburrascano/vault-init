@@ -9,6 +9,7 @@ import { checkForUpdate } from '../src/lib/notices/update-check.js';
 import { checkPostUpgrade } from '../src/lib/notices/post-upgrade-check.js';
 import { preflightLauncherCheck, preflightAllVaults } from '../src/lib/notices/preflight-launcher.js';
 import { gateOrSkip } from '../src/lib/prereqs.js';
+import { printDeprecationNotice } from '../src/lib/cli-aliases.js';
 import type { PublishMode } from '../src/lib/constants.js';
 
 // Commands whose body is meaningfully affected by — or whose user is
@@ -20,7 +21,10 @@ import type { PublishMode } from '../src/lib/constants.js';
 // of these depend on the launcher; warning there is noise. Also
 // excluded: verify / update — already disambiguate stale launchers in
 // their own bodies, so a preflight line would duplicate.
-const VAULT_PREFLIGHT_COMMANDS = new Set(['status', 'pull', 'refresh']);
+// `status` and `pull` remain in the set during the 3.x deprecation
+// window so the alias dispatch still triggers preflight; they fall out
+// when the aliases are deleted in 4.0.
+const VAULT_PREFLIGHT_COMMANDS = new Set(['list', 'sync', 'refresh', 'status', 'pull']);
 
 // Error codes whose remedy genuinely is `vaultkit setup`. Adding a 4th
 // is a one-line edit. Other codes get the bare error message — no hint —
@@ -114,8 +118,8 @@ Commands:
     connect <input>                   Clone someone else's vault and register it
 
   EVERYDAY USE
-    status [name]                     See your vaults + git state (or detailed status for one)
-    pull                              Sync all vaults from their upstream
+    list [name]                       List vaults + git state (or detail for one)
+    sync                              Sync all vaults from their upstream
     refresh [name]                    Check sources for upstream changes and write a freshness report
     backup <name>                     Snapshot a vault to a local zip
 
@@ -236,21 +240,34 @@ To pre-grant: gh auth refresh -h github.com -s delete_repo
   });
 
 program
-  .command('pull')
-  .description('Sync all vaults from upstream')
+  .command('sync')
+  .description('Sync all vaults from upstream (git pull --ff-only)')
   .addHelpText('after', `
 Examples:
-  $ vaultkit pull
-  $ VAULTKIT_PULL_TIMEOUT=60000 vaultkit pull
+  $ vaultkit sync
+  $ VAULTKIT_PULL_TIMEOUT=60000 vaultkit sync
 
 Syncs every registered vault from its upstream. Per-vault timeout defaults
 to 30s; override with VAULTKIT_PULL_TIMEOUT (milliseconds).
 `)
   .action(async () => {
     await wrap(async () => {
-      const { run } = await import('../src/commands/pull.js');
+      const { run } = await import('../src/commands/sync.js');
       await run();
-    }, 'pull', []);
+    }, 'sync', []);
+  });
+
+// Deprecated alias for `vaultkit pull` — see ADR for the rename rationale.
+// Removed in 4.0.
+program
+  .command('pull')
+  .description('(deprecated) Use `vaultkit sync` instead')
+  .action(async () => {
+    printDeprecationNotice('pull', 'sync');
+    await wrap(async () => {
+      const { run } = await import('../src/commands/sync.js');
+      await run();
+    }, 'sync', []);
   });
 
 program
@@ -362,20 +379,34 @@ a vault's MCP server with "SHA-256 mismatch".
   });
 
 program
-  .command('status [name]')
-  .description('Show vault registry + git state')
+  .command('list [name]')
+  .description('List vaults + git state (or detail for one)')
   .addHelpText('after', `
 Examples:
-  $ vaultkit status              # list all registered vaults
-  $ vaultkit status my-wiki      # detailed status for one vault
+  $ vaultkit list                # list all registered vaults
+  $ vaultkit list my-wiki        # detailed status for one vault
 
 Shows registry contents, on-disk presence, git state, and MCP pin status.
 `)
   .action(async (name: string | undefined) => {
     await wrap(async () => {
-      const { run } = await import('../src/commands/status.js');
+      const { run } = await import('../src/commands/list.js');
       await run(name);
-    }, 'status', name ? [name] : []);
+    }, 'list', name ? [name] : []);
+  });
+
+// Deprecated alias for `vaultkit list` — see ADR for the rename
+// rationale (the verb `status` collided with `doctor`'s diagnostic
+// surface). Removed in 4.0.
+program
+  .command('status [name]')
+  .description('(deprecated) Use `vaultkit list` instead')
+  .action(async (name: string | undefined) => {
+    printDeprecationNotice('status', 'list');
+    await wrap(async () => {
+      const { run } = await import('../src/commands/list.js');
+      await run(name);
+    }, 'list', name ? [name] : []);
   });
 
 program

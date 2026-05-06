@@ -111,7 +111,7 @@ export async function run(
 
   const existing = await Vault.tryFromName(name, cfgPath);
   if (existing) {
-    throw new VaultkitError('ALREADY_REGISTERED', `An MCP server named '${name}' is already registered.\nRun 'vaultkit status' or 'vaultkit disconnect ${name}' first.`);
+    throw new VaultkitError('ALREADY_REGISTERED', `An MCP server named '${name}' is already registered.\nRun 'vaultkit list' or 'vaultkit disconnect ${name}' first.`);
   }
 
   const root = vaultsRoot();

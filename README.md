@@ -67,8 +67,8 @@ CREATE & CONNECT
   vaultkit connect <owner/repo>       Clone someone else's vault and register it
 
 EVERYDAY USE
-  vaultkit status [name]              See your vaults + git state (or detailed status for one)
-  vaultkit pull                       Sync all vaults from their upstream
+  vaultkit list [name]                List vaults + git state (or detail for one)
+  vaultkit sync                       Sync all vaults from their upstream
   vaultkit refresh [name]             Check sources for upstream changes and write a freshness report
   vaultkit backup <name>              Snapshot a vault to a local zip
 
@@ -278,7 +278,7 @@ Run `vaultkit doctor` periodically — it surfaces hash drift and missing pins a
 |---|---|---|
 | `VAULTKIT_HOME` | `~/vaults` | Root directory where `vaultkit init` and `vaultkit connect` create vaults |
 | `VAULTKIT_LOG` | *(unset)* | If set, every `vaultkit` invocation appends a tab-separated audit line: `timestamp\tcommand\targs\texit=N\t<duration>ms` |
-| `VAULTKIT_PULL_TIMEOUT` | `30000` | Per-vault timeout in milliseconds for `vaultkit pull` |
+| `VAULTKIT_PULL_TIMEOUT` | `30000` | Per-vault timeout in milliseconds for `vaultkit sync` |
 | `VAULTKIT_VERBOSE` | *(unset)* | Set automatically by the `--verbose` flag — scripts emit trace output to stderr when it's `1` |
 | `VAULTKIT_NO_UPDATE_CHECK` | *(unset)* | If set to `1`, suppresses the once-per-24h "newer version available" notification. Useful in CI or for scripted callers that parse stderr |
 

@@ -27,7 +27,7 @@ function makeDir(path: string): string {
   return path;
 }
 
-describe('pull — mocked git scenarios', () => {
+describe('sync — mocked git scenarios', () => {
   it('logs pull failure with first line of stderr and continues to next vault', async () => {
     const v1 = makeDir(join(tmp, 'Vault1'));
     const v2 = makeDir(join(tmp, 'Vault2'));
@@ -38,7 +38,7 @@ describe('pull — mocked git scenarios', () => {
       .mockResolvedValueOnce({ success: false, upToDate: false, timedOut: false, stderr: 'CONFLICT (content): Merge conflict in file.md\nother error' })
       .mockResolvedValueOnce({ success: true, upToDate: true, timedOut: false, stderr: '' });
 
-    const { run } = await import('../../src/commands/pull.js');
+    const { run } = await import('../../src/commands/sync.js');
     const lines: string[] = [];
     await run({ cfgPath, log: arrayLogger(lines) });
 
@@ -59,7 +59,7 @@ describe('pull — mocked git scenarios', () => {
       .mockResolvedValueOnce({ success: false, upToDate: false, timedOut: true, stderr: '' })
       .mockResolvedValueOnce({ success: true, upToDate: false, timedOut: false, stderr: '' });
 
-    const { run } = await import('../../src/commands/pull.js');
+    const { run } = await import('../../src/commands/sync.js');
     const lines: string[] = [];
     await run({ cfgPath, log: arrayLogger(lines) });
 
@@ -78,7 +78,7 @@ describe('pull — mocked git scenarios', () => {
       stderr: 'There is no tracking information for the current branch.',
     });
 
-    const { run } = await import('../../src/commands/pull.js');
+    const { run } = await import('../../src/commands/sync.js');
     const lines: string[] = [];
     await run({ cfgPath, log: arrayLogger(lines) });
 
@@ -94,7 +94,7 @@ describe('pull — mocked git scenarios', () => {
 
     const origTimeout = process.env.VAULTKIT_PULL_TIMEOUT;
     process.env.VAULTKIT_PULL_TIMEOUT = '5000';
-    const { run } = await import('../../src/commands/pull.js');
+    const { run } = await import('../../src/commands/sync.js');
     await run({ cfgPath, log: silent });
     process.env.VAULTKIT_PULL_TIMEOUT = origTimeout;
 
@@ -112,7 +112,7 @@ describe('pull — mocked git scenarios', () => {
       .mockResolvedValueOnce({ success: true, upToDate: false, timedOut: false, stderr: '' })
       .mockResolvedValueOnce({ success: false, upToDate: false, timedOut: false, stderr: 'err' });
 
-    const { run } = await import('../../src/commands/pull.js');
+    const { run } = await import('../../src/commands/sync.js');
     const lines: string[] = [];
     await run({ cfgPath, log: arrayLogger(lines) });
 

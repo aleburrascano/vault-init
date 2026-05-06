@@ -10,11 +10,11 @@ let tmp: string;
 beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), 'vk-pull-test-')); });
 afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
 
-describe('pull command', () => {
+describe('sync command', () => {
   it('reports skipped vault when directory missing', async () => {
     const cfgPath = join(tmp, '.claude.json');
     writeCfg(cfgPath, { MissingVault: '/nonexistent/path/vault' });
-    const { run } = await import('../../src/commands/pull.js');
+    const { run } = await import('../../src/commands/sync.js');
     const lines: string[] = [];
     await run({ cfgPath, log: arrayLogger(lines) });
     expect(lines.some(l => /missing|skip/i.test(l))).toBe(true);
@@ -35,7 +35,7 @@ describe('pull command', () => {
     const cfgPath = join(tmp, '.claude.json');
     writeCfg(cfgPath, { MyVault: vaultDir });
 
-    const { run } = await import('../../src/commands/pull.js');
+    const { run } = await import('../../src/commands/sync.js');
     const lines: string[] = [];
     await run({ cfgPath, log: arrayLogger(lines) });
     expect(lines.some(l => /up.to.date|already/i.test(l))).toBe(true);
@@ -44,7 +44,7 @@ describe('pull command', () => {
   it('handles empty registry gracefully', async () => {
     const cfgPath = join(tmp, '.claude.json');
     writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
-    const { run } = await import('../../src/commands/pull.js');
+    const { run } = await import('../../src/commands/sync.js');
     await run({ cfgPath, log: silent });
   });
 
@@ -68,7 +68,7 @@ describe('pull command', () => {
 
     const cfgPath = join(tmp, '.claude.json');
     writeCfg(cfgPath, { MyVault: vaultDir });
-    const { run } = await import('../../src/commands/pull.js');
+    const { run } = await import('../../src/commands/sync.js');
     const lines: string[] = [];
     await run({ cfgPath, log: arrayLogger(lines) });
     expect(lines.some(l => /synced/i.test(l))).toBe(true);
@@ -91,7 +91,7 @@ describe('pull command', () => {
       GhostVault: '/nonexistent/ghost',
       RealVault: vaultDir,
     });
-    const { run } = await import('../../src/commands/pull.js');
+    const { run } = await import('../../src/commands/sync.js');
     const lines: string[] = [];
     await run({ cfgPath, log: arrayLogger(lines) });
     expect(lines.some(l => /GhostVault.*miss|skip/i.test(l))).toBe(true);

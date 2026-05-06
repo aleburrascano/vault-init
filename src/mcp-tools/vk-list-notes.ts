@@ -40,7 +40,7 @@ export function vkListNotesDefinition(ctx: ToolContext): ToolDefinition {
           content: [
             {
               type: 'text',
-              text: `Vault "${vault}" not found in registry. Run \`vaultkit status\` to list registered vaults.`,
+              text: `Vault "${vault}" not found in registry. Run \`vaultkit list\` to list registered vaults.`,
             },
           ],
         };

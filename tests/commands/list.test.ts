@@ -30,7 +30,7 @@ function makeGitRepo(dir: string): void {
 }
 
 async function runStatus(name: string | undefined, cfgPath: string): Promise<string[]> {
-  const { run } = await import('../../src/commands/status.js');
+  const { run } = await import('../../src/commands/list.js');
   const lines: string[] = [];
   await run(name, { cfgPath, log: arrayLogger(lines) });
   return lines;
@@ -221,7 +221,7 @@ describe('S-10: single-vault mode — not registered', () => {
     const cfgPath = join(tmp, '.claude.json');
     writeFileSync(cfgPath, JSON.stringify({ mcpServers: {} }), 'utf8');
 
-    const { run } = await import('../../src/commands/status.js');
+    const { run } = await import('../../src/commands/list.js');
     await expect(run('UnknownVault', { cfgPath, log: silent })).rejects.toThrow(/not a registered vault/i);
   });
 });
@@ -235,7 +235,7 @@ describe('S-11: single-vault mode — not a git repo', () => {
     const cfgPath = join(tmp, '.claude.json');
     writeCfg(cfgPath, { NotGit: { dir: vaultDir, hash: null } });
 
-    const { run } = await import('../../src/commands/status.js');
+    const { run } = await import('../../src/commands/list.js');
     await expect(run('NotGit', { cfgPath, log: silent })).rejects.toThrow(/not a git repository/i);
   });
 });
@@ -258,7 +258,7 @@ describe('S-12: single-vault detail mode — real git repo', () => {
     const cfgPath = join(tmp, '.claude.json');
     writeCfg(cfgPath, { DetailVault: { dir: vaultDir, hash: null } });
 
-    const { run } = await import('../../src/commands/status.js');
+    const { run } = await import('../../src/commands/list.js');
     const lines: string[] = [];
     await run('DetailVault', { cfgPath, log: arrayLogger(lines) });
 
@@ -301,14 +301,14 @@ describe('live: status reports real vault state (local bare-repo origin)', { tim
   });
 
   it('lists vault in summary mode', async () => {
-    const { run } = await import('../../src/commands/status.js');
+    const { run } = await import('../../src/commands/list.js');
     const lines: string[] = [];
     await run(undefined, { log: arrayLogger(lines) });
     expect(lines.some(l => l.includes(LIVE_VAULT))).toBe(true);
   });
 
   it('shows detail in single-vault mode', async () => {
-    const { run } = await import('../../src/commands/status.js');
+    const { run } = await import('../../src/commands/list.js');
     const lines: string[] = [];
     await run(LIVE_VAULT, { log: arrayLogger(lines) });
     expect(lines.some(l => /main/i.test(l))).toBe(true);

@@ -38,15 +38,17 @@ paths:
 | connect    | src/commands/connect.ts    |
 | disconnect | src/commands/disconnect.ts |
 | destroy    | src/commands/destroy.ts    |
-| pull       | src/commands/pull.ts       |
+| sync       | src/commands/sync.ts       |
 | refresh    | src/commands/refresh.ts    |
 | update     | src/commands/update.ts     |
 | doctor     | src/commands/doctor.ts     |
 | verify     | src/commands/verify.ts     |
-| status     | src/commands/status.ts     |
+| list       | src/commands/list.ts       |
 | backup     | src/commands/backup.ts     |
 | visibility | src/commands/visibility.ts |
 | mcp-server | src/commands/mcp-server.ts |
+
+**Deprecated aliases (3.x; removed in 4.0):** `status` → `list`, `pull` → `sync`. Both register as commander entries in `bin/vaultkit.ts` that print a one-line stderr notice via `printDeprecationNotice` from [src/lib/cli-aliases.ts](../../src/lib/cli-aliases.ts) and forward to the new dispatch.
 
 To scaffold a new command: `/add-command`.
 
