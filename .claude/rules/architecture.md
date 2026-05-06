@@ -36,6 +36,7 @@ paths:
 | setup      | src/commands/setup.ts      |
 | init       | src/commands/init.ts       |
 | connect    | src/commands/connect.ts    |
+| remove     | src/commands/remove.ts     |
 | disconnect | src/commands/disconnect.ts |
 | destroy    | src/commands/destroy.ts    |
 | sync       | src/commands/sync.ts       |
@@ -48,7 +49,7 @@ paths:
 | visibility | src/commands/visibility.ts |
 | mcp-server | src/commands/mcp-server.ts |
 
-**Deprecated aliases (3.x; removed in 4.0):** `status` → `list`, `pull` → `sync`. Both register as commander entries in `bin/vaultkit.ts` that print a one-line stderr notice via `printDeprecationNotice` from [src/lib/cli-aliases.ts](../../src/lib/cli-aliases.ts) and forward to the new dispatch.
+**Deprecated aliases (3.x; removed in 4.0):** `status` → `list`, `pull` → `sync`, `disconnect` → `remove`, `destroy` → `remove --delete-repo`. Each registers as a commander entry in `bin/vaultkit.ts` that prints a one-line stderr notice via `printDeprecationNotice` from [src/lib/cli-aliases.ts](../../src/lib/cli-aliases.ts) and forwards to the new dispatch. The `disconnect.ts` and `destroy.ts` files keep working through the alias forwarding during 3.x — they're deleted in 4.0.
 
 To scaffold a new command: `/add-command`.
 

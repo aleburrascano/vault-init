@@ -130,8 +130,7 @@ Commands:
 
   CHANGE OR REMOVE
     visibility <name> <mode>          Toggle public / private / auth-gated
-    disconnect <name>                 Remove vault locally and from MCP (keeps GitHub repo)
-    destroy <name>                    Delete vault locally, on GitHub, and from MCP
+    remove <name> [--delete-repo]     Remove vault locally + MCP (add --delete-repo to also delete GitHub repo)
 
 Run 'vaultkit <command> --help' for detailed usage and examples for any command.
 `;
@@ -205,38 +204,52 @@ user permissions on every Claude Code session start.
   });
 
 program
-  .command('disconnect <name>')
-  .description('Remove vault locally and from MCP (keeps GitHub repo)')
+  .command('remove <name>')
+  .description('Remove vault locally + from MCP (use --delete-repo to also delete GitHub repo)')
+  .option('--delete-repo', 'also delete the GitHub repo (requires admin + delete_repo scope)')
   .addHelpText('after', `
 Examples:
-  $ vaultkit disconnect my-wiki
+  $ vaultkit remove my-wiki                    # local + MCP only; keep GitHub repo
+  $ vaultkit remove my-wiki --delete-repo      # also delete the GitHub repo (you must own it)
 
-Removes the local clone and MCP registration. Keeps the GitHub repo --
-use 'vaultkit destroy' to delete the GitHub repo too.
+Without --delete-repo: removes the local clone + MCP registration; the
+GitHub repo stays online. Useful when disconnecting from a vault you
+don't own or want to keep available for others.
+
+With --delete-repo: also deletes the GitHub repo. Requests the
+delete_repo scope interactively on first use; the scope is never
+requested without the flag (security invariant). Pre-grant via:
+  gh auth refresh -h github.com -s delete_repo
 `)
-  .action(async (name: string) => {
+  .action(async (name: string, opts: { deleteRepo?: boolean }) => {
     await wrap(async () => {
-      const { run } = await import('../src/commands/disconnect.js');
-      await run(name);
-    }, 'disconnect', [name]);
+      const { run } = await import('../src/commands/remove.js');
+      await run(name, opts.deleteRepo ? { deleteRepo: true } : {});
+    }, 'remove', opts.deleteRepo ? [name, '--delete-repo'] : [name]);
   });
 
+// Deprecated alias for `vaultkit remove <name>` — see ADR. Removed in 4.0.
+program
+  .command('disconnect <name>')
+  .description('(deprecated) Use `vaultkit remove <name>` instead')
+  .action(async (name: string) => {
+    printDeprecationNotice('disconnect', 'remove');
+    await wrap(async () => {
+      const { run } = await import('../src/commands/remove.js');
+      await run(name);
+    }, 'remove', [name]);
+  });
+
+// Deprecated alias for `vaultkit remove <name> --delete-repo`. Removed in 4.0.
 program
   .command('destroy <name>')
-  .description('Delete vault locally, on GitHub, and from MCP')
-  .addHelpText('after', `
-Examples:
-  $ vaultkit destroy my-wiki
-
-Deletes the local clone, the MCP registration, and the GitHub repo (only
-if you own it). Requests the delete_repo scope interactively on first run.
-To pre-grant: gh auth refresh -h github.com -s delete_repo
-`)
+  .description('(deprecated) Use `vaultkit remove <name> --delete-repo` instead')
   .action(async (name: string) => {
+    printDeprecationNotice('destroy', 'remove --delete-repo');
     await wrap(async () => {
-      const { run } = await import('../src/commands/destroy.js');
-      await run(name);
-    }, 'destroy', [name]);
+      const { run } = await import('../src/commands/remove.js');
+      await run(name, { deleteRepo: true });
+    }, 'remove', [name, '--delete-repo']);
   });
 
 program

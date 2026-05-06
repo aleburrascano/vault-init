@@ -54,6 +54,7 @@ export const COMMANDS_THAT_MUST_BE_GATED = [
   'list',
   'pull',
   'refresh',
+  'remove',
   'status',
   'sync',
   'update',

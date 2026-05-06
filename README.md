@@ -79,8 +79,8 @@ WHEN SOMETHING'S WRONG
 
 CHANGE OR REMOVE
   vaultkit visibility <name> <mode>   Toggle public / private / auth-gated
-  vaultkit disconnect <name>          Stop using locally — keep the GitHub repo
-  vaultkit destroy <name>             Delete locally + on GitHub
+  vaultkit remove <name>              Stop using locally + remove from MCP (keeps GitHub repo)
+  vaultkit remove <name> --delete-repo  Also delete the GitHub repo (you must own it)
 
   vaultkit help                       Show this reference
 ```
