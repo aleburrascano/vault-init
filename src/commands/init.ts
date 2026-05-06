@@ -173,6 +173,69 @@ async function indexNewVault(name: string, vaultDir: string, log: Logger): Promi
   }
 }
 
+interface InitRollbackState {
+  createdDir: boolean;
+  createdRepo: boolean;
+  registeredMcp: boolean;
+}
+
+/**
+ * Best-effort cleanup of partial init state. Mirrors the original
+ * inline catch block: tear down MCP first (cheapest, can't fail loud),
+ * then GitHub repo (requires `claude mcp` and gh — surface a manual
+ * recovery hint if delete fails), then local dir last (after any
+ * gh-side cleanup that might still need it for inspection). Caller's
+ * catch re-raises the original error after this returns.
+ */
+async function rollbackInit(
+  state: InitRollbackState,
+  githubUser: string,
+  name: string,
+  vaultDir: string,
+  log: Logger,
+): Promise<void> {
+  log.info('');
+  log.info('Setup failed — rolling back...');
+  if (state.registeredMcp) {
+    const claudePath = await findTool('claude');
+    if (claudePath) {
+      await runMcpRemove(claudePath, name);
+      log.info('  MCP registration removed.');
+    }
+  }
+  if (state.createdRepo) {
+    try {
+      await deleteRepo(`${githubUser}/${name}`);
+      log.info('  GitHub repo deleted.');
+    } catch {
+      log.warn(`  Could not delete GitHub repo — run manually: gh repo delete ${githubUser}/${name} --yes`);
+    }
+  }
+  if (state.createdDir && existsSync(vaultDir)) {
+    rmSync(vaultDir, { recursive: true, force: true });
+    log.info('  Local directory removed.');
+  }
+}
+
+/**
+ * The synchronous filesystem half of [2/6] — directory tree, layout
+ * files, launcher copy, and (if writeDeploy) deploy workflow + vault
+ * JSON. Pure FS work; `createdDir = true` flips in run() before the
+ * call so a throw here triggers rollback of the just-mkdir'd dir.
+ */
+function writeInitialVaultFiles(
+  vaultDir: string,
+  ctx: { name: string; githubUser: string; siteUrl: string; writeDeploy: boolean },
+): void {
+  createDirectoryTree(vaultDir);
+  writeLayoutFiles(vaultDir, { name: ctx.name, siteUrl: ctx.siteUrl }, CANONICAL_LAYOUT_FILES);
+  copyFileSync(getLauncherTemplate(), join(vaultDir, VAULT_FILES.LAUNCHER));
+  if (ctx.writeDeploy) {
+    copyFileSync(getDeployTemplate(), join(vaultDir, VAULT_DIRS.GITHUB_WORKFLOWS, WORKFLOW_FILES.DEPLOY));
+    writeFileSync(join(vaultDir, VAULT_FILES.VAULT_JSON), renderVaultJson(ctx.githubUser, ctx.name));
+  }
+}
+
 function printDoneSummary(name: string, githubUser: string, vaultDir: string, publishMode: PublishMode, baseUrl: string, log: Logger): void {
   log.info('');
   log.info('Done.');
@@ -235,15 +298,12 @@ export async function run(
     log.info(`\n[2/6] Creating vault: ${name} (${publishMode})`);
     mkdirSync(vaultDir, { recursive: true });
     createdDir = true;
-
-    createDirectoryTree(vaultDir);
-    writeLayoutFiles(vaultDir, { name, siteUrl: doEnablePages ? baseUrl : '' }, CANONICAL_LAYOUT_FILES);
-    copyFileSync(getLauncherTemplate(), join(vaultDir, VAULT_FILES.LAUNCHER));
-
-    if (writeDeploy) {
-      copyFileSync(getDeployTemplate(), join(vaultDir, VAULT_DIRS.GITHUB_WORKFLOWS, WORKFLOW_FILES.DEPLOY));
-      writeFileSync(join(vaultDir, VAULT_FILES.VAULT_JSON), renderVaultJson(githubUser, name));
-    }
+    writeInitialVaultFiles(vaultDir, {
+      name,
+      githubUser,
+      siteUrl: doEnablePages ? baseUrl : '',
+      writeDeploy,
+    });
 
     // [3/6] Git init + initial commit
     await initGitRepo(vaultDir, name, log);
@@ -280,28 +340,7 @@ export async function run(
     printDoneSummary(name, githubUser, vaultDir, publishMode, baseUrl, log);
 
   } catch (err) {
-    // Transactional rollback
-    log.info('');
-    log.info('Setup failed — rolling back...');
-    if (registeredMcp) {
-      const claudePath = await findTool('claude');
-      if (claudePath) {
-        await runMcpRemove(claudePath, name);
-        log.info('  MCP registration removed.');
-      }
-    }
-    if (createdRepo) {
-      try {
-        await deleteRepo(`${githubUser}/${name}`);
-        log.info('  GitHub repo deleted.');
-      } catch {
-        log.warn(`  Could not delete GitHub repo — run manually: gh repo delete ${githubUser}/${name} --yes`);
-      }
-    }
-    if (createdDir && existsSync(vaultDir)) {
-      rmSync(vaultDir, { recursive: true, force: true });
-      log.info('  Local directory removed.');
-    }
+    await rollbackInit({ createdDir, createdRepo, registeredMcp }, githubUser, name, vaultDir, log);
     throw err;
   }
 }
