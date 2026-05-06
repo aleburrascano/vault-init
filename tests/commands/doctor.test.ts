@@ -53,7 +53,10 @@ function writeLauncher(dir: string, content: string = '// launcher'): void {
 async function runDoctor(cfgPath: string): Promise<{ issues: number; lines: string[] }> {
   const { run } = await import('../../src/commands/doctor.js');
   const lines: string[] = [];
-  const issues = await run({ cfgPath, log: arrayLogger(lines) });
+  // Pass `fix: false` explicitly so the test never tries to dispatch
+  // a repair (the diagnostic-only path is what these tests pin) — also
+  // avoids the interactive prompt path on a TTY.
+  const issues = await run(undefined, { cfgPath, fix: false, log: arrayLogger(lines) });
   return { issues, lines };
 }
 
@@ -224,7 +227,12 @@ describe('D-9: launcher missing', () => {
     const { lines } = await runDoctor(cfgPath);
 
     expect(lines.some(l => /\.mcp-start\.js.*missing|missing/i.test(l))).toBe(true);
-    expect(lines.some(l => /vaultkit update/i.test(l))).toBe(true);
+    // Per the 3.0 UX principle, doctor's diagnostic output no longer
+    // emits per-line `Hint: vaultkit X` strings. Repairable issues
+    // surface via the trailing "Re-run with --fix to repair" line; the
+    // un-fixable cases (dir missing / launcher missing) get a "Cannot
+    // auto-fix" line. Assert the right surface for the issue category.
+    expect(lines.some(l => /Re-run with --fix|Cannot auto-fix/i.test(l))).toBe(true);
   });
 });
 
@@ -247,7 +255,9 @@ describe('D-10: hash mismatch', () => {
     expect(lines.some(l => /hash mismatch/i.test(l))).toBe(true);
     expect(lines.some(l => /pinned/i.test(l))).toBe(true);
     expect(lines.some(l => /on.disk/i.test(l))).toBe(true);
-    expect(lines.some(l => /vaultkit verify/i.test(l))).toBe(true);
+    // Per the 3.0 UX principle, the unknown-SHA case prints "Auto-fix
+    // refused without --force" rather than a `vaultkit verify` hint.
+    expect(lines.some(l => /Auto-fix refused without --force|--force/i.test(l))).toBe(true);
     expect(issues).toBeGreaterThan(0);
   });
 });
@@ -255,7 +265,7 @@ describe('D-10: hash mismatch', () => {
 // ── D-10b: hash mismatch — historical SHA (outdated after upgrade) ────────────
 
 describe('D-10b: hash mismatch — historical SHA', () => {
-  it('warns (not fails) and points at vaultkit update --all', async () => {
+  it('warns (not fails) and surfaces the historical version label + repair offer', async () => {
     // Write known content to the launcher and inject its SHA into the
     // historical table at runtime. Avoids depending on cross-platform
     // git text-conversion quirks that shift template byte hashes between
@@ -282,10 +292,19 @@ describe('D-10b: hash mismatch — historical SHA', () => {
       expect(lines.some(l => /hash mismatch/i.test(l))).toBe(true);
       expect(lines.some(l => /outdated after upgrade/i.test(l))).toBe(true);
       expect(lines.some(l => /pre-2\.8\.0/i.test(l))).toBe(true);
-      expect(lines.some(l => /vaultkit update --all/i.test(l))).toBe(true);
-      // Historical mismatch is a warn, not a fail — does NOT increment
-      // the issue count, so doctor exits 0 if everything else is ok.
-      expect(issues).toBe(0);
+      // Per the 3.0 UX principle, doctor's diagnostic output no longer
+      // emits `Hint: vaultkit update --all` per vault. Instead, a single
+      // trailing line offers the repair (`Re-run with --fix`).
+      expect(lines.some(l => /Re-run with --fix/i.test(l))).toBe(true);
+      // Per the 3.0 contract, repairable issues count toward the return
+      // value (so the user sees a non-zero exit and knows to re-run with
+      // --fix). The "warn vs fail" distinction now lives in the log
+      // mark on the per-vault line — historical drift uses `! warn`,
+      // unknown drift uses `x fail`. Assert that the line carries the
+      // warn mark, not the fail mark, even though `issues` is non-zero.
+      expect(lines.some(l => /^.*! warn.*hash mismatch/i.test(l))).toBe(true);
+      expect(lines.some(l => /^.*x fail.*hash mismatch/i.test(l))).toBe(false);
+      expect(issues).toBeGreaterThan(0);
     } finally {
       delete HISTORICAL_LAUNCHER_SHAS[onDiskSha];
     }
@@ -308,7 +327,12 @@ describe('D-11: no pinned hash (legacy)', () => {
     const { lines } = await runDoctor(cfgPath);
 
     expect(lines.some(l => /no pinned hash|legacy/i.test(l))).toBe(true);
-    expect(lines.some(l => /vaultkit update/i.test(l))).toBe(true);
+    // Per the 3.0 UX principle, doctor's diagnostic output no longer
+    // emits per-line `Hint: vaultkit X` strings. Repairable issues
+    // surface via the trailing "Re-run with --fix to repair" line; the
+    // un-fixable cases (dir missing / launcher missing) get a "Cannot
+    // auto-fix" line. Assert the right surface for the issue category.
+    expect(lines.some(l => /Re-run with --fix|Cannot auto-fix/i.test(l))).toBe(true);
   });
 });
 
@@ -334,7 +358,12 @@ describe('D-12: vault layout incomplete', () => {
 
     // dir exists, launcher exists, hash matches, but no .obsidian or CLAUDE.md+raw+wiki
     expect(lines.some(l => /vault layout incomplete|incomplete/i.test(l))).toBe(true);
-    expect(lines.some(l => /vaultkit update/i.test(l))).toBe(true);
+    // Per the 3.0 UX principle, doctor's diagnostic output no longer
+    // emits per-line `Hint: vaultkit X` strings. Repairable issues
+    // surface via the trailing "Re-run with --fix to repair" line; the
+    // un-fixable cases (dir missing / launcher missing) get a "Cannot
+    // auto-fix" line. Assert the right surface for the issue category.
+    expect(lines.some(l => /Re-run with --fix|Cannot auto-fix/i.test(l))).toBe(true);
   });
 });
 
@@ -541,5 +570,116 @@ describe('D-19: git line format', () => {
     // (two leading spaces, "x fail" marker, two trailing spaces, name+message)
     const gitLine = lines.find(l => /git/i.test(l) && /not found/i.test(l));
     expect(gitLine).toMatch(/^\s+x fail\s+git:\s*not found$/);
+  });
+});
+
+// ── D-FIX-1: doctor --no-fix never enters the repair path ────────────────────
+
+describe('D-FIX-1: --no-fix is diagnose-only', () => {
+  it('does not call update.run when --no-fix is set, even with repairable issues', async () => {
+    // Stand up a vault that would normally be repairable: launcher
+    // exists but its on-disk SHA does not match the pinned hash AND the
+    // on-disk SHA is in the historical table → classified as
+    // historical-drift → would normally call update.run on --fix.
+    const vaultDir = join(tmp, 'WouldRepair');
+    mkdirSync(vaultDir, { recursive: true });
+    const launcherContent = '// historical-launcher-content';
+    writeFileSync(join(vaultDir, '.mcp-start.js'), launcherContent, 'utf8');
+    const { createHash } = await import('node:crypto');
+    const onDiskSha = createHash('sha256').update(launcherContent).digest('hex');
+    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/notices/launcher-history.js');
+    HISTORICAL_LAUNCHER_SHAS[onDiskSha] = 'pre-2.8.0';
+
+    try {
+      const cfgPath = join(tmp, '.claude.json');
+      writeCfg(cfgPath, { WouldRepair: { dir: vaultDir, hash: 'b'.repeat(64) } });
+      mockAllToolsFound();
+      mockGhAuth(true);
+
+      // Spy on update.run; expectation is "never called" with --no-fix.
+      const updateMod = await import('../../src/commands/update.js');
+      const updateSpy = vi.spyOn(updateMod, 'run').mockResolvedValue(undefined);
+
+      const { run } = await import('../../src/commands/doctor.js');
+      const lines: string[] = [];
+      await run(undefined, { cfgPath, fix: false, log: arrayLogger(lines) });
+
+      expect(updateSpy).not.toHaveBeenCalled();
+      // Critical: doctor's diagnostic output should explicitly tell the
+      // user how to repair (the "Re-run with --fix" message), per the
+      // 3.0 UX principle.
+      expect(lines.some(l => /Re-run with --fix/i.test(l))).toBe(true);
+      updateSpy.mockRestore();
+    } finally {
+      delete HISTORICAL_LAUNCHER_SHAS[onDiskSha];
+    }
+  });
+});
+
+// ── D-FIX-2: --fix dispatches to update.run for historical drift ─────────────
+
+describe('D-FIX-2: --fix on historical drift calls update', () => {
+  it('classifies historical drift and dispatches to update.run with skipConfirm', async () => {
+    // Same fixture as D-FIX-1 — historical drift on one vault.
+    const vaultDir = join(tmp, 'NeedsUpdate');
+    mkdirSync(vaultDir, { recursive: true });
+    const launcherContent = '// historical-launcher-content-2';
+    writeFileSync(join(vaultDir, '.mcp-start.js'), launcherContent, 'utf8');
+    const { createHash } = await import('node:crypto');
+    const onDiskSha = createHash('sha256').update(launcherContent).digest('hex');
+    const { HISTORICAL_LAUNCHER_SHAS } = await import('../../src/lib/notices/launcher-history.js');
+    HISTORICAL_LAUNCHER_SHAS[onDiskSha] = 'pre-2.8.0';
+
+    try {
+      const cfgPath = join(tmp, '.claude.json');
+      writeCfg(cfgPath, { NeedsUpdate: { dir: vaultDir, hash: 'c'.repeat(64) } });
+      mockAllToolsFound();
+      mockGhAuth(true);
+
+      const updateMod = await import('../../src/commands/update.js');
+      const updateSpy = vi.spyOn(updateMod, 'run').mockResolvedValue(undefined);
+
+      const { run } = await import('../../src/commands/doctor.js');
+      await run(undefined, { cfgPath, fix: true, log: arrayLogger([]) });
+
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      const callArgs = updateSpy.mock.calls[0];
+      expect(callArgs?.[0]).toBe('NeedsUpdate');
+      // skipConfirm: true bypasses update's per-vault PROCEED prompt so
+      // a single doctor invocation covers every vault non-interactively.
+      expect((callArgs?.[1] as { skipConfirm?: boolean })?.skipConfirm).toBe(true);
+      updateSpy.mockRestore();
+    } finally {
+      delete HISTORICAL_LAUNCHER_SHAS[onDiskSha];
+    }
+  });
+});
+
+// ── D-FIX-3: --fix refuses unknown drift without --force ─────────────────────
+
+describe('D-FIX-3: --fix refuses unknown drift without --force', () => {
+  it('skips unknown-SHA vaults and logs the refusal reason', async () => {
+    const vaultDir = join(tmp, 'Suspect');
+    mkdirSync(vaultDir, { recursive: true });
+    writeFileSync(join(vaultDir, '.mcp-start.js'), '// totally unknown content', 'utf8');
+
+    const cfgPath = join(tmp, '.claude.json');
+    writeCfg(cfgPath, { Suspect: { dir: vaultDir, hash: 'd'.repeat(64) } });
+    mockAllToolsFound();
+    mockGhAuth(true);
+
+    const verifyMod = await import('../../src/commands/verify.js');
+    const verifySpy = vi.spyOn(verifyMod, 'run').mockResolvedValue(undefined);
+
+    const { run } = await import('../../src/commands/doctor.js');
+    const lines: string[] = [];
+    const issues = await run(undefined, { cfgPath, fix: true, log: arrayLogger(lines) });
+
+    // verify.run is the only path that re-pins to on-disk for unknown
+    // SHA — must NOT fire without --force (security posture).
+    expect(verifySpy).not.toHaveBeenCalled();
+    expect(lines.some(l => /skipped.*unknown launcher SHA|--force/i.test(l))).toBe(true);
+    expect(issues).toBeGreaterThan(0);
+    verifySpy.mockRestore();
   });
 });

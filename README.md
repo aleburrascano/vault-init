@@ -73,9 +73,9 @@ EVERYDAY USE
   vaultkit backup <name>              Snapshot a vault to a local zip
 
 WHEN SOMETHING'S WRONG
-  vaultkit doctor                     Check environment + flag broken vaults
-  vaultkit update [name|--all]        Refresh launcher / restore layout (single vault or all)
-  vaultkit verify <name>              Launcher refused to start (pinned SHA-256 mismatch)
+  vaultkit doctor [name]              Diagnose vault + environment health
+  vaultkit doctor [name] --fix        Same as above, but also offer to repair
+  vaultkit doctor --fix --all         Repair every registered vault (e.g. after a vaultkit upgrade)
 
 CHANGE OR REMOVE
   vaultkit visibility <name> <mode>   Toggle public / private / auth-gated

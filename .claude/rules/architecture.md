@@ -49,7 +49,9 @@ paths:
 | visibility | src/commands/visibility.ts |
 | mcp-server | src/commands/mcp-server.ts |
 
-**Deprecated aliases (3.x; removed in 4.0):** `status` → `list`, `pull` → `sync`, `disconnect` → `remove`, `destroy` → `remove --delete-repo`. Each registers as a commander entry in `bin/vaultkit.ts` that prints a one-line stderr notice via `printDeprecationNotice` from [src/lib/cli-aliases.ts](../../src/lib/cli-aliases.ts) and forwards to the new dispatch. The `disconnect.ts` and `destroy.ts` files keep working through the alias forwarding during 3.x — they're deleted in 4.0.
+**Deprecated aliases (3.x; removed in 4.0):** `status` → `list`, `pull` → `sync`, `disconnect` → `remove`, `destroy` → `remove --delete-repo`, `verify <name>` → `doctor <name> --fix`, `update <name>` / `update --all` → `doctor [name] --fix [--all]`. Each registers as a commander entry in `bin/vaultkit.ts` that prints a one-line stderr notice via `printDeprecationNotice` from [src/lib/cli-aliases.ts](../../src/lib/cli-aliases.ts) and forwards to the new dispatch. The `disconnect.ts`, `destroy.ts`, `verify.ts`, `update.ts` files keep working through the alias forwarding during 3.x — they're deleted in 4.0.
+
+**`doctor` shape (3.0):** takes `[name] [--fix] [--no-fix] [--all] [--force]`. Without flags on a TTY: prompts `Found N issues. Fix them now? (y/N)` when repairable issues exist (no second-command UX — the prompt IS the offer). With `--fix`: skips the prompt and dispatches per-vault to `update.run({ skipConfirm: true })` for historical-drift / no-pin / layout-gap, or `verify.run({ yes: true })` for unknown-drift (only when `--force` is also passed). With `--no-fix`: diagnose only, even on a TTY (CI-safe). The diagnostic-then-prompt pattern is the codified form of the "diagnose → offer to fix inline" guiding principle for vaultkit's UX.
 
 To scaffold a new command: `/add-command`.
 

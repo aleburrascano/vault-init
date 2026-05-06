@@ -124,9 +124,7 @@ Commands:
     backup <name>                     Snapshot a vault to a local zip
 
   WHEN SOMETHING'S WRONG
-    doctor                            Check environment + flag broken vaults
-    update [name|--all]               Refresh launcher and restore layout (single vault or all)
-    verify <name>                     Inspect launcher SHA-256 and re-pin if needed
+    doctor [name] [--fix] [--all]     Diagnose vault + environment health, optionally repair
 
   CHANGE OR REMOVE
     visibility <name> <mode>          Toggle public / private / auth-gated
@@ -285,7 +283,7 @@ program
 
 program
   .command('update [name]')
-  .description('Refresh launcher and restore missing layout files (use --all to update every vault)')
+  .description('(deprecated) Use `vaultkit doctor [name] --fix` (or `--fix --all`) instead')
   .option('--all', 'update every registered vault in one pass')
   .addHelpText('after', `
 Examples:
@@ -299,10 +297,13 @@ iterates every registered vault and reports a per-vault status summary;
 exits non-zero if any vault failed.
 `)
   .action(async (name: string | undefined, opts: { all?: boolean }) => {
+    const replacement = opts.all ? 'doctor --fix --all' : 'doctor <name> --fix';
+    printDeprecationNotice(opts.all ? 'update --all' : 'update', replacement);
     await wrap(async () => {
-      const { run } = await import('../src/commands/update.js');
-      await run(name, opts.all ? { all: true } : {});
-    }, 'update', opts.all ? ['--all'] : [name ?? '']);
+      const { run } = await import('../src/commands/doctor.js');
+      const issues = await run(name, { fix: true, ...(opts.all ? { all: true } : {}) });
+      if (issues > 0) process.exit(1);
+    }, 'doctor', opts.all ? ['--all'] : [name ?? '']);
   });
 
 program
@@ -355,27 +356,47 @@ findings exist). Apply the report by following the patch flow in CLAUDE.md.
   });
 
 program
-  .command('doctor')
-  .description('Check environment and flag broken vaults')
+  .command('doctor [name]')
+  .description('Diagnose vault + environment health (and optionally repair)')
+  .option('--fix', 'repair every repairable issue without prompting')
+  .option('--no-fix', 'diagnose only; never run the repair path (CI-friendly)')
+  .option('--all', 'iterate every registered vault (implicit when no name passed)')
+  .option('--force', 'with --fix, accept on-disk launcher SHA even if it matches no known vaultkit version')
   .addHelpText('after', `
 Examples:
-  $ vaultkit doctor
+  $ vaultkit doctor                       # diagnose; on a TTY, prompt to fix when issues found
+  $ vaultkit doctor my-wiki               # scope to one vault
+  $ vaultkit doctor --fix                 # repair every repairable vault, no prompt
+  $ vaultkit doctor --fix --all           # explicit all-vaults form (same as --fix without name)
+  $ vaultkit doctor --no-fix              # CI: diagnose-only, never repair
 
 Checks Node version, gh auth, git config, claude CLI, and every registered
-vault's launcher SHA-256 against the pinned hash. Exits non-zero if any
-issue is found, so it composes well in CI.
+vault's launcher SHA-256 against the pinned hash. With --fix (or after the
+interactive prompt), repairs:
+  - hash mismatch from a vaultkit upgrade (re-templates + commits + pushes)
+  - missing layout files (writes them + commits)
+  - missing pinned hash on legacy registrations (re-pins to current SHA)
+
+The unknown-SHA / suspect-tampering case is refused without --force.
+Cannot auto-fix: missing vault directory, missing launcher (no source).
 `)
-  .action(async () => {
+  .action(async (name: string | undefined, opts: { fix?: boolean; all?: boolean; force?: boolean }) => {
     await wrap(async () => {
       const { run } = await import('../src/commands/doctor.js');
-      const issues = await run();
+      const doctorOpts: { fix?: boolean; all?: boolean; force?: boolean } = {};
+      if (opts.fix !== undefined) doctorOpts.fix = opts.fix;
+      if (opts.all !== undefined) doctorOpts.all = opts.all;
+      if (opts.force !== undefined) doctorOpts.force = opts.force;
+      const issues = await run(name, doctorOpts);
       if (issues > 0) process.exit(1);
-    }, 'doctor', []);
+    }, 'doctor', name ? [name] : []);
   });
 
+// Deprecated alias — `vaultkit verify <name>` → `vaultkit doctor <name> --fix`.
+// Removed in 4.0.
 program
   .command('verify <name>')
-  .description('Inspect launcher SHA-256 and re-pin if needed')
+  .description('(deprecated) Use `vaultkit doctor <name> --fix` instead')
   .addHelpText('after', `
 Examples:
   $ vaultkit verify my-wiki
@@ -385,10 +406,12 @@ from the value in the MCP registry. Use when Claude Code refuses to start
 a vault's MCP server with "SHA-256 mismatch".
 `)
   .action(async (name: string) => {
+    printDeprecationNotice('verify', 'doctor --fix');
     await wrap(async () => {
-      const { run } = await import('../src/commands/verify.js');
-      await run(name);
-    }, 'verify', [name]);
+      const { run } = await import('../src/commands/doctor.js');
+      const issues = await run(name, { fix: true });
+      if (issues > 0) process.exit(1);
+    }, 'doctor', [name]);
   });
 
 program
