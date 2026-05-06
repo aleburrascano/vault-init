@@ -8,7 +8,7 @@ import { isAdmin, deleteRepoCapturing, repoUrl } from '../lib/github/github-repo
 import { ensureDeleteRepoScope } from '../lib/github/github-auth.js';
 import { runMcpRemove, manualMcpRemoveCommand } from '../lib/mcp/mcp.js';
 import { removeVaultFromIndex, withSearchIndex } from '../lib/search/search-indexer.js';
-import { ConsoleLogger } from '../lib/logger.js';
+import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { VaultkitError, DEFAULT_MESSAGES } from '../lib/errors.js';
 import { PROMPTS, LABELS } from '../lib/messages.js';
 import type { CommandModule, RunOptions } from '../types.js';
@@ -20,6 +20,68 @@ export interface DestroyOptions extends RunOptions {
   skipConfirm?: boolean;
   skipMcp?: boolean;
   confirmName?: string;
+}
+
+interface RepoDeletionPlan {
+  repoSlug: string | null;
+  repoDeletable: boolean;
+  repoNote: string;
+}
+
+/**
+ * Discover the GitHub repo backing a vault and decide whether `destroy`
+ * may delete it. May trigger an interactive `gh auth refresh -s
+ * delete_repo` if the caller owns the repo and lacks the scope —
+ * that throws `VaultkitError('AUTH_REQUIRED')` if the user declines, so
+ * `destroy` aborts before any destructive action and the user can retry
+ * with state intact.
+ */
+async function resolveRepoForDeletion(
+  vault: Vault,
+  log: Logger,
+): Promise<RepoDeletionPlan> {
+  const repoSlug = vault.hasGitRepo() ? await getRepoSlug(vault.dir) : null;
+  if (!repoSlug) {
+    return { repoSlug: null, repoDeletable: false, repoNote: '(not authenticated or remote not found — skipping GitHub step)' };
+  }
+  const admin = await isAdmin(repoSlug).catch(() => false);
+  if (!admin) {
+    return { repoSlug, repoDeletable: false, repoNote: `(you don't own this repo — only local + MCP will be removed)` };
+  }
+  await ensureDeleteRepoScope(log);
+  return { repoSlug, repoDeletable: true, repoNote: '' };
+}
+
+/**
+ * Print the destruction summary, prompt for the typed confirmation, and
+ * return whether the caller should proceed. Returns `true` on confirm
+ * (or `skipConfirm`), `false` if the user typed something other than
+ * the vault name (caller logs ABORTED + returns).
+ */
+async function confirmDestruction(
+  vault: Vault,
+  plan: RepoDeletionPlan,
+  name: string,
+  confirmName: string | undefined,
+  log: Logger,
+): Promise<boolean> {
+  log.info('');
+  log.info('This will permanently delete:');
+  log.info(`  Local:  ${vault.dir}${vault.existsOnDisk() ? '' : ' (not found — will skip)'}`);
+  if (plan.repoDeletable) {
+    log.info(`  GitHub: ${repoUrl(plan.repoSlug ?? '')}`);
+  } else if (plan.repoNote) {
+    log.info(`  GitHub: ${plan.repoSlug ?? 'unknown'}  ${plan.repoNote}`);
+  }
+  log.info(`  MCP:    ${name} server registration`);
+  log.info('');
+  const typed = confirmName ?? await input({ message: PROMPTS.TYPE_NAME_TO_CONFIRM_DELETION });
+  if (typed !== name) {
+    log.info(LABELS.ABORTED);
+    return false;
+  }
+  log.info('');
+  return true;
 }
 
 export async function run(
@@ -35,40 +97,10 @@ export async function run(
     throw new VaultkitError('NOT_VAULT_LIKE', `${vault.dir} does not look like an Obsidian vault — aborting.`);
   }
 
-  // Resolve GitHub repo
-  const repoSlug = vault.hasGitRepo() ? await getRepoSlug(vault.dir) : null;
-  let repoDeletable = false;
-  let repoNote = '';
+  const plan = await resolveRepoForDeletion(vault, log);
 
-  if (repoSlug) {
-    const admin = await isAdmin(repoSlug).catch(() => false);
-    if (admin) {
-      repoDeletable = true;
-      // Throws VaultkitError('AUTH_REQUIRED') if the user declines the
-      // browser prompt — destroy aborts before any destructive action so
-      // the user can fix the scope and retry with state intact.
-      await ensureDeleteRepoScope(log);
-    } else {
-      repoNote = `(you don't own this repo — only local + MCP will be removed)`;
-    }
-  } else {
-    repoNote = '(not authenticated or remote not found — skipping GitHub step)';
-  }
-
-  if (!skipConfirm) {
-    log.info('');
-    log.info('This will permanently delete:');
-    log.info(`  Local:  ${vault.dir}${vault.existsOnDisk() ? '' : ' (not found — will skip)'}`);
-    if (repoDeletable) {
-      log.info(`  GitHub: ${repoUrl(repoSlug ?? '')}`);
-    } else if (repoNote) {
-      log.info(`  GitHub: ${repoSlug ?? 'unknown'}  ${repoNote}`);
-    }
-    log.info(`  MCP:    ${name} server registration`);
-    log.info('');
-    const typed = confirmName ?? await input({ message: PROMPTS.TYPE_NAME_TO_CONFIRM_DELETION });
-    if (typed !== name) { log.info(LABELS.ABORTED); return; }
-    log.info('');
+  if (!skipConfirm && !await confirmDestruction(vault, plan, name, confirmName, log)) {
+    return;
   }
 
   const status: { github: DestroyStatus; mcp: DestroyStatus; local: DestroyStatus } = {
@@ -77,9 +109,9 @@ export async function run(
     local: 'skipped',
   };
 
-  if (repoDeletable && repoSlug) {
+  if (plan.repoDeletable && plan.repoSlug) {
     log.info('Deleting GitHub repo...');
-    const { ok, stderr } = await deleteRepoCapturing(repoSlug);
+    const { ok, stderr } = await deleteRepoCapturing(plan.repoSlug);
     status.github = ok ? 'deleted' : 'failed';
     if (!ok) {
       log.warn(`GitHub repo deletion failed — continuing with local + MCP cleanup.`);
