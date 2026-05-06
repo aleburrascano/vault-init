@@ -123,7 +123,7 @@ export async function checkPostUpgrade(
       const labelSuffix = v.versionLabel ? ` (was ${v.versionLabel})` : '';
       log.info(`    - ${v.name}${labelSuffix}`);
     }
-    log.info(`  Run: vaultkit update --all`);
+    log.info(`  Run: vaultkit doctor --fix --all`);
   }
 
   if (tampered.length > 0) {
@@ -131,7 +131,7 @@ export async function checkPostUpgrade(
     for (const v of tampered) {
       log.warn(`    - ${v.name}`);
     }
-    log.warn(`  Inspect each launcher and run: vaultkit verify <name>`);
+    log.warn(`  Inspect each launcher and run: vaultkit doctor <name> --fix --force`);
   }
 }
 

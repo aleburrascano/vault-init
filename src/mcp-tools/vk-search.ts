@@ -83,7 +83,7 @@ function emptyResultText(scope: string | undefined, currentVault: string): strin
     'Possible causes:',
     '  - The query did not match any indexed note.',
     '  - The vault has not been indexed yet (run `vaultkit init <name>` or',
-    '    `vaultkit update <name>` to populate the index).',
+    '    `vaultkit doctor <name> --fix` to populate the index).',
     '  - The vault is not registered (run `vaultkit list` to check).',
   ].join('\n');
 }

@@ -169,7 +169,7 @@ async function indexNewVault(name: string, vaultDir: string, log: Logger): Promi
       idx.close();
     }
   } catch (err) {
-    log.warn(`  Search: indexing failed — ${(err as Error).message}. Run 'vaultkit update ${name}' to retry.`);
+    log.warn(`  Search: indexing failed — ${(err as Error).message}. Run 'vaultkit doctor ${name} --fix' to retry.`);
   }
 }
 

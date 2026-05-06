@@ -90,7 +90,7 @@ function printSetupSummary(issues: number, log: Logger): void {
   log.info('');
   if (issues === 0) {
     log.info('Setup complete. You can now run any vaultkit command.');
-    log.info('Note: the delete_repo scope will be requested on first `vaultkit destroy` (not granted preemptively).');
+    log.info('Note: the delete_repo scope will be requested on first `vaultkit remove --delete-repo` (not granted preemptively).');
   } else {
     log.info(`${issues} issue(s) above need to be resolved before vaultkit can run smoothly.`);
   }

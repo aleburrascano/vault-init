@@ -13,8 +13,8 @@ import type { Logger } from '../logger.js';
  * Best-effort and silent on every "everything is fine" path:
  * - vault not registered, name invalid, no on-disk dir, no launcher,
  *   no pinned hash, or hash matches → nothing logged
- * - historical SHA → log.warn with `vaultkit update <name>` action
- * - unknown SHA → log.warn with `vaultkit verify <name>` action
+ * - historical SHA → log.warn with `vaultkit doctor <name> --fix` action
+ * - unknown SHA → log.warn with `vaultkit doctor <name> --fix --force` action
  *
  * Errors are swallowed so a notification path can never block the
  * actual command. Disabled when `VAULTKIT_NO_LAUNCHER_PREFLIGHT=1`.
@@ -49,13 +49,13 @@ export async function preflightLauncherCheck(
   if (classification === 'historical') {
     const label = historicalVersionLabel(onDisk) ?? 'a prior version';
     log.warn(`'${name}': launcher is outdated after a vaultkit upgrade (was ${label}).`);
-    log.warn(`  Claude Code will fail to start this vault until you run: vaultkit update ${name}`);
+    log.warn(`  Claude Code will fail to start this vault until you run: vaultkit doctor ${name} --fix`);
     return;
   }
 
   // unknown
   log.warn(`'${name}': launcher SHA matches no known vaultkit version (possible tampering).`);
-  log.warn(`  Inspect ${vault.launcherPath} and run: vaultkit verify ${name}`);
+  log.warn(`  Inspect ${vault.launcherPath} and run: vaultkit doctor ${name} --fix --force`);
 }
 
 /**
@@ -125,9 +125,9 @@ export async function preflightAllVaults(
   }
 
   if (historicalCount > 0) {
-    log.warn(`  Run: vaultkit update --all`);
+    log.warn(`  Run: vaultkit doctor --fix --all`);
   }
   if (unknownCount > 0) {
-    log.warn(`  For tampering candidates, run: vaultkit verify <name>`);
+    log.warn(`  For tampering candidates, run: vaultkit doctor <name> --fix --force`);
   }
 }

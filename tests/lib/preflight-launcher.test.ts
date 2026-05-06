@@ -65,7 +65,7 @@ describe('preflightLauncherCheck (single vault)', () => {
     expect(lines).toEqual([]);
   });
 
-  it('warns and points at vaultkit update <name> when SHA is historical', async () => {
+  it('warns and points at vaultkit doctor <name> --fix when SHA is historical', async () => {
     const vaultDir = join(tmp, 'OutdatedVault');
     mkdirSync(vaultDir, { recursive: true });
     const onDiskSha = writeLauncherAndComputeSha(vaultDir, '// pretend pre-2.8.0 launcher');
@@ -81,13 +81,13 @@ describe('preflightLauncherCheck (single vault)', () => {
 
       expect(lines.some(l => /outdated after a vaultkit upgrade/i.test(l))).toBe(true);
       expect(lines.some(l => /pre-2\.8\.0/i.test(l))).toBe(true);
-      expect(lines.some(l => /vaultkit update OutdatedVault/i.test(l))).toBe(true);
+      expect(lines.some(l => /vaultkit doctor OutdatedVault --fix/i.test(l))).toBe(true);
     } finally {
       delete HISTORICAL_LAUNCHER_SHAS[onDiskSha];
     }
   });
 
-  it('warns and points at vaultkit verify <name> when SHA is unknown', async () => {
+  it('warns and points at vaultkit doctor <name> --fix --force when SHA is unknown', async () => {
     const vaultDir = join(tmp, 'UnknownVault');
     mkdirSync(vaultDir, { recursive: true });
     writeLauncherAndComputeSha(vaultDir, '// random unknown content');
@@ -98,7 +98,7 @@ describe('preflightLauncherCheck (single vault)', () => {
     await preflightLauncherCheck('UnknownVault', cfgPath, arrayLogger(lines));
 
     expect(lines.some(l => /matches no known vaultkit version/i.test(l))).toBe(true);
-    expect(lines.some(l => /vaultkit verify UnknownVault/i.test(l))).toBe(true);
+    expect(lines.some(l => /vaultkit doctor UnknownVault --fix --force/i.test(l))).toBe(true);
   });
 
   it('VAULTKIT_NO_LAUNCHER_PREFLIGHT=1 disables the check', async () => {
@@ -169,7 +169,7 @@ describe('preflightAllVaults (multi-vault)', () => {
       expect(lines.some(l => /2 vault\(s\) have outdated launchers/i.test(l))).toBe(true);
       expect(lines.some(l => /OutdatedA.*pre-2\.8\.0/.test(l))).toBe(true);
       expect(lines.some(l => /OutdatedB.*pre-2\.8\.0/.test(l))).toBe(true);
-      expect(lines.some(l => /vaultkit update --all/i.test(l))).toBe(true);
+      expect(lines.some(l => /vaultkit doctor --fix --all/i.test(l))).toBe(true);
     } finally {
       delete HISTORICAL_LAUNCHER_SHAS[onDiskA];
       delete HISTORICAL_LAUNCHER_SHAS[onDiskB];
@@ -200,8 +200,8 @@ describe('preflightAllVaults (multi-vault)', () => {
       expect(lines.some(l => /2 vault\(s\) have launcher SHA mismatches/i.test(l))).toBe(true);
       expect(lines.some(l => /OutdatedA.*outdated/i.test(l))).toBe(true);
       expect(lines.some(l => /TamperedB.*possible tampering/i.test(l))).toBe(true);
-      expect(lines.some(l => /vaultkit update --all/i.test(l))).toBe(true);
-      expect(lines.some(l => /vaultkit verify <name>/i.test(l))).toBe(true);
+      expect(lines.some(l => /vaultkit doctor --fix --all/i.test(l))).toBe(true);
+      expect(lines.some(l => /vaultkit doctor <name> --fix --force/i.test(l))).toBe(true);
     } finally {
       delete HISTORICAL_LAUNCHER_SHAS[onDiskA];
     }

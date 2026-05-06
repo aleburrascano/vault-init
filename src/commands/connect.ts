@@ -135,14 +135,14 @@ export async function run(
       log.info('');
       log.warn(`${name} is missing .mcp-start.js — it may have been created with an older version.`);
       log.info('  MCP registration skipped.');
-      log.info('  Ask the owner to run \'vaultkit update\' and push, then reconnect.');
+      log.info('  Ask the owner to run \'vaultkit doctor --fix\' and push, then reconnect.');
       return;
     }
 
     if (!isVaultLike(vaultDir)) {
       log.info('');
       log.warn(`${name} is missing the standard vault layout (CLAUDE.md / raw/ / wiki/).`);
-      log.info('  Connecting anyway — ask the owner to run \'vaultkit update\' so layout-aware features work.');
+      log.info('  Connecting anyway — ask the owner to run \'vaultkit doctor --fix\' so layout-aware features work.');
     }
 
     // We hash the on-disk launcher and pin THAT value — we do NOT compare

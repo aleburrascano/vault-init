@@ -75,14 +75,16 @@ describe('checkPostUpgrade', () => {
 
     expect(lines.some(l => /upgraded from 2\.8\.0 to 2\.9\.0/i.test(l))).toBe(true);
     expect(lines.some(l => /up to date/i.test(l))).toBe(true);
-    expect(lines.some(l => /vaultkit update --all/i.test(l))).toBe(false);
+    // 3.0: post-upgrade now points at `vaultkit doctor --fix --all`
+    // (not the deprecated `vaultkit update --all`).
+    expect(lines.some(l => /vaultkit doctor --fix --all/i.test(l))).toBe(false);
 
     // Cache must update so the notice does not repeat.
     const cached = JSON.parse(readFileSync(_CACHE_PATH, 'utf8')) as { lastSeenVersion: string };
     expect(cached.lastSeenVersion).toBe('2.9.0');
   });
 
-  it('version-changed run with historical-SHA vault enumerates stale vaults and points at update --all', async () => {
+  it('version-changed run with historical-SHA vault enumerates stale vaults and points at doctor --fix --all', async () => {
     writeFileSync(_CACHE_PATH, JSON.stringify({ lastSeenVersion: '2.8.0' }), 'utf8');
 
     const vaultDir = join(tmp, 'OutdatedVault');
@@ -105,7 +107,8 @@ describe('checkPostUpgrade', () => {
       expect(lines.some(l => /upgraded from 2\.8\.0 to 2\.9\.0/i.test(l))).toBe(true);
       expect(lines.some(l => /1 vault\(s\) need launcher migration/i.test(l))).toBe(true);
       expect(lines.some(l => /OutdatedVault.*pre-2\.9\.0/i.test(l))).toBe(true);
-      expect(lines.some(l => /vaultkit update --all/i.test(l))).toBe(true);
+      // 3.0: replaced `vaultkit update --all` with `vaultkit doctor --fix --all`.
+      expect(lines.some(l => /vaultkit doctor --fix --all/i.test(l))).toBe(true);
     } finally {
       delete HISTORICAL_LAUNCHER_SHAS[onDiskSha];
     }
@@ -125,7 +128,8 @@ describe('checkPostUpgrade', () => {
     await checkPostUpgrade('2.9.0', cfgPath, arrayLogger(lines));
 
     expect(lines.some(l => /matching no known vaultkit version/i.test(l))).toBe(true);
-    expect(lines.some(l => /vaultkit verify/i.test(l))).toBe(true);
+    // 3.0: replaced `vaultkit verify <name>` with `vaultkit doctor <name> --fix --force`.
+    expect(lines.some(l => /vaultkit doctor.*--fix --force/i.test(l))).toBe(true);
   });
 
   it('VAULTKIT_NO_UPDATE_CHECK=1 disables the notice entirely', async () => {

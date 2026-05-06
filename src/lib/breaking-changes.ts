@@ -51,7 +51,7 @@ export interface BreakingChange {
   component: BreakingChangeComponent;
   /** Whether this should fail `doctor` (incrementing its issue count) or just warn. */
   severity: BreakingChangeSeverity;
-  /** Verbatim command to run to migrate (e.g. `'vaultkit update --all'`). */
+  /** Verbatim command to run to migrate (e.g. `'vaultkit doctor --fix --all'`). */
   remedyCommand: string;
   /** One-line human-readable label for the change (e.g. `'launcher template changed in 2.8.0'`). */
   humanLabel: string;

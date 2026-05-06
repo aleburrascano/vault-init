@@ -54,7 +54,7 @@ export async function run(
     log.info(`  branch:  ${status.branch} ${upstream}`);
     if (status.lastCommit) log.info(`  last:    ${status.lastCommit}`);
     if (vault.hash) log.info(`  pinned:  ${vault.hash}`);
-    else log.info(`  pinned:  (none — run: vaultkit update ${vault.name})`);
+    else log.info(`  pinned:  (none — run: vaultkit doctor ${vault.name} --fix)`);
     log.info('');
   }
 }

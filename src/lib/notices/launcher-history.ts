@@ -43,7 +43,7 @@ export type LauncherShaClassification = 'match' | 'historical' | 'unknown';
  * - `'match'`     — on-disk matches expected (no mismatch to disambiguate)
  * - `'historical'`— matches a known prior shipped version (likely outdated
  *                   after a vaultkit upgrade; remediable via
- *                   `vaultkit update --all`)
+ *                   `vaultkit doctor --fix --all`)
  * - `'unknown'`   — matches no known shipped version (treat as possible
  *                   tampering; user should inspect / re-trust)
  */

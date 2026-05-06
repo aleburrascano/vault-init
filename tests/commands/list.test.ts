@@ -194,7 +194,7 @@ describe('S-8: no upstream configured', () => {
 // ── S-9: no pinned hash — legacy registration ─────────────────────────────────
 
 describe('S-9: no pinned hash', () => {
-  it('suggests vaultkit update', async () => {
+  it('suggests vaultkit doctor --fix to backfill the missing pin', async () => {
     const vaultDir = join(tmp, 'LegacyVault');
     makeGitRepo(vaultDir);
     const cfgPath = join(tmp, '.claude.json');
@@ -210,7 +210,9 @@ describe('S-9: no pinned hash', () => {
     });
 
     const lines = await runStatus(undefined, cfgPath);
-    expect(lines.some(l => /vaultkit update/i.test(l))).toBe(true);
+    // 3.0: list's "no pinned hash" hint points at `vaultkit doctor --fix`
+    // (which doctor dispatches to update.run for the no-pin case).
+    expect(lines.some(l => /vaultkit doctor.*--fix/i.test(l))).toBe(true);
   });
 });
 
