@@ -70,7 +70,10 @@ EVERYDAY USE
   vaultkit list [name]                List vaults + git state (or detail for one)
   vaultkit sync                       Sync all vaults from their upstream
   vaultkit refresh [name]             Check sources for upstream changes and write a freshness report
-  vaultkit backup <name>              Snapshot a vault to a local zip
+
+  Need a snapshot?  Every vault is a git repo, so:
+    git clone --mirror <repo-url> <dest>      # full history snapshot
+    git log -- <path/to/file.md>              # historical content for one file
 
 WHEN SOMETHING'S WRONG
   vaultkit doctor [name]              Diagnose vault + environment health

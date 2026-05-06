@@ -9,7 +9,7 @@ import { checkForUpdate } from '../src/lib/notices/update-check.js';
 import { checkPostUpgrade } from '../src/lib/notices/post-upgrade-check.js';
 import { preflightLauncherCheck, preflightAllVaults } from '../src/lib/notices/preflight-launcher.js';
 import { gateOrSkip } from '../src/lib/prereqs.js';
-import { printDeprecationNotice } from '../src/lib/cli-aliases.js';
+import { printDeprecationNotice, printRemovalNotice } from '../src/lib/cli-aliases.js';
 import type { PublishMode } from '../src/lib/constants.js';
 
 // Commands whose body is meaningfully affected by — or whose user is
@@ -121,7 +121,6 @@ Commands:
     list [name]                       List vaults + git state (or detail for one)
     sync                              Sync all vaults from their upstream
     refresh [name]                    Check sources for upstream changes and write a freshness report
-    backup <name>                     Snapshot a vault to a local zip
 
   WHEN SOMETHING'S WRONG
     doctor [name] [--fix] [--all]     Diagnose vault + environment health, optionally repair
@@ -445,20 +444,20 @@ program
     }, 'list', name ? [name] : []);
   });
 
+// `vaultkit backup` was removed in 3.0 — every vault is a git repo
+// with full history pushed to GitHub, so `git clone --mirror` (or just
+// walking `git log`) is the canonical snapshot mechanism.
+// Registered here as a deprecation alias that prints a migration hint
+// and exits 0; removed entirely in 4.0.
 program
   .command('backup <name>')
-  .description('Snapshot a vault to a local zip')
-  .addHelpText('after', `
-Examples:
-  $ vaultkit backup my-wiki
-
-Writes <name>-<timestamp>.zip in the current directory.
-`)
-  .action(async (name: string) => {
-    await wrap(async () => {
-      const { run } = await import('../src/commands/backup.js');
-      await run(name);
-    }, 'backup', [name]);
+  .description('(removed in 3.0) Use `git clone --mirror <repo-url> <dest>` for a full snapshot')
+  .action(async (_name: string) => {
+    printRemovalNotice(
+      'backup',
+      `Use 'git clone --mirror <repo-url> <dest>' for a full snapshot, or 'git log' / 'git checkout <commit>' for historical content.`,
+    );
+    process.exit(0);
   });
 
 program
