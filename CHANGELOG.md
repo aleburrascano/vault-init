@@ -4,6 +4,51 @@ All notable changes to vaultkit are documented here. Format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-05-05
+
+### Breaking changes — CLI consolidation
+
+The 13 user-facing commands collapse to **8** + 1 internal (`mcp-server`). Every old name keeps working through 3.x as a deprecation alias that prints a one-line stderr notice and forwards to the new dispatch — they are removed in 4.0. Scripted callers should migrate during 3.x.
+
+The driving observation: vaultkit's developer hit real UX pain after 2.8.0 — his MCP failed (launcher SHA mismatch with the new template), and he had to grope through `vaultkit help` → `vaultkit doctor` → `vaultkit verify <name>` (twice, once per vault) before the fix took. Three commands when one would do. The 3.0 surface codifies the principle: **diagnose → offer to fix inline (no second command)**. Doctor prompts `Found N issues. Fix them now? (y/N)` on a TTY and runs the repair on every flagged vault when accepted.
+
+#### Migration table
+
+| Old | New |
+|---|---|
+| `vaultkit status` | `vaultkit list` |
+| `vaultkit status <name>` | `vaultkit list <name>` |
+| `vaultkit pull` | `vaultkit sync` |
+| `vaultkit verify <name>` | `vaultkit doctor <name>` (prompts) or `vaultkit doctor <name> --fix` |
+| `vaultkit update <name>` | `vaultkit doctor <name>` (prompts) or `vaultkit doctor <name> --fix` |
+| `vaultkit update --all` | `vaultkit doctor --fix --all` |
+| `vaultkit disconnect <name>` | `vaultkit remove <name>` |
+| `vaultkit destroy <name>` | `vaultkit remove <name> --delete-repo` |
+| `vaultkit backup <name>` | (removed) `git clone --mirror <repo-url> <dest>` |
+
+### Added
+
+- **`vaultkit doctor [name] [--fix] [--all] [--force]`** — replaces the diagnostic / repair triad (`doctor`, `verify`, `update`). Without flags on a TTY: prompts to repair when issues are found. With `--fix`: skips the prompt and dispatches per-vault by classification (historical-drift / no-pin / layout-gap → re-template + commit + push; unknown-drift + `--force` → re-pin to on-disk SHA). With `--no-fix`: diagnose only (CI-safe). The diagnostic output no longer emits per-line `Hint: vaultkit verify <name>` strings — the prompt at the end IS the offer. Acceptance criterion (the developer's actual transcript): recovering from a 2.8.0-style upgrade now takes **1 command** (`doctor` → confirm) instead of 3.
+- **`vaultkit list [name]`** — renamed from `status` (the verb collided with `doctor`'s diagnostic surface).
+- **`vaultkit sync`** — renamed from `pull` (less git-jargon, more user-facing).
+- **`vaultkit remove <name> [--delete-repo]`** — merges `disconnect` + `destroy`. Default keeps the GitHub repo; `--delete-repo` deletes it (admin check + on-demand `delete_repo` scope grant). The flag name matches the underlying GitHub OAuth scope for internal consistency.
+- **`src/lib/cli-aliases.ts`** — `printDeprecationNotice` and `printRemovalNotice` helpers used by every alias commander entry. Lives in `src/lib/` rather than inline in `bin/vaultkit.ts` so it's unit-testable without booting commander.
+
+### Removed
+
+- **`vaultkit backup`** — every vault is a git repo with full history pushed to GitHub, so `git clone --mirror <repo-url> <dest>` (full snapshot) and `git log` / `git checkout <commit>` (historical content) are the canonical recovery paths. The commander entry survives through 3.x as a removal-notice alias that prints the migration hint and exits 0.
+
+### Changed
+
+- **Internal hint strings migrated** — every `Hint: run vaultkit X` line in user-facing output (errors, notices, MCP tool descriptions) now points at the 3.0 command names. Includes `src/commands/{list,init,connect,setup}.ts`, `src/lib/notices/{post-upgrade-check,preflight-launcher}.ts`, `src/mcp-tools/{vk-list-notes,vk-search}.ts` (the last two ship to the LLM at `tools/list` time, so they shape Claude's hints to the user inside MCP sessions).
+- **Help-text "WHEN SOMETHING'S WRONG" category** collapses from 3 entries (`doctor`, `update`, `verify`) to 1 (`doctor`).
+
+### Deferred to a follow-up
+
+The plan called for deleting `src/commands/{verify,update,disconnect,destroy,backup}.ts` and their test files in this commit, but doctor's `--fix` path currently calls `update.run` and `verify.run` via dynamic import. Properly removing those files requires extracting their orchestration into a new `src/lib/launcher-repair.ts` module first — substantial work that would balloon this release commit. The files stay in the repo through 3.x; the user-facing aliases dispatch through them. A 3.0.x maintenance release will do the extraction + deletion before the 4.0 cutover.
+
+
+
 ### Added
 - **Per-vault `schemaVersion` + centralized breaking-changes table (`src/lib/breaking-changes.ts`).** Every newly-registered or freshly-updated vault now carries `--schema-version=N` alongside `--expected-sha256=` in its MCP registry args (added structurally inside `runMcpAdd` and `addToRegistry` so callers can't omit it). The new lib exports `CURRENT_SCHEMA_VERSION` (the integer every new registration gets), a `BreakingChange` interface (`toSchemaVersion` + `component` + `severity` + `remedyCommand` + `humanLabel`), an empty-but-typed `BREAKING_CHANGES: readonly BreakingChange[]` table, and `migrationsNeeded(vaultSchemaVersion)` (pure filter; legacy `null` entries are treated as version 0). `Vault.schemaVersion` and `VaultRecord.schemaVersion` surface the value across the codebase; `vaultkit doctor` now prints `schema: vN | (legacy)` per vault. Adding a new breaking change is a two-step operation (bump `CURRENT_SCHEMA_VERSION`, append a `BREAKING_CHANGES` entry); detection paths consume `migrationsNeeded` so messaging stays consistent across surfaces by construction. The byte-immutable launcher template (`lib/mcp-start.js.tmpl`) ignores unknown args, so the new flag is backward-compatible with every existing pinned launcher — no template change. ADR-0015 documents the policy.
 - **Pre-flight stale-launcher check on vault-touching commands (`src/lib/preflight-launcher.ts`).** Before `vaultkit status`, `vaultkit pull`, or `vaultkit refresh` runs its body, a quick SHA classification fires against the targeted vault (or every registered vault for nameless invocations). Stale launchers produce a per-vault warn line pointing at `vaultkit update <name>` (historical) or `vaultkit verify <name>` (unknown). The multi-vault variant aggregates findings into a summary line plus per-vault detail, capping noise at small registry sizes. Catches the "open Claude Code, hit cryptic MCP error, no idea vaultkit was the cause" failure mode at the moment the user is closest to opening Claude Code. Excluded by design from `verify`/`update` (already disambiguate stale launchers in their own bodies) and from `backup`/`disconnect`/`destroy`/`visibility` (launcher staleness is irrelevant to their operation). Disabled with `VAULTKIT_NO_LAUNCHER_PREFLIGHT=1`.
