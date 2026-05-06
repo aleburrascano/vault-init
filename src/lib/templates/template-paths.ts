@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
  * Single source of truth for the byte-immutable template paths under
  * `lib/`. Each function resolves to `<repo>/lib/<file>.tmpl` in dev and
  * `<install>/dist/lib/<file>.tmpl` post-build, because
- * [scripts/post-build.mjs](../../scripts/post-build.mjs) keeps the
- * `'../../lib/...'` relative offset constant from compiled output.
+ * [scripts/post-build.mjs](../../../scripts/post-build.mjs) keeps the
+ * `'../../../lib/...'` relative offset constant from compiled output.
  *
  * Split out from `platform.ts` so its two unrelated reasons-to-change
  * are separated: this module changes when the build pipeline / template
@@ -22,7 +22,7 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
  * `update.ts` should call this rather than recomputing the path.
  */
 export function getLauncherTemplate(): string {
-  return join(SCRIPT_DIR, '../../lib/mcp-start.js.tmpl');
+  return join(SCRIPT_DIR, '../../../lib/mcp-start.js.tmpl');
 }
 
 /**
@@ -32,7 +32,7 @@ export function getLauncherTemplate(): string {
  * needs the workflow).
  */
 export function getDeployTemplate(): string {
-  return join(SCRIPT_DIR, '../../lib/deploy.yml.tmpl');
+  return join(SCRIPT_DIR, '../../../lib/deploy.yml.tmpl');
 }
 
 /**
@@ -41,7 +41,7 @@ export function getDeployTemplate(): string {
  * `vaultkit refresh --vault-dir .` and opens a PR with the report.
  */
 export function getFreshnessTemplate(): string {
-  return join(SCRIPT_DIR, '../../lib/freshness.yml.tmpl');
+  return join(SCRIPT_DIR, '../../../lib/freshness.yml.tmpl');
 }
 
 /**
@@ -51,7 +51,7 @@ export function getFreshnessTemplate(): string {
  * when applying a freshness report.
  */
 export function getPrTemplate(): string {
-  return join(SCRIPT_DIR, '../../lib/pr-template.md.tmpl');
+  return join(SCRIPT_DIR, '../../../lib/pr-template.md.tmpl');
 }
 
 /**
@@ -60,6 +60,6 @@ export function getPrTemplate(): string {
  * for refresh sessions where the vault directory is the cwd.
  */
 export function getClaudeSettingsTemplate(): string {
-  return join(SCRIPT_DIR, '../../lib/claude-settings.json.tmpl');
+  return join(SCRIPT_DIR, '../../../lib/claude-settings.json.tmpl');
 }
 

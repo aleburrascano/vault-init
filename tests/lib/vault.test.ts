@@ -14,7 +14,7 @@ import {
   renderGitattributes,
   renderIndexMd,
   renderLogMd,
-} from '../../src/lib/vault-templates.js';
+} from '../../src/lib/templates/vault-templates.js';
 
 let tmp: string;
 beforeEach(() => {

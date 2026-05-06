@@ -76,7 +76,7 @@ describe('U-2: already up to date, re-pins', () => {
     // Create all layout files so nothing is missing. CLAUDE.md must include
     // the marker-wrapped wiki-style section, otherwise update's merge step
     // will append it and treat the vault as needing a commit.
-    const { renderClaudeMd } = await import('../../src/lib/vault-templates.js');
+    const { renderClaudeMd } = await import('../../src/lib/templates/vault-templates.js');
     writeFileSync(join(vaultDir, 'CLAUDE.md'), renderClaudeMd('UpToDate'));
     writeFileSync(join(vaultDir, 'README.md'), '');
     writeFileSync(join(vaultDir, 'index.md'), '');

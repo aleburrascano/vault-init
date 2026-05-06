@@ -2,10 +2,10 @@ import { existsSync, mkdirSync, writeFileSync, rmSync, copyFileSync } from 'node
 import { join } from 'node:path';
 import { confirm, select } from '@inquirer/prompts';
 import { validateName, sha256 } from '../lib/vault.js';
-import { renderVaultJson } from '../lib/vault-templates.js';
-import { createDirectoryTree, writeLayoutFiles, CANONICAL_LAYOUT_FILES } from '../lib/vault-layout.js';
+import { renderVaultJson } from '../lib/templates/vault-templates.js';
+import { createDirectoryTree, writeLayoutFiles, CANONICAL_LAYOUT_FILES } from '../lib/templates/vault-layout.js';
 import { findTool, vaultsRoot } from '../lib/platform.js';
-import { getLauncherTemplate, getDeployTemplate } from '../lib/template-paths.js';
+import { getLauncherTemplate, getDeployTemplate } from '../lib/templates/template-paths.js';
 import { checkNode, ensureGh, ensureGhAuth, ensureGitConfig } from '../lib/prereqs.js';
 import { findOrInstallClaude, runMcpAdd, runMcpRemove, manualMcpAddCommand } from '../lib/mcp/mcp.js';
 import { openSearchIndex } from '../lib/search/search-index.js';

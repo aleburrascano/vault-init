@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { VAULT_FILES, VAULT_DIRS, WORKFLOW_FILES } from './constants.js';
+import { VAULT_FILES, VAULT_DIRS, WORKFLOW_FILES } from '../constants.js';
 import {
   renderClaudeMd,
   renderReadme,

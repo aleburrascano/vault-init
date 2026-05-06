@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderManagedSection, mergeManagedSection } from '../../src/lib/claude-md-merge.js';
+import { renderManagedSection, mergeManagedSection } from '../../src/lib/templates/claude-md-merge.js';
 
 const ID = 'wiki-style';
 const HEADING = 'Wiki Style & Refresh Policy';

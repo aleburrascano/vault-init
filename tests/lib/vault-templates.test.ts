@@ -8,7 +8,7 @@ import {
   renderGitattributes,
   renderIndexMd,
   renderLogMd,
-} from '../../src/lib/vault-templates.js';
+} from '../../src/lib/templates/vault-templates.js';
 
 /**
  * Drift guard for the static-content builders. These templates ship into

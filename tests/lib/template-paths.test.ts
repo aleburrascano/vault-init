@@ -16,7 +16,7 @@ describe('template path getters', () => {
     ['getPrTemplate', 'pr-template.md.tmpl'],
     ['getClaudeSettingsTemplate', 'claude-settings.json.tmpl'],
   ])('%s resolves to an absolute path ending in lib/%s', async (fnName, filename) => {
-    const templatePaths = await import('../../src/lib/template-paths.js');
+    const templatePaths = await import('../../src/lib/templates/template-paths.js');
     const fn = templatePaths[fnName as keyof typeof templatePaths] as () => string;
     const p = fn();
 

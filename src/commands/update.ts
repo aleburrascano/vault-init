@@ -2,9 +2,9 @@ import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { confirm } from '@inquirer/prompts';
 import { Vault, sha256 } from '../lib/vault.js';
-import { detectLayoutGaps, writeLayoutFiles } from '../lib/vault-layout.js';
+import { detectLayoutGaps, writeLayoutFiles } from '../lib/templates/vault-layout.js';
 import { findTool } from '../lib/platform.js';
-import { getLauncherTemplate } from '../lib/template-paths.js';
+import { getLauncherTemplate } from '../lib/templates/template-paths.js';
 import { runMcpRepin, manualMcpRepinCommands } from '../lib/mcp/mcp.js';
 import { openSearchIndex } from '../lib/search/search-index.js';
 import { indexVault } from '../lib/search/search-indexer.js';
@@ -14,12 +14,12 @@ import { ConsoleLogger, type Logger } from '../lib/logger.js';
 import { VaultkitError } from '../lib/errors.js';
 import { PROMPTS, LABELS } from '../lib/messages.js';
 import { VAULT_FILES } from '../lib/constants.js';
-import { mergeManagedSection, renderManagedSection } from '../lib/claude-md-merge.js';
+import { mergeManagedSection, renderManagedSection } from '../lib/templates/claude-md-merge.js';
 import {
   WIKI_STYLE_SECTION_ID,
   WIKI_STYLE_HEADING,
   renderWikiStyleSection,
-} from '../lib/vault-templates.js';
+} from '../lib/templates/vault-templates.js';
 import type { CommandModule, RunOptions } from '../types.js';
 
 interface UpdatePlan {

@@ -12,7 +12,7 @@ import {
   detectLayoutGaps,
   renderLayoutFile,
   writeLayoutFiles,
-} from '../../src/lib/vault-layout.js';
+} from '../../src/lib/templates/vault-layout.js';
 import { VAULT_DIRS, VAULT_FILES } from '../../src/lib/constants.js';
 
 let tmp: string;

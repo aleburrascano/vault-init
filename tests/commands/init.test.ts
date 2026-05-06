@@ -18,8 +18,8 @@ vi.mock('../../src/lib/platform.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../../src/lib/platform.js')>();
   return { ...real, findTool: vi.fn(), vaultsRoot: vi.fn(), npmGlobalBin: vi.fn(), isWindows: vi.fn() };
 });
-vi.mock('../../src/lib/vault-layout.js', async (importOriginal) => {
-  const real = await importOriginal<typeof import('../../src/lib/vault-layout.js')>();
+vi.mock('../../src/lib/templates/vault-layout.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/lib/templates/vault-layout.js')>();
   // Spy that delegates to the real implementation by default. Per-test
   // overrides via mockImplementationOnce inject failures (Phase 2/6
   // rollback test). Using vi.fn(impl) instead of bare vi.fn() so the
@@ -30,7 +30,7 @@ vi.mock('../../src/lib/vault-layout.js', async (importOriginal) => {
 import { confirm, input, select } from '@inquirer/prompts';
 import { execa } from 'execa';
 import { findTool, vaultsRoot, isWindows } from '../../src/lib/platform.js';
-import { writeLayoutFiles } from '../../src/lib/vault-layout.js';
+import { writeLayoutFiles } from '../../src/lib/templates/vault-layout.js';
 
 let tmp: string;
 
@@ -467,7 +467,7 @@ describe('I-12: runMcpAdd argv shape', () => {
     // getLauncherTemplate lives in template-paths.ts (not in this file's
     // platform mock list) so it resolves to the real
     // <repo>/lib/mcp-start.js.tmpl path.
-    const { getLauncherTemplate } = await import('../../src/lib/template-paths.js');
+    const { getLauncherTemplate } = await import('../../src/lib/templates/template-paths.js');
     const onDiskHash = await sha256(join(tmp, 'TmplVault', '.mcp-start.js'));
     const templateHash = await sha256(getLauncherTemplate());
     expect(onDiskHash).toBe(templateHash);

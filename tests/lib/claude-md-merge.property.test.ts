@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { mergeManagedSection, renderManagedSection } from '../../src/lib/claude-md-merge.js';
+import { mergeManagedSection, renderManagedSection } from '../../src/lib/templates/claude-md-merge.js';
 
 /**
  * Property-based tests for `mergeManagedSection` — vault concept
